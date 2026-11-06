@@ -1,7 +1,7 @@
 import { type TUI, visibleWidth } from "@hyzek/toucan-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
+import { CustomEditor, inputBandOptions } from "../src/modes/interactive/components/custom-editor.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
@@ -59,7 +59,42 @@ describe("status indicators", () => {
 		const topBorder = editor.render(20)[0]!;
 		expect(stripAnsi(topBorder)).toBe("── ⠋ Working ───────");
 		expect(visibleWidth(topBorder)).toBe(20);
-		expect(topBorder.split(theme.getFgAnsi("thinkingHigh"))).toHaveLength(5);
+		// The spinner keeps the band's border color; the label is muted, not border-colored.
+		expect(topBorder).toContain(theme.getFgAnsi("thinkingHigh"));
+		expect(topBorder).toContain(theme.getFgAnsi("muted"));
+		indicator.dispose();
+	});
+
+	it("renders an engine line with an accent label and a bracketed muted tail", () => {
+		initTheme("dark");
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicator = new WorkingStatusIndicator(tui, "Working");
+		indicator.setLine({ label: "Thinking", status: "1.2k tokens · 4s" });
+
+		const line = indicator.render(120)[1]!;
+		expect(stripAnsi(line).trim()).toBe("⠋ Thinking (1.2k tokens · 4s)");
+		expect(line).toContain(theme.getFgAnsi("accent"));
+		expect(line).toContain(theme.getFgAnsi("muted"));
+		indicator.dispose();
+	});
+
+	it("floats the status line above the band, blank row below, no band background", () => {
+		initTheme("dark");
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create(), {
+			...inputBandOptions(),
+			embedWorkingStatus: true,
+		});
+		const indicator = new WorkingStatusIndicator(tui, "Working");
+		indicator.setLine({ label: "Working", status: "177 tokens · 3s" });
+		editor.setWorkingStatusIndicator(indicator);
+
+		const lines = editor.render(40);
+		expect(stripAnsi(lines[0]!).trim()).toBe("⠋ Working (177 tokens · 3s)");
+		expect(lines[0]!).not.toContain(theme.getBgAnsi("editorBg"));
+		expect(lines[1]!.trim()).toBe(""); // the gap that keeps the status row off the band
+		expect(lines[1]!).not.toContain(theme.getBgAnsi("editorBg"));
+		expect(lines[2]!).toContain(theme.getBgAnsi("editorBg")); // input rows keep the fill
 		indicator.dispose();
 	});
 

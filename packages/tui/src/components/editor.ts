@@ -334,6 +334,7 @@ export class Editor implements Component, Focusable {
 	private readonly promptStyle: (text: string) => string = (text) => text;
 	private readonly minLines: number = 0;
 	private renderedTopPad = 0;
+	private renderedHeaderLines = 0;
 
 	// Store last render geometry for cursor navigation and mouse hit-testing.
 	private lastWidth: number = 80;
@@ -548,6 +549,15 @@ export class Editor implements Component, Focusable {
 		return this.borderColor(border);
 	}
 
+	/**
+	 * Lines rendered above the input rows, in order. They never receive the band's line
+	 * background: only the input rows look filled.
+	 */
+	protected renderHeaderLines(width: number, hiddenLineCount: number): string[] {
+		const topBorder = this.renderTopBorder(width, hiddenLineCount);
+		return topBorder === "" ? [] : [this.decorateLine(topBorder)];
+	}
+
 	protected renderBottomBorder(width: number, hiddenLineCount: number): string {
 		if (!this.borders) return hiddenLineCount > 0 ? `  ↓ ${hiddenLineCount} more` : "";
 		const border = hiddenLineCount > 0 ? createScrollBorder("↓", hiddenLineCount, width) : "─".repeat(width);
@@ -608,9 +618,11 @@ export class Editor implements Component, Focusable {
 		this.renderedTopPad = Math.floor(padTotal / 2);
 		const bandRow = `${leftPadding}${" ".repeat(promptWidth)}${" ".repeat(contentWidth)}${rightPadding}`;
 
-		// Render top border (with scroll indicator if scrolled down)
-		const topBorder = this.renderTopBorder(width, this.scrollOffset);
-		if (topBorder !== "") result.push(this.decorateLine(topBorder));
+		// Header lines (top border or embedded status) are counted so click-to-cursor
+		// mapping knows where the input rows start.
+		const headerLines = this.renderHeaderLines(width, this.scrollOffset);
+		this.renderedHeaderLines = headerLines.length;
+		result.push(...headerLines);
 
 		// Empty band rows split above and below the text so short content sits in the middle
 		// of the minLines block. Stored for click-to-cursor mapping.
@@ -738,11 +750,14 @@ export class Editor implements Component, Focusable {
 		// The renderer synthesizes a click when press and release land on the same
 		// cell without movement, which is the gesture that positions the cursor.
 		if (event.type !== "click" || event.button !== "left") return undefined;
-		if (event.y <= this.renderedTopPad || event.y > this.renderedTopPad + this.renderedVisibleLineCount)
+		// Header rows (border or status line) and the blank band rows above the text are not
+		// clickable input rows.
+		const rowsAboveText = this.renderedHeaderLines + this.renderedTopPad;
+		if (event.y < rowsAboveText || event.y >= rowsAboveText + this.renderedVisibleLineCount)
 			return { handled: true, focus: true };
 
 		const visualLines = this.buildVisualLineMap(this.lastWidth);
-		const visualLineIndex = this.scrollOffset + event.y - 1 - this.renderedTopPad;
+		const visualLineIndex = this.scrollOffset + event.y - rowsAboveText;
 		const visualLine = visualLines[visualLineIndex];
 		if (!visualLine) return { handled: true, focus: true };
 		const logicalLine = this.state.lines[visualLine.logicalLine] ?? "";

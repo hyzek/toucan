@@ -151,6 +151,7 @@ import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { FooterComponent, formatTokens } from "./components/footer.ts";
+import { HotkeyHints } from "./components/hotkey-hints.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LaunchPanel } from "./components/launch-panel.ts";
 import { LoginDialogComponent } from "./components/login-dialog.ts";
@@ -178,12 +179,13 @@ import {
 } from "./components/status-indicator.ts";
 import { ThemedText } from "./components/themed-text.ts";
 import { ThinkingSelectorComponent } from "./components/thinking-selector.ts";
-import { pickLaunchTip, TipLine } from "./components/tip-line.ts";
+import { SessionTip } from "./components/tip-line.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { TrustSelectorComponent } from "./components/trust-selector.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
+import { WorkingStatusEngine } from "./components/working-status.ts";
 import { editInExternalEditor } from "./external-editor.ts";
 import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getDistinctModelName, getModelSearchText } from "./model-search.ts";
@@ -450,6 +452,7 @@ export class InteractiveMode {
 	private activeSelectorDispose?: () => void;
 	private footer: FooterComponent;
 	private footerContainer: Container;
+	private hintsContainer: Container;
 	private footerDataProvider: FooterDataProvider;
 	// Stored so the same manager can be injected into custom editors, selectors, and extension UI.
 	private keybindings: KeybindingsManager;
@@ -461,6 +464,7 @@ export class InteractiveMode {
 	private activeWorkingIndicatorEmbedded = false;
 	private readonly idleStatus = new IdleStatus();
 	private workingMessage: string | undefined = undefined;
+	private workingStatusEngine: WorkingStatusEngine | undefined = undefined;
 	private workingVisible = true;
 	private workingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working";
@@ -644,12 +648,13 @@ export class InteractiveMode {
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor as Component);
 		this.tipContainer = new Container();
-		this.tipContainer.addChild(new TipLine(pickLaunchTip()));
+		this.tipContainer.addChild(new SessionTip(() => this.sessionManager.hasConversation()));
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
-		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
 		this.footerContainer = new Container();
 		this.footerContainer.addChild(this.footer);
+		this.hintsContainer = new Container();
+		this.hintsContainer.addChild(new HotkeyHints(() => this.editor.getText().length > 0));
 
 		// Load hide thinking block setting
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
@@ -978,6 +983,7 @@ export class InteractiveMode {
 			editor: this.editorContainer,
 			widgetsBelow: this.widgetContainerBelow,
 			footer: this.footerContainer,
+			hints: this.hintsContainer,
 			scrollbar: this.settingsManager.getFullscreenScrollbar(),
 			scrollbarTrackStyle: (text) => theme.fg("scrollbarTrack", text),
 			scrollbarThumbStyle: (text) => theme.fg("scrollbarThumb", text),
@@ -993,6 +999,7 @@ export class InteractiveMode {
 			this.editorContainer,
 			this.widgetContainerBelow,
 			this.footerContainer,
+			this.hintsContainer,
 		]);
 		// Accept text while startup completes, but only enable interrupt, exit, and submission feedback.
 		this.defaultEditor.onAction("app.clear", () => this.handleCtrlC());
@@ -1048,7 +1055,7 @@ export class InteractiveMode {
 				);
 			const header = new LaunchPanel({
 				version: this.version,
-				welcome: () => (this.sessionManager.getEntryCount() > 0 ? "Welcome back!" : "Welcome!"),
+				welcome: () => (this.sessionManager.hasConversation() ? "Welcome back!" : "Welcome!"),
 				model: () => {
 					const model = this.session.model;
 					return model ? (getDistinctModelName(model) ?? model.id) : "none";
@@ -1825,7 +1832,6 @@ export class InteractiveMode {
 			this.renderer.setWheelScrollLines(this.settingsManager.getFullscreenWheelScrollLines());
 		}
 		this.footer.setSession(this.session);
-		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
 		this.footerDataProvider.setCwd(this.sessionManager.getCwd());
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
 		this.outputPad = this.settingsManager.getOutputPad();
@@ -2101,6 +2107,10 @@ export class InteractiveMode {
 		const clearedIndicator = this.activeStatusIndicator;
 		const clearedIndicatorWasEmbedded = this.activeWorkingIndicatorEmbedded;
 		clearedIndicator?.dispose();
+		if (clearedIndicator?.kind === "working") {
+			this.workingStatusEngine?.dispose();
+			this.workingStatusEngine = undefined;
+		}
 		this.activeStatusIndicator = undefined;
 		this.activeWorkingIndicatorEmbedded = false;
 		this.statusContainer.clear();
@@ -2116,18 +2126,24 @@ export class InteractiveMode {
 	}
 
 	private showWorkingStatusIndicator(): void {
-		const colorFn = isEmbeddedStatus(this.editor)
+		const spinnerColorFn = isEmbeddedStatus(this.editor)
 			? (text: string) =>
 					(this.editor.borderColor ?? theme.getThinkingBorderColor(this.session.thinkingLevel || "off"))(text)
 			: undefined;
-		this.showStatusIndicator(
-			new WorkingStatusIndicator(
-				this.ui,
-				this.workingMessage ?? this.defaultWorkingMessage,
-				this.workingIndicatorOptions,
-				colorFn,
-			),
+		const indicator = new WorkingStatusIndicator(
+			this.ui,
+			this.workingMessage ?? this.defaultWorkingMessage,
+			this.workingIndicatorOptions,
+			spinnerColorFn,
 		);
+		this.showStatusIndicator(indicator);
+
+		// One engine per turn: it rotates the verb, names running tools, and counts tokens.
+		this.workingStatusEngine?.dispose();
+		this.workingStatusEngine = new WorkingStatusEngine({ onLine: (line) => indicator.setLine(line) });
+		// An extension that set its own working text keeps owning the line until it clears it.
+		if (this.workingMessage !== undefined) this.workingStatusEngine.setFrozen(true);
+		this.workingStatusEngine.begin();
 	}
 
 	private setWorkingVisible(visible: boolean): void {
@@ -2247,9 +2263,10 @@ export class InteractiveMode {
 		this.workingVisible = true;
 		this.setWorkingIndicator();
 		if (this.activeStatusIndicator?.kind === "working") {
-			this.activeStatusIndicator.setMessage(
+			this.activeStatusIndicator.setLabel(
 				`${this.defaultWorkingMessage} (${keyText("app.interrupt")} to interrupt)`,
 			);
+			this.workingStatusEngine?.setFrozen(false);
 		}
 		this.setHiddenThinkingLabel();
 	}
@@ -2413,8 +2430,10 @@ export class InteractiveMode {
 			setWorkingMessage: (message) => {
 				this.workingMessage = message;
 				if (this.activeStatusIndicator?.kind === "working") {
-					this.activeStatusIndicator.setMessage(message ?? this.defaultWorkingMessage);
+					this.activeStatusIndicator.setLabel(message ?? this.defaultWorkingMessage);
 				}
+				// Extension text owns the line until the extension clears it.
+				this.workingStatusEngine?.setFrozen(message !== undefined);
 			},
 			setWorkingVisible: (visible) => this.setWorkingVisible(visible),
 			setWorkingIndicator: (options) => this.setWorkingIndicator(options),
@@ -3279,6 +3298,7 @@ export class InteractiveMode {
 				if (this.streamingComponent && event.message.role === "assistant") {
 					this.streamingMessage = event.message;
 					this.streamingComponent.updateContent(this.streamingMessage, true);
+					this.workingStatusEngine?.noteStreamedMessage(this.streamingMessage);
 
 					for (const content of this.streamingMessage.content) {
 						if (content.type === "toolCall") {
@@ -3315,6 +3335,7 @@ export class InteractiveMode {
 				if (event.message.role === "user") break;
 				if (this.streamingComponent && event.message.role === "assistant") {
 					this.streamingMessage = event.message;
+					this.workingStatusEngine?.settleMessage(this.streamingMessage.usage.output);
 					let errorMessage: string | undefined;
 					if (this.streamingMessage.stopReason === "aborted") {
 						const retryAttempt = this.session.retryAttempt;
@@ -3360,6 +3381,7 @@ export class InteractiveMode {
 			case "tool_execution_start": {
 				// Nested calls (from codemode scripts) are shown inside their parent's row.
 				if (event.parentToolCallId) break;
+				this.workingStatusEngine?.noteToolRunning();
 				let component = this.pendingTools.get(event.toolCallId);
 				if (!component) {
 					component = new ToolExecutionComponent(
@@ -4771,7 +4793,6 @@ export class InteractiveMode {
 				{
 					onAutoCompactChange: (enabled) => {
 						this.session.setAutoCompactionEnabled(enabled);
-						this.footer.setAutoCompactEnabled(enabled);
 					},
 					onShowImagesChange: (enabled) => {
 						this.settingsManager.setShowImages(enabled);

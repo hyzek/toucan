@@ -57,6 +57,18 @@ export class CustomEditor extends Editor {
 		this.workingStatusIndicator = indicator;
 	}
 
+	/**
+	 * The solid input band has no border, so its status line floats above it: one status row,
+	 * one blank row, and no editorBg on either, leaving only the input rows filled.
+	 */
+	protected override renderHeaderLines(width: number, hiddenLineCount: number): string[] {
+		if (this.embedWorkingStatus && !this.borders && this.workingStatusIndicator && width > 0) {
+			const status = this.workingStatusIndicator.renderInBorder(Math.max(1, width - 5));
+			if (visibleWidth(status) > 0) return [truncateToWidth(` ${status}`, width, ""), ""];
+		}
+		return super.renderHeaderLines(width, hiddenLineCount);
+	}
+
 	protected override renderTopBorder(width: number, hiddenLineCount: number): string {
 		if (!this.embedWorkingStatus || !this.workingStatusIndicator || width <= 0) {
 			return super.renderTopBorder(width, hiddenLineCount);
@@ -65,7 +77,6 @@ export class CustomEditor extends Editor {
 		let status = this.workingStatusIndicator.renderInBorder(Math.max(1, width - 5));
 		let statusWidth = visibleWidth(status);
 		if (statusWidth === 0) return super.renderTopBorder(width, hiddenLineCount);
-		if (!this.borders) return truncateToWidth(` ${status}`, width, "");
 
 		const overflowLabel = hiddenLineCount > 0 ? ` ↑ ${hiddenLineCount} more ` : undefined;
 		const overflowLabelWidth = overflowLabel ? visibleWidth(overflowLabel) : 0;

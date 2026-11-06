@@ -3,6 +3,7 @@ import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts"
 import { theme } from "../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
+import type { WorkingStatusLine } from "./working-status.ts";
 
 export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";
 
@@ -21,6 +22,11 @@ export class StatusIndicator extends Loader {
 		this.kind = kind;
 	}
 
+	/** Plain status text, colored as the status tail is: muted. */
+	setLabel(label: string): void {
+		this.setMessage(theme.fg("muted", label));
+	}
+
 	renderInBorder(width: number): string {
 		const line = super.render(width + 2)[1] ?? "";
 		return truncateToWidth(line.startsWith(" ") ? line.slice(1).trimEnd() : line.trimEnd(), width, "");
@@ -36,15 +42,25 @@ export class StatusIndicator extends Loader {
 }
 
 export class WorkingStatusIndicator extends StatusIndicator {
-	constructor(ui: TUI, message: string, indicator?: WorkingIndicatorOptions, colorFn?: (text: string) => string) {
-		super(
-			"working",
-			ui,
-			colorFn ?? ((text) => theme.fg("accent", text)),
-			colorFn ?? ((text) => theme.fg("muted", text)),
-			message,
-			indicator,
-		);
+	constructor(
+		ui: TUI,
+		label: string,
+		indicator?: WorkingIndicatorOptions,
+		spinnerColorFn: (text: string) => string = (text) => theme.fg("accent", text),
+	) {
+		// The message color function is the identity because this class colors every part of the
+		// message itself: verb accent, status and label muted.
+		super("working", ui, spinnerColorFn, (text) => text, theme.fg("muted", label), indicator);
+	}
+
+	/**
+	 * The engine's line: the label in the accent color, then the token and elapsed tail in
+	 * brackets, e.g. `Thinking (1.2k tokens · 4s)`.
+	 */
+	setLine(line: WorkingStatusLine): void {
+		const label = theme.fg("accent", line.label);
+		const tail = line.status ? ` ${theme.fg("muted", `(${line.status})`)}` : "";
+		this.setMessage(`${label}${tail}`);
 	}
 }
 

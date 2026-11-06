@@ -1,10 +1,9 @@
+import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { type Component, truncateToWidth, visibleWidth } from "@hyzek/toucan-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
-import type { ContextUsage } from "../../../core/extensions/types.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
-import { addUsageToTotals, createUsageTotals, type UsageTotals } from "../../../core/usage-totals.ts";
 import { theme } from "../theme/theme.ts";
 import { INPUT_PROMPT } from "./custom-editor.ts";
 
@@ -21,7 +20,7 @@ function sanitizeStatusText(text: string): string {
 }
 
 /**
- * Format token counts for compact footer display.
+ * Format token counts compactly for status output.
  */
 export function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -45,26 +44,13 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
 }
 
-interface SessionStats {
-	session: AgentSession;
-	sessionId: string;
-	leafId: string | null;
-	entryCount: number;
-	limitsModel: unknown;
-	usageTotals: UsageTotals;
-	latestCacheHitRate: number | undefined;
-	contextUsage: ContextUsage | undefined;
-}
-
 /**
- * Footer component that shows model + thinking level, token stats, and context usage in one bar.
- * Computes token/context stats from session, gets git branch and extension statuses from provider.
+ * Footer bar showing model and thinking level, git branch, session name, and the working
+ * directory. Git branch and extension statuses come from the provider.
  */
 export class FooterComponent implements Component {
-	private autoCompactEnabled = true;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
-	private sessionStats?: SessionStats;
 
 	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
 		this.session = session;
@@ -73,10 +59,6 @@ export class FooterComponent implements Component {
 
 	setSession(session: AgentSession): void {
 		this.session = session;
-	}
-
-	setAutoCompactEnabled(enabled: boolean): void {
-		this.autoCompactEnabled = enabled;
 	}
 
 	/**
@@ -95,119 +77,16 @@ export class FooterComponent implements Component {
 		// Git watcher cleanup handled by provider
 	}
 
-	/**
-	 * Usage totals and context usage scan the whole session, and the footer renders on every frame.
-	 * Entries are append-only and every append moves the leaf, so the results only change with the
-	 * session, leaf, entry count, or the model whose context window applies.
-	 */
-	private getSessionStats(): SessionStats {
-		const sessionManager = this.session.sessionManager;
-		const entryCount = sessionManager.getEntryCount();
-		const sessionId = sessionManager.getSessionId();
-		const leafId = sessionManager.getLeafId();
-		const limitsModel = this.session.routedModel?.model ?? this.session.model;
-		const cached = this.sessionStats;
-		if (
-			cached &&
-			cached.session === this.session &&
-			cached.sessionId === sessionId &&
-			cached.leafId === leafId &&
-			cached.entryCount === entryCount &&
-			cached.limitsModel === limitsModel
-		) {
-			return cached;
-		}
-
-		// Calculate cumulative usage from ALL session entries (not just post-compaction messages)
-		const usageTotals = createUsageTotals();
-		let latestCacheHitRate: number | undefined;
-
-		for (const entry of sessionManager.getEntries()) {
-			if (entry.type === "usage") {
-				addUsageToTotals(usageTotals, entry.usage);
-			} else if (entry.type === "message" && entry.message.role === "assistant") {
-				addUsageToTotals(usageTotals, entry.message.usage);
-
-				const latestPromptTokens =
-					entry.message.usage.input + entry.message.usage.cacheRead + entry.message.usage.cacheWrite;
-				latestCacheHitRate =
-					latestPromptTokens > 0 ? (entry.message.usage.cacheRead / latestPromptTokens) * 100 : undefined;
-			} else if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.usage) {
-				addUsageToTotals(usageTotals, entry.message.usage);
-			} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
-				addUsageToTotals(usageTotals, entry.usage);
-			}
-		}
-
-		// Calculate context usage from session (handles compaction correctly).
-		// After compaction, tokens are unknown until the next LLM response.
-		const contextUsage = this.session.getContextUsage();
-		this.sessionStats = {
-			session: this.session,
-			sessionId,
-			leafId,
-			entryCount,
-			limitsModel,
-			usageTotals,
-			latestCacheHitRate,
-			contextUsage,
-		};
-		return this.sessionStats;
-	}
-
 	render(width: number): string[] {
 		const state = this.session.state;
-		const { usageTotals, latestCacheHitRate, contextUsage } = this.getSessionStats();
-		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
-		const contextPercentValue = contextUsage?.percent ?? 0;
-		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
 
-		// Add git branch if available
+		// Git branch and session name are optional parts of the bar.
 		const branch = this.footerData.getGitBranch();
-
-		// Add session name if set
 		const sessionName = this.session.sessionManager.getSessionName();
-
-		// Build stats line
-		const statsParts = [];
-		if (usageTotals.input) statsParts.push(`↑${formatTokens(usageTotals.input)}`);
-		if (usageTotals.output) statsParts.push(`↓${formatTokens(usageTotals.output)}`);
-		if (usageTotals.cacheRead) statsParts.push(`R${formatTokens(usageTotals.cacheRead)}`);
-		if (usageTotals.cacheWrite) statsParts.push(`W${formatTokens(usageTotals.cacheWrite)}`);
-		if ((usageTotals.cacheRead > 0 || usageTotals.cacheWrite > 0) && latestCacheHitRate !== undefined) {
-			statsParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
-		}
-
-		// Kimi Coding is subscription-backed despite using API-key authentication.
-		const usingSubscription = state.model
-			? state.model.provider === "kimi-coding" || this.session.modelRuntime.isUsingSubscription(state.model.provider)
-			: false;
-		if (usageTotals.cost || usingSubscription) {
-			const costStr = `$${usageTotals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
-			statsParts.push(costStr);
-		}
-
-		// Colorize context percentage based on usage
-		let contextPercentStr: string;
-		const autoIndicator = this.autoCompactEnabled ? " (auto)" : "";
-		const contextPercentDisplay =
-			contextPercent === "?"
-				? `?/${formatTokens(contextWindow)}${autoIndicator}`
-				: `${contextPercent}%/${formatTokens(contextWindow)}${autoIndicator}`;
-		if (contextPercentValue > 90) {
-			contextPercentStr = theme.fg("error", contextPercentDisplay);
-		} else if (contextPercentValue > 70) {
-			contextPercentStr = theme.fg("warning", contextPercentDisplay);
-		} else {
-			contextPercentStr = contextPercentDisplay;
-		}
-		statsParts.push(contextPercentStr);
-		if (areExperimentalFeaturesEnabled()) {
-			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
-		}
+		const directory = formatCwdForFooter(this.session.sessionManager.getCwd(), homedir());
 
 		// One bar like the reference design: model and thinking level lead the bar, indented by
-		// one cell to line up under the input caret, then branch, session name, and usage stats.
+		// one cell to line up under the input caret, then branch, session name, and directory.
 		const modelName = state.model?.id || "no-model";
 		let left = modelName;
 		if (state.model?.reasoning) {
@@ -228,7 +107,10 @@ export class FooterComponent implements Component {
 		}
 		// Indent to the caret column of the input band above (the prompt cell width).
 		const indent = " ".repeat(visibleWidth(INPUT_PROMPT));
-		let bar = `${indent}${left}  ·  ${statsParts.join(" ")}`;
+		let bar = `${indent}${left}  ·  ${theme.fg("success", directory)}`;
+		if (areExperimentalFeaturesEnabled()) {
+			bar += `  ·  ${theme.bold(theme.fg("warning", "xp"))}`;
+		}
 		if (visibleWidth(bar) > width) {
 			bar = truncateToWidth(bar, width, theme.fg("dim", "..."));
 		}

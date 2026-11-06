@@ -1159,12 +1159,16 @@ export class SessionManager {
 	}
 
 	/**
+	 * Whether the session holds a user or assistant message, as opposed to only setup entries.
+	 * A launch appends model and thinking-level entries before the first prompt, so this, and not
+	 * the entry count, separates a session that has started from a blank one.
+	 *
 	 * A new session file is created only once the session contains a user or assistant message.
-	 * Setup entries alone (model, thinking level, system prompt) stay in memory so opening and
-	 * closing toucan without chatting leaves no file behind. Starting at the user message (not the
-	 * first assistant reply) keeps the prompt on disk if the first turn never completes (#10000).
+	 * Setup entries alone stay in memory so opening and closing toucan without chatting leaves no
+	 * file behind. Starting at the user message (not the first assistant reply) keeps the prompt
+	 * on disk if the first turn never completes (#10000).
 	 */
-	private _hasConversation(): boolean {
+	hasConversation(): boolean {
 		return this.fileEntries.some(
 			(e) => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"),
 		);
@@ -1174,7 +1178,7 @@ export class SessionManager {
 		if (!this.persist || !this.sessionFile) return;
 
 		if (!this.flushed) {
-			if (!this._hasConversation()) return;
+			if (!this.hasConversation()) return;
 			const fd = openSync(this.sessionFile, "wx");
 			try {
 				for (const e of this.fileEntries) {
@@ -1727,7 +1731,7 @@ export class SessionManager {
 
 			// Use the same rule as _persist(): write now if the branched path already
 			// has a conversation, otherwise let _persist() create the file later.
-			if (this._hasConversation()) {
+			if (this.hasConversation()) {
 				this._rewriteFile();
 				this.flushed = true;
 			} else {

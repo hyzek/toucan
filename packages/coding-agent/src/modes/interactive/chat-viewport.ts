@@ -6,6 +6,7 @@ export interface ChatViewportOptions {
 	readonly status: Component;
 	readonly editor: Component;
 	readonly footer: Component;
+	readonly hints?: Component;
 	readonly tip?: Component;
 	readonly widgetsAbove?: Component;
 	readonly widgetsBelow?: Component;
@@ -37,6 +38,7 @@ export function createChatViewport(options: ChatViewportOptions): ChatViewport {
 		{ component: options.editor, shrink: 1, minSize: 3 },
 		...(options.widgetsBelow === undefined ? [] : [{ component: options.widgetsBelow, shrink: 1, minSize: 0 }]),
 		{ component: options.footer, shrink: 1, minSize: 0 },
+		...(options.hints === undefined ? [] : [{ component: options.hints, shrink: 1, minSize: 0 }]),
 	]);
 	return {
 		transcript,

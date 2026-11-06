@@ -32,3 +32,24 @@ export class TipLine implements Component {
 		return [`${padding}${text}`];
 	}
 }
+
+/**
+ * The launch tip: visible only while the session has no user or assistant message. Typing does not
+ * hide it; it goes away when the session starts and returns after /new, because the new session
+ * begins blank. A fresh launch already holds model and thinking-level entries, so entry count is
+ * not the test.
+ */
+export class SessionTip implements Component {
+	private readonly tip = new TipLine(pickLaunchTip());
+	private readonly hasConversation: () => boolean;
+
+	constructor(hasConversation: () => boolean) {
+		this.hasConversation = hasConversation;
+	}
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		return this.hasConversation() ? [] : this.tip.render(width);
+	}
+}
