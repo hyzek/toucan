@@ -15,7 +15,14 @@ import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../
 /** What this component needs from a tool: how to draw it, without executing it. */
 export type { ToolRenderers };
 
-import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
+import {
+	formatToolCallWithArgs,
+	getTextOutput as getRenderedTextOutput,
+	getToolRowStatus,
+	type ToolRowContext,
+	type ToolRowStatus,
+	toolRowCallLine,
+} from "../../../core/tools/render-utils.ts";
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 import { keyHint, keyText } from "./keybinding-hints.ts";
@@ -45,6 +52,8 @@ export class ToolExecutionComponent extends Container {
 	private toolCallId: string;
 	private args: any;
 	private expanded = false;
+	/** Whether this row draws its own state marker; off inside a collapsed tool group. */
+	private rowMarkerShown = true;
 	private showImages: boolean;
 	private imageWidthCells: number;
 	private outputPad: number;
@@ -89,8 +98,9 @@ export class ToolExecutionComponent extends Container {
 		// Always create all shell variants. contentBox is used for default renderer-based composition.
 		// selfRenderContainer is used when the tool renders its own framing.
 		// contentText is reserved for generic fallback rendering when no tool definition exists.
-		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
-		this.contentText = new Text("", 1, 1, (text: string) => theme.bg("toolPendingBg", text));
+		// Tool rows carry no background: the call line's `●` marker carries the state.
+		this.contentBox = new Box(1, 1);
+		this.contentText = new Text("", 1, 1);
 		this.contentTextRegion = this.createResultRegion(this.contentText);
 		this.selfRenderContainer = new Container();
 
@@ -138,13 +148,39 @@ export class ToolExecutionComponent extends Container {
 			isError: this.result?.isError ?? false,
 			durationMs: this.isPartial ? undefined : this.result?.durationMs,
 			outputPad: this.outputPad,
+			rowMarkerShown: this.rowMarkerShown,
 			keyText,
 			keyHint,
 		};
 	}
 
 	private createCallFallback(): Component {
-		return new Text(formatToolCallWithArgs(this.toolName, this.args, theme, this.expanded), 0, 0);
+		const header = formatToolCallWithArgs(this.toolName, this.args, theme, this.expanded);
+		return new Text(toolRowCallLine(header, this.getRenderContextState(), theme), 0, 0);
+	}
+
+	/** The row's marker inputs: state, and whether the marker shows. */
+	private getRenderContextState(): ToolRowContext {
+		return {
+			isPartial: this.isPartial,
+			isError: this.result?.isError ?? false,
+			rowMarkerShown: this.rowMarkerShown,
+		};
+	}
+
+	/**
+	 * Whether this row draws its own state marker. A collapsed tool group turns it off for its
+	 * members: the group's sentence leads the run with one marker.
+	 */
+	setRowMarkerShown(shown: boolean): void {
+		if (this.rowMarkerShown === shown) return;
+		this.rowMarkerShown = shown;
+		this.updateDisplay();
+	}
+
+	/** What a containing group counts this row as: its tool and its state. */
+	getGroupedState(): { name: string; status: ToolRowStatus } {
+		return { name: this.toolName, status: getToolRowStatus(this.getRenderContextState()) };
 	}
 
 	private createResultFallback(): Component | undefined {
@@ -279,18 +315,12 @@ export class ToolExecutionComponent extends Container {
 
 	private updateDisplay(): void {
 		this.argsPending = false;
-		const bgFn = this.isPartial
-			? (text: string) => theme.bg("toolPendingBg", text)
-			: this.result?.isError
-				? (text: string) => theme.bg("toolErrorBg", text)
-				: (text: string) => theme.bg("toolSuccessBg", text);
 
 		let hasContent = false;
 		this.hideComponent = false;
 		if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
 			if (renderContainer instanceof Box) {
-				renderContainer.setBgFn(bgFn);
 				renderContainer.setPaddingX(this.outputPad);
 			}
 			renderContainer.clear();
@@ -342,7 +372,6 @@ export class ToolExecutionComponent extends Container {
 				}
 			}
 		} else {
-			this.contentText.setCustomBgFn(bgFn);
 			this.contentText.setPaddingX(this.outputPad);
 			this.contentText.setText(this.formatToolExecution());
 			hasContent = true;
@@ -405,7 +434,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private formatToolExecution(): string {
-		let text = theme.fg("toolTitle", theme.bold(this.toolName));
+		let text = toolRowCallLine(theme.fg("toolTitle", theme.bold(this.toolName)), this.getRenderContextState(), theme);
 		const content = JSON.stringify(this.args, null, 2);
 		if (content) {
 			text += `\n\n${content}`;

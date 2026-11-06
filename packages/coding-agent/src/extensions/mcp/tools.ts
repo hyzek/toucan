@@ -32,7 +32,7 @@ import type {
 	ToolRenderers,
 } from "../../core/extensions/types.ts";
 import { READ_MCP_RESOURCE_TOOL } from "../../core/mcp-servers.ts";
-import { formatToolCallWithArgs, getTextOutput, replaceTabs } from "../../core/tools/render-utils.ts";
+import { formatToolCallWithArgs, getTextOutput, replaceTabs, toolRowCallLine } from "../../core/tools/render-utils.ts";
 import { formatSize } from "../../core/tools/truncate.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.ts";
@@ -293,7 +293,9 @@ export function createMcpToolRenderers(label: string): ToolRenderers {
 	return {
 		renderCall(args, theme, context) {
 			const component = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			component.setText(formatToolCallWithArgs(label, args, theme, context.expanded));
+			component.setText(
+				toolRowCallLine(formatToolCallWithArgs(label, args, theme, context.expanded), context, theme),
+			);
 			return component;
 		},
 		renderResult(result, options, theme, context) {

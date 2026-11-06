@@ -181,6 +181,7 @@ import { ThemedText } from "./components/themed-text.ts";
 import { ThinkingSelectorComponent } from "./components/thinking-selector.ts";
 import { SessionTip } from "./components/tip-line.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
+import { ToolGroupComponent } from "./components/tool-group.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { TrustSelectorComponent } from "./components/trust-selector.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
@@ -493,6 +494,9 @@ export class InteractiveMode {
 
 	// Tool execution tracking: toolCallId -> component
 	private pendingTools = new Map<string, ToolExecutionComponent>();
+
+	// Which tool group each row currently sits in, so a settling call re-says its group's sentence.
+	private readonly toolGroups = new WeakMap<ToolExecutionComponent, ToolGroupComponent>();
 
 	// Tool output expansion state
 	private toolOutputExpanded = false;
@@ -3317,7 +3321,7 @@ export class InteractiveMode {
 									this.sessionManager.getCwd(),
 								);
 								component.setExpanded(this.toolOutputExpanded);
-								this.chatContainer.addChild(component);
+								this.addToolRow(component);
 								this.pendingTools.set(content.id, component);
 							} else {
 								const component = this.pendingTools.get(content.id);
@@ -3356,6 +3360,7 @@ export class InteractiveMode {
 								content: [{ type: "text", text: errorMessage }],
 								isError: true,
 							});
+							this.refreshToolGroup(component);
 						}
 						this.pendingTools.clear();
 						this.maybeSuggestBugReport(this.streamingMessage);
@@ -3398,7 +3403,7 @@ export class InteractiveMode {
 						this.sessionManager.getCwd(),
 					);
 					component.setExpanded(this.toolOutputExpanded);
-					this.chatContainer.addChild(component);
+					this.addToolRow(component);
 					this.pendingTools.set(event.toolCallId, component);
 				}
 				component.markExecutionStarted();
@@ -3420,6 +3425,7 @@ export class InteractiveMode {
 				const component = this.pendingTools.get(event.toolCallId);
 				if (component) {
 					component.updateResult({ ...event.result, isError: event.isError, durationMs: event.durationMs });
+					this.refreshToolGroup(component);
 					this.pendingTools.delete(event.toolCallId);
 					this.ui.requestRender();
 				}
@@ -3629,6 +3635,59 @@ export class InteractiveMode {
 		this.lastStatusSpacer = spacer;
 		this.lastStatusText = text;
 		this.ui.requestRender();
+	}
+
+	/**
+	 * Adds a tool row to the transcript, joining the run of consecutive calls when there is one.
+	 *
+	 * A call joins the group directly before it. Blank rows and assistant replies that are only tool
+	 * calls sit between rows without ending the run; anything with visible content does. A run starts
+	 * as a group at its second call: the first row stays plain, so a lone `bash` or `edit` keeps its
+	 * output instead of hiding behind a one-call sentence.
+	 */
+	private addToolRow(component: ToolExecutionComponent): void {
+		const siblings = this.chatContainer.children;
+		let index = siblings.length - 1;
+		while (index >= 0 && this.isRunSeparator(siblings[index])) index--;
+		const previous = index >= 0 ? siblings[index] : undefined;
+
+		if (previous instanceof ToolGroupComponent) {
+			previous.addTool(component);
+			this.toolGroups.set(component, previous);
+			return;
+		}
+		if (previous instanceof ToolExecutionComponent) {
+			const group = new ToolGroupComponent(this.ui);
+			this.chatContainer.children.splice(index, 1, group);
+			// Rows inherit the global expansion state, so a group formed under `--verbose` starts open.
+			group.setExpanded(this.toolOutputExpanded);
+			group.addTool(previous);
+			group.addTool(component);
+			this.toolGroups.set(previous, group);
+			this.toolGroups.set(component, group);
+			return;
+		}
+		this.chatContainer.addChild(component);
+	}
+
+	/** Rows that never end a run of tool calls: blank rows and tool-call-only assistant framing. */
+	private isRunSeparator(child: Component): boolean {
+		if (child instanceof Spacer) return true;
+		if (child instanceof AssistantMessageComponent) return !child.hasVisibleContent();
+		return false;
+	}
+
+	/** Re-says a call's group sentence, after that call's state changed. */
+	private refreshToolGroup(component: ToolExecutionComponent): void {
+		this.toolGroups.get(component)?.refresh();
+	}
+
+	/** Every tool row in the transcript: the loose ones and the ones inside groups. */
+	private *toolRows(): Generator<ToolExecutionComponent> {
+		for (const child of this.chatContainer.children) {
+			if (child instanceof ToolExecutionComponent) yield child;
+			else if (child instanceof ToolGroupComponent) yield* child.getToolRows();
+		}
 	}
 
 	private addCustomEntryToChat(entry: Extract<SessionEntry, { type: "custom" }>): void {
@@ -3854,7 +3913,7 @@ export class InteractiveMode {
 							this.sessionManager.getCwd(),
 						);
 						component.setExpanded(this.toolOutputExpanded);
-						this.chatContainer.addChild(component);
+						this.addToolRow(component);
 
 						if (message.stopReason === "aborted" || message.stopReason === "error") {
 							let errorMessage: string;
@@ -3882,6 +3941,7 @@ export class InteractiveMode {
 				const component = renderedPendingTools.get(message.toolCallId);
 				if (component) {
 					component.updateResult(message);
+					this.refreshToolGroup(component);
 					renderedPendingTools.delete(message.toolCallId);
 				}
 			} else {
@@ -4796,18 +4856,14 @@ export class InteractiveMode {
 					},
 					onShowImagesChange: (enabled) => {
 						this.settingsManager.setShowImages(enabled);
-						for (const child of this.chatContainer.children) {
-							if (child instanceof ToolExecutionComponent) {
-								child.setShowImages(enabled);
-							}
+						for (const row of this.toolRows()) {
+							row.setShowImages(enabled);
 						}
 					},
 					onImageWidthCellsChange: (width) => {
 						this.settingsManager.setImageWidthCells(width);
-						for (const child of this.chatContainer.children) {
-							if (child instanceof ToolExecutionComponent) {
-								child.setImageWidthCells(width);
-							}
+						for (const row of this.toolRows()) {
+							row.setImageWidthCells(width);
 						}
 					},
 					onAutoResizeImagesChange: (enabled) => {

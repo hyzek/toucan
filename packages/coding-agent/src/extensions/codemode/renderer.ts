@@ -9,7 +9,14 @@
 
 import { Container, Spacer, Text } from "@hyzek/toucan-tui";
 import type { ToolDefinition } from "../../core/extensions/types.ts";
-import { getTextOutput, replaceTabs, startToolTimer, str, toolTimerText } from "../../core/tools/render-utils.ts";
+import {
+	getTextOutput,
+	replaceTabs,
+	startToolTimer,
+	str,
+	toolRowCallLine,
+	toolTimerText,
+} from "../../core/tools/render-utils.ts";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.ts";
 import { CodeHighlighter, type Theme } from "../../modes/interactive/theme/theme.ts";
@@ -76,7 +83,7 @@ export const codemodeRenderers: Pick<
 		startToolTimer(context);
 		// The code includes the `// @options:` line, so options show as part of the script.
 		const code = str((args as { code?: unknown } | undefined)?.code);
-		const title = theme.fg("toolTitle", theme.bold("codemode"));
+		const title = toolRowCallLine(theme.fg("toolTitle", theme.bold("codemode")), context, theme);
 		const component = (context.lastComponent as Container | undefined) ?? new Container();
 		component.clear();
 		if (code === null) {

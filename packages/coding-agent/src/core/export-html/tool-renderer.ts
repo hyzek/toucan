@@ -95,6 +95,9 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 			isError,
 			durationMs: undefined,
 			outputPad: 1,
+			// The exported transcript styles tool rows with CSS backgrounds, which already carry the
+			// state; it keeps no TUI marker.
+			rowMarkerShown: false,
 			keyText,
 			keyHint,
 		};

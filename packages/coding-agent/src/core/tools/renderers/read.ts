@@ -16,7 +16,14 @@ import { formatPathRelativeToCwdOrAbsolute } from "../../../utils/paths.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
 import { resolveToCwd } from "../path-utils.ts";
 import type { ReadToolDetails } from "../read.ts";
-import { formatReadLineRange, getTextOutput, renderToolPath, replaceTabs, str } from "../render-utils.ts";
+import {
+	formatReadLineRange,
+	getTextOutput,
+	renderToolPath,
+	replaceTabs,
+	str,
+	toolRowCallLine,
+} from "../render-utils.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "../truncate.ts";
 
 interface CompactReadClassification {
@@ -150,9 +157,10 @@ export const readRenderers: Pick<ToolDefinition<any, ReadToolDetails | undefined
 		const args = rawArgs as ReadRenderArgs | undefined;
 		const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
 		const classification = !context.expanded ? getCompactReadClassification(args, context.cwd) : undefined;
-		text.setText(
-			classification ? formatCompactReadCall(classification, args, theme) : formatReadCall(args, theme, context.cwd),
-		);
+		const header = classification
+			? formatCompactReadCall(classification, args, theme)
+			: formatReadCall(args, theme, context.cwd);
+		text.setText(toolRowCallLine(header, context, theme));
 		return text;
 	},
 	renderResult(result, options, theme, context) {

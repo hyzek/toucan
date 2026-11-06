@@ -167,6 +167,48 @@ export function invalidArgText(theme: Theme): string {
 	return theme.fg("error", "[invalid arg]");
 }
 
+/** State a tool row shows in its leading marker. */
+export type ToolRowStatus = "pending" | "done" | "failed";
+
+/**
+ * The glyph that leads a tool row.
+ *
+ * `•` (U+2022). Measured at 14px in Menlo, SF Mono and JetBrains Mono it draws a 4-6px spot
+ * (12-32 ink pixels) against the 9px of `●` (U+25CF, 59-63). Nothing sits between them: `∙`, `·`
+ * and `◦` are smaller, `◉` and `⬤` are at `●` or missing, and the one medium option, the ring
+ * `○` (U+25CB), is absent from Monaco and `⊙` from SF Mono. The bullet is the only marker every
+ * mono font on macOS has, so it wins on staying visible rather than on weight.
+ */
+export const TOOL_ROW_MARKER = "\u2022";
+
+/** The inputs a row renderer needs to draw the call line: state and whether the marker shows. */
+export interface ToolRowContext {
+	isPartial: boolean;
+	isError: boolean;
+	/** Defaults to shown; a collapsed tool group turns it off for its members. */
+	rowMarkerShown?: boolean;
+}
+
+/** The row's state, from the render context: no final result yet, done, or failed. */
+export function getToolRowStatus(context: ToolRowContext): ToolRowStatus {
+	if (context.isError) return "failed";
+	return context.isPartial ? "pending" : "done";
+}
+
+/**
+ * A tool row's call line: the state marker, then the header the renderer built.
+ *
+ * Tool rows have no background, so the marker carries the state: dim while the call streams or runs,
+ * green once a final result lands, red when it fails. A row inside a collapsed tool group sets
+ * `rowMarkerShown: false`: the group leads with one marker instead of one per member.
+ */
+export function toolRowCallLine(header: string, context: ToolRowContext, theme: Theme): string {
+	if (context.rowMarkerShown === false) return header;
+	const status = getToolRowStatus(context);
+	const token = status === "failed" ? "error" : status === "done" ? "success" : "dim";
+	return `${theme.fg(token, TOOL_ROW_MARKER)} ${header}`;
+}
+
 export function renderToolPath(
 	rawPath: string | null,
 	theme: Theme,

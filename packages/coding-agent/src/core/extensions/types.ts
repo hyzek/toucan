@@ -517,6 +517,11 @@ export interface ToolRenderContext<TState = any, TArgs = any> extends Keybinding
 	durationMs: number | undefined;
 	/** Horizontal padding configured by the outputPad setting. Renderers with `renderShell: "self"` apply it themselves. */
 	outputPad: number;
+	/**
+	 * Whether the row draws its own state marker. `false` while the row sits inside a collapsed tool
+	 * group, which leads the whole run with a single marker of its own.
+	 */
+	rowMarkerShown: boolean;
 }
 
 /**

@@ -30,6 +30,7 @@ function render(
 		isError,
 		durationMs: undefined,
 		outputPad: 1,
+		rowMarkerShown: true,
 		keyText,
 		keyHint,
 	} satisfies ToolRenderContext;

@@ -84,6 +84,30 @@ background panels:
 Files: `components/tool-*.ts` (read/bash/edit/diff/mcp renderers),
 `chat-viewport.ts`/click hit-testing for expand, tests.
 
+### Phase 3 decisions (settled)
+
+- Marker glyph: `•` (U+2022). Measured at 14px in Menlo, SF Mono and JetBrains Mono: the bullet
+  draws a 4-6px spot (12-32 ink pixels), `●` (U+25CF) a 9px one (59-63). Nothing sits between them
+  in these fonts — `∙`, `·` and `◦` are smaller, `◉` and `⬤` are at `●` or missing, and the only
+  medium option, the ring `○` (U+25CB), is absent from Monaco (and `⊙` from SF Mono). The bullet
+  is the one marker every mono font on macOS has, so it wins on being reliably visible rather than
+  on weight. It lives in one constant, `TOOL_ROW_MARKER`, if a future design wants a heavier mark.
+  State stays in color only: `dim` pending, `success` done, `error` failed.
+- Expand: click plus `ctrl+o`. No new keybinding — `ctrl+o` already toggles every
+  tool row, which is the keyboard path (this answers the open question above).
+- Group boundary: any visible non-tool transcript row (assistant text/thinking, user
+  message) ends a run; blank spacers and empty assistant framing do not.
+- A group forms at two or more consecutive calls. A lone call stays its own row, so
+  a single `bash` or `edit` never hides its output behind a one-call sentence.
+- Collapsed group: the sentence row, plus the call currently running under it.
+  Member rows drop their own marker while the group is collapsed, so exactly one
+  dot leads the group.
+
+Built with: `core/tools/group-summary.ts` (the sentence model), `modes/interactive/components/tool-group.ts`
+(the group row), `ToolExecutionComponent.setRowMarkerShown`/`getGroupedState`, and `addToolRow` in
+`interactive-mode.ts`. The plan's earlier `components/tool-*.ts` file list still describes the
+renderer files, which only changed to draw the marker and drop the panel background.
+
 Manual check:
 - [ ] Ask: "read package.json and run ls" — one grouped sentence after both
   finish; during run the live sentence + in-progress call below it.

@@ -12,7 +12,7 @@ import type { Theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition } from "../../extensions/types.ts";
 import type { EditToolDetails } from "../edit.ts";
 import { computeEditsDiff, type Edit, type EditDiffError, type EditDiffResult } from "../edit-diff.ts";
-import { renderToolPath, str } from "../render-utils.ts";
+import { renderToolPath, str, type ToolRowContext, toolRowCallLine } from "../render-utils.ts";
 
 type EditPreview = EditDiffResult | EditDiffError;
 export type EditRenderState = {
@@ -36,7 +36,7 @@ type EditCallRenderComponent = Box & {
 	settledError?: boolean;
 };
 function createEditCallRenderComponent(): EditCallRenderComponent {
-	return Object.assign(new Box(1, 1, (text: string) => text), {
+	return Object.assign(new Box(1, 1), {
 		preview: undefined as EditPreview | undefined,
 		previewArgsKey: undefined as string | undefined,
 		previewPending: false,
@@ -112,33 +112,17 @@ function formatEditResult(
 
 	return undefined;
 }
-function getEditHeaderBg(
-	preview: EditPreview | undefined,
-	settledError: boolean | undefined,
-	theme: Theme,
-): (text: string) => string {
-	if (preview) {
-		if ("error" in preview) {
-			return (text: string) => theme.bg("toolErrorBg", text);
-		}
-		return (text: string) => theme.bg("toolSuccessBg", text);
-	}
-	if (settledError) {
-		return (text: string) => theme.bg("toolErrorBg", text);
-	}
-	return (text: string) => theme.bg("toolPendingBg", text);
-}
 function buildEditCallComponent(
 	component: EditCallRenderComponent,
 	args: RenderableEditArgs | undefined,
 	theme: Theme,
 	cwd: string,
 	outputPad: number,
+	row: ToolRowContext,
 ): EditCallRenderComponent {
-	component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme));
 	component.setPaddingX(outputPad);
 	component.clear();
-	component.addChild(new Text(formatEditCall(args, theme, cwd), 0, 0));
+	component.addChild(new Text(toolRowCallLine(formatEditCall(args, theme, cwd), row, theme), 0, 0));
 
 	if (!component.preview) {
 		return component;
@@ -200,6 +184,7 @@ export const editRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rende
 			theme,
 			context.cwd,
 			context.outputPad,
+			context,
 		);
 	},
 	renderResult(result, _options, theme, context) {
@@ -229,6 +214,7 @@ export const editRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rende
 					theme,
 					context.cwd,
 					context.outputPad,
+					context,
 				);
 			}
 		}

@@ -15,7 +15,7 @@ import {
 	type Theme,
 } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
-import { normalizeDisplayText, renderToolPath, replaceTabs, str } from "../render-utils.ts";
+import { normalizeDisplayText, renderToolPath, replaceTabs, str, toolRowCallLine } from "../render-utils.ts";
 
 type WriteHighlightCache = {
 	rawPath: string | null;
@@ -167,13 +167,17 @@ export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rend
 				? updateWriteHighlightCacheIncremental(component.cache, rawPath, fileContent, component.highlighter)
 				: undefined;
 		component.setText(
-			formatWriteCall(
-				renderArgs,
-				{ expanded: context.expanded, isPartial: context.isPartial },
+			toolRowCallLine(
+				formatWriteCall(
+					renderArgs,
+					{ expanded: context.expanded, isPartial: context.isPartial },
+					theme,
+					component.cache,
+					component.highlighter,
+					context.cwd,
+				),
+				context,
 				theme,
-				component.cache,
-				component.highlighter,
-				context.cwd,
 			),
 		);
 		return component;
