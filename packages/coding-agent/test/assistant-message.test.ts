@@ -250,6 +250,23 @@ describe("AssistantMessageComponent", () => {
 		expect(finished).toContain("Thought for 2s");
 	});
 
+	test("shows one decimal for a thinking run shorter than a second", () => {
+		initTheme("dark");
+		const now = vi.spyOn(Date, "now").mockReturnValue(START);
+		const component = new AssistantMessageComponent();
+		const thinking: AssistantMessage["content"] = [{ type: "thinking", thinking: "quick thought" }];
+
+		component.updateContent(createAssistantMessage(thinking, { timestamp: START }), true);
+		now.mockReturnValue(START + 400);
+		component.updateContent(
+			createAssistantMessage([...thinking, { type: "text", text: "answer" }], { timestamp: START }),
+			false,
+		);
+
+		const finished = stripAnsi(component.render(80).join("\n"));
+		expect(finished).toContain("Thought for 0.4s");
+	});
+
 	test("renders no thought row for a reply without thinking", () => {
 		initTheme("dark");
 

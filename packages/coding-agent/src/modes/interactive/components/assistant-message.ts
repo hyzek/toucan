@@ -25,7 +25,17 @@ interface MarkdownSlot {
  */
 function thoughtLabel(hiddenLabel: string, durationMs: number | undefined): string {
 	if (!hiddenLabel.trim()) return "";
-	return durationMs === undefined ? "Thought" : `Thought for ${formatElapsedSeconds(durationMs)}`;
+	if (durationMs === undefined) return "Thought";
+	return `Thought for ${formatThoughtDuration(durationMs)}`;
+}
+
+/**
+ * Whole seconds, except under a second, where `0s` would read as a broken timer. The running tool
+ * group keeps its `0s` tail because that number counts up.
+ */
+function formatThoughtDuration(durationMs: number): string {
+	if (durationMs < 1000) return `${(durationMs / 1000).toFixed(1)}s`;
+	return formatElapsedSeconds(durationMs);
 }
 
 /**
