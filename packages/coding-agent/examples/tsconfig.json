@@ -1,0 +1,205 @@
+// Type-checks the example extensions against the modules extensions see at run time (core/extensions/virtual-modules.ts):
+// "@hyzek/toucan-ai" is the extension view, which adds TypeBox's Type, Static and TSchema to the compat entry (the
+// view imports "@hyzek/toucan-ai/compat", so that path stays the package's own).
+// The other paths repeat the root tsconfig.json; keep them in sync.
+// Also the test that imports the subagent example: it type-checks only against the extension view.
+{
+	"extends": "../../../tsconfig.json",
+	"compilerOptions": {
+		"paths": {
+			"@hyzek/chord": [
+				"../../../packages/chord/src/index.ts"
+			],
+			"@hyzek/chord/context": [
+				"../../../packages/chord/src/context/index.ts"
+			],
+			"@hyzek/chord/delta": [
+				"../../../packages/chord/src/delta/index.ts"
+			],
+			"@hyzek/chord/json": [
+				"../../../packages/chord/src/json.ts"
+			],
+			"@hyzek/chord/watch": [
+				"../../../packages/chord/src/watch.ts"
+			],
+			"@hyzek/chord/output": [
+				"../../../packages/chord/src/output.ts"
+			],
+			"@hyzek/chord/sqlite": [
+				"../../../packages/chord/src/sqlite/index.ts"
+			],
+			"@hyzek/chord/sqlite/node": [
+				"../../../packages/chord/src/sqlite/node.ts"
+			],
+			"@hyzek/chord/sqlite/cloudflare": [
+				"../../../packages/chord/src/sqlite/cloudflare.ts"
+			],
+			"@hyzek/chord/telemetry-sqlite": [
+				"../../../packages/chord/src/telemetry-sqlite/index.ts"
+			],
+			"@hyzek/chord/http": [
+				"../../../packages/chord/src/node/http/index.ts"
+			],
+			"@hyzek/chord/workers": [
+				"../../../packages/chord/src/node/workers/index.ts"
+			],
+			"@hyzek/chord/workers/child": [
+				"../../../packages/chord/src/node/workers/child.ts"
+			],
+			"@hyzek/chord/plugins": [
+				"../../../packages/chord/src/node/plugins/index.ts"
+			],
+			"@hyzek/chord/plugins/runtime": [
+				"../../../packages/chord/src/node/plugins/runtime.ts"
+			],
+			"@hyzek/chord/app": [
+				"../../../packages/chord/src/node/app/index.ts"
+			],
+			"@hyzek/chord/web": [
+				"../../../packages/chord/src/web/index.ts"
+			],
+			"@hyzek/chord/surfaces": [
+				"../../../packages/chord/src/node/surfaces/index.ts"
+			],
+			"@hyzek/chord/react": [
+				"../../../packages/chord/src/react/index.ts"
+			],
+			"@hyzek/chord/tui": [
+				"../../../packages/chord/src/tui/index.ts"
+			],
+			"@hyzek/chord/tui/launcher": [
+				"../../../packages/chord/src/node/tui/index.ts"
+			],
+			"@hyzek/chord/sync": [
+				"../../../packages/chord/src/sync/index.ts"
+			],
+			"@test/contracts/*": [
+				"../../chord/test/node/fixtures/plugins/contracts/*.ts"
+			],
+			"@example/contracts/*": [
+				"../../chord/test/examples/35-plugins/plugins/contracts/*.ts"
+			],
+			"@example/weather/*": [
+				"../../chord/test/examples/36-plugin-failures/plugins/weather/*.ts"
+			],
+			"@example/prices/*": [
+				"../../chord/test/examples/36-plugin-failures/plugins/prices/*.ts"
+			],
+			"@example/shapes/*": [
+				"../../chord/test/examples/37-plugin-imports/plugins/shapes/*.ts"
+			],
+			"@example/shared/*": [
+				"../../chord/test/examples/38-watch-and-rollout/plugins/contracts/*.ts"
+			],
+			"@hyzek/toucan-telemetry": [
+				"../../../packages/telemetry/src/index.ts"
+			],
+			"@hyzek/toucan-telemetry/testing": [
+				"../../../packages/telemetry/src/testing/index.ts"
+			],
+			"@hyzek/toucan-telemetry/render": [
+				"../../../packages/telemetry/src/render.ts"
+			],
+			"@hyzek/toucan-codemode": [
+				"../../../packages/codemode/src/index.ts"
+			],
+			"@hyzek/toucan-codemode/cloudflare": [
+				"../../../packages/codemode/src/cloudflare.ts"
+			],
+			"@hyzek/toucan-codemode/declarations": [
+				"../../../packages/codemode/src/declarations.ts"
+			],
+			"@hyzek/toucan-codemode/portable": [
+				"../../../packages/codemode/src/portable.ts"
+			],
+			"@hyzek/toucan-codemode/source": [
+				"../../../packages/codemode/src/source.ts"
+			],
+			"@hyzek/toucan-codemode/worker": [
+				"../../../packages/codemode/src/runtime/worker.ts"
+			],
+			"@hyzek/toucan-schema": [
+				"../../../packages/schema/src/index.ts"
+			],
+			"@hyzek/toucan-schema/formats": [
+				"../../../packages/schema/src/formats/index.ts"
+			],
+			"@hyzek/toucan-mcp": [
+				"../../../packages/mcp/src/index.ts"
+			],
+			"@hyzek/toucan-mcp/oauth": [
+				"../../../packages/mcp/src/oauth/index.ts"
+			],
+			"@hyzek/toucan-mcp/testing": [
+				"../../../packages/mcp/src/testing/index.ts"
+			],
+			"@hyzek/toucan-ai": [
+				"../../../packages/coding-agent/src/core/extensions/toucan-ai-extension-view.ts"
+			],
+			"@hyzek/toucan-ai/oauth": [
+				"../../../packages/ai/src/oauth.ts"
+			],
+			"@hyzek/toucan-ai/*": [
+				"../../../packages/ai/src/*.ts",
+				"../../../packages/ai/src/providers/*.ts"
+			],
+			"@hyzek/toucan-ai/dist/*": [
+				"../../../packages/ai/src/*"
+			],
+			"@hyzek/toucan-durable": [
+				"../../../packages/durable/src/index.ts"
+			],
+			"@hyzek/toucan-durable/testing": [
+				"../../../packages/durable/src/testing/index.ts"
+			],
+			"@hyzek/toucan-durable/*": [
+				"../../../packages/durable/src/*.ts",
+				"../../../packages/durable/src/*/index.ts",
+				"../../../packages/durable/src/*"
+			],
+			"@hyzek/toucan-env": [
+				"../../../packages/env/src/index.ts"
+			],
+			"@hyzek/toucan-agent-core": [
+				"../../../packages/agent/src/index.ts"
+			],
+			"@hyzek/toucan-coding-agent": [
+				"../../../packages/coding-agent/src/index.ts"
+			],
+			"@hyzek/toucan-coding-agent/hooks": [
+				"../../../packages/coding-agent/src/core/hooks/index.ts"
+			],
+			"@hyzek/toucan-coding-agent/*": [
+				"../../../packages/coding-agent/src/*"
+			],
+			"typebox": [
+				"../../../node_modules/typebox"
+			],
+			"@hyzek/toucan-tui": [
+				"../../../packages/tui/src/index.ts"
+			],
+			"@hyzek/toucan-tui/*": [
+				"../../../packages/tui/src/*"
+			],
+			"@hyzek/toucan-agent-old": [
+				"../../../packages/agent-old/src/index.ts"
+			],
+			"@hyzek/toucan-agent-old/*": [
+				"../../../packages/agent-old/src/*"
+			],
+			"@mariozechner/toucan-ai": [
+				"../../../packages/coding-agent/src/core/extensions/toucan-ai-extension-view.ts"
+			]
+		}
+	},
+	"include": [
+		"./extensions/**/*",
+		"../../*/src/**/*.d.ts",
+		"../test/suite/regressions/8261-subagent-project-trust.test.ts",
+		"../test/subagent-extension.test.ts"
+	],
+	"exclude": [
+		"**/node_modules/**",
+		"./extensions/gondolin/**"
+	]
+}
