@@ -1042,6 +1042,15 @@
           return formatExpandableOutput([title, ...lines].join('\n'), 1);
         };
 
+        // One line per diff row, classed by its sign, in the shape `generateDiffString` writes.
+        const renderDiffBlock = (diff) => {
+          const rows = String(diff).split('\n').map(line => {
+            const cls = line.match(/^\+/) ? 'diff-added' : line.match(/^-/) ? 'diff-removed' : 'diff-context';
+            return `<div class="${cls}">${escapeHtml(replaceTabs(line))}</div>`;
+          });
+          return '<div class="tool-diff">' + rows.join('') + '</div>';
+        };
+
         const toolDomId = `tool-call-${escapeHtml(call.id)}`;
         let html = `<div class="tool-execution ${statusClass}" id="${toolDomId}">`;
         const args = call.arguments || {};
@@ -1052,8 +1061,14 @@
         switch (name) {
           case 'bash': {
             const command = str(args.command);
-            const cmdDisplay = command === null ? invalidArg : escapeHtml(command || '...');
-            html += `<div class="tool-command">$ ${cmdDisplay}</div>`;
+            const fileEdit = result?.details?.fileEdit;
+            if (fileEdit) {
+              html += `<div class="tool-header"><span class="tool-name">edit (${escapeHtml(String(fileEdit.tool || ''))})</span> <span class="tool-path">${escapeHtml(shortenPath(String(fileEdit.path || '')))}</span></div>`;
+              html += renderDiffBlock(fileEdit.diff);
+            } else {
+              const cmdDisplay = command === null ? invalidArg : escapeHtml(command || '...');
+              html += `<div class="tool-command">$ ${cmdDisplay}</div>`;
+            }
             if (result) {
               const output = getResultText().trim();
               if (output) html += formatExpandableOutput(output, 5);

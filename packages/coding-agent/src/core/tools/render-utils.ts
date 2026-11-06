@@ -50,6 +50,9 @@ export function normalizeDisplayText(text: string): string {
 	return text.replace(/\r/g, "");
 }
 
+/** The line a shell tool shows when the command printed nothing. Renderers hide it when a diff follows. */
+export const SHELL_EMPTY_OUTPUT = "(no output)";
+
 export function getTextOutput(
 	result: { content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> } | undefined,
 	showImages: boolean,

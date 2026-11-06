@@ -499,6 +499,52 @@ describe("Coding Agent Tools", () => {
 			expect(result.details).toBeUndefined();
 		});
 
+		it("diffs a command that rewrites one known file", async () => {
+			const file = join(testDir, "notes.txt");
+			writeFileSync(file, "one\ntwo\n", "utf8");
+
+			const result = await bashTool.execute("test-call-bash-edit-1", {
+				command: `printf 'one\\ntwo changed\\n' > ${file}`,
+			});
+			const edit = result.details?.fileEdit;
+
+			expect(edit).toMatchObject({ tool: "printf", path: file });
+			expect(edit?.diff).toContain("-2 two");
+			expect(edit?.diff).toContain("+2 two changed");
+		});
+
+		it("diffs a command that creates a file", async () => {
+			const file = join(testDir, "created.txt");
+
+			const result = await bashTool.execute("test-call-bash-edit-2", { command: `echo hi > ${file}` });
+
+			expect(result.details?.fileEdit).toMatchObject({ tool: "echo", diff: "+1 hi" });
+		});
+
+		it("shows the change a failing redirect made", async () => {
+			const file = join(testDir, "a.txt");
+			writeFileSync(file, "one\n", "utf8");
+
+			const result = await bashTool.execute("test-call-bash-edit-3", { command: `cat missing-file.txt > ${file}` });
+
+			expect(result.isError).toBe(true);
+			expect(result.details?.fileEdit).toMatchObject({ tool: "cat", diff: "-1 one" });
+		});
+
+		it("adds no diff to a command that is not a single named edit", async () => {
+			const file = join(testDir, "a.txt");
+			const other = join(testDir, "b.txt");
+			writeFileSync(file, "one\n", "utf8");
+
+			const copied = await bashTool.execute("test-call-bash-edit-4", { command: `cp ${file} ${other}` });
+			expect(copied.details?.fileEdit).toBeUndefined();
+
+			const several = await bashTool.execute("test-call-bash-edit-5", {
+				command: `echo hi > ${file}; echo hi > ${other}`,
+			});
+			expect(several.details?.fileEdit).toBeUndefined();
+		});
+
 		it("should report non-zero exit codes as error results with structured content", async () => {
 			const result = await bashTool.execute("test-call-9", { command: "echo out; exit 3" });
 			expect(result.isError).toBe(true);

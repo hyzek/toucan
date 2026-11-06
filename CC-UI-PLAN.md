@@ -178,6 +178,46 @@ Manual check:
   `ls | grep x` stays a normal bash row.
 - [ ] Diff taller than 24 lines collapses; ctrl+o shows all.
 
+### Phase 5 decisions (settled)
+
+- The plugin's diff renderer is not ported. It paints state with backgrounds (line background red or
+  green, a stronger background on changed words, a `▌` border), which Phase 3 removed from toucan's
+  tool rows. Rebuilt on toucan's own pieces instead: `diff` (npm) for the change computation,
+  `CodeHighlighter`/highlight.js for syntax, `sliceByColumn`/`truncateToWidth` from toucan-tui for
+  column work. The plugin's useful ideas are kept: highlight each side as one block rather than line
+  by line (so a change inside a multi-line string still colours correctly), gate word marks by
+  similarity, and cap highlighting by size.
+- `core/tools/diff-lines.ts` holds the model: the display-diff string back into
+  `{kind, oldNumber, newNumber, text}`, word ranges for a -/+ pair, and the pairing rule.
+  `EditToolDetails.diff` stays the string it is today: the HTML export template parses it in the
+  browser, so changing its shape is a wire-format change this phase does not need.
+- Row colouring, since backgrounds are out: the gutter (sign + number) is red/green/dim; a changed
+  line keeps its syntax colours and only the words that differ take the state colour (stripped, then
+  recoloured, because the syntax codes inside the slice would otherwise win); context lines stay dim
+  with no syntax colour, so the changes are what stands out.
+- Layout: `DiffComponent` is a component rather than a string builder because the layout depends on
+  the width it renders into. Two columns at >= 150 columns and only when both sides' longest line
+  fits the half width; otherwise one column. Rows are cut to the terminal width rather than wrapped,
+  which keeps one row per diff line.
+- Fold budget 24 rows, notice `N more lines (ctrl+o to expand)`; `expanded` comes from the tool row's
+  own state, so ctrl+o and clicking the group row both reveal the rest.
+- Word marks change for extensions: `renderDiff` now colours the changed words instead of
+  inverting them. Public behaviour change to note in the changelog.
+- Shell commands that edit one file (`core/tools/bash-edit.ts`): the bash tool recognises
+  `sed -i <script> <file>`, `perl -pi -e <script> <file>`, `echo|printf|cat … > <file>` and
+  `tee [-a] <file>` fed by a heredoc, and stores the before/after diff of that file in
+  `BashToolDetails.fileEdit`. The row then reads `edit (sed) src/app.ts` with the diff under it, and the
+  command's `(no output)` line is dropped. The diff is computed by the tool rather than by the renderer,
+  so resumed sessions and the HTML export show it too, which a renderer-side snapshot cannot.
+- Detection refuses anything it cannot pin to one file: a pipe, `&&`, `;`, a second file operand, a glob
+  or `$` path, a backtick or `$()` anywhere in the command (substitution can change anything), an
+  unterminated quote, `sed -i.bak` (leaves a backup, so the command is not only an edit), `perl -pi`
+  without `-e` (that runs a program), and `tee` without a heredoc (it would wait on stdin). A wrong diff
+  under an `edit` label is worse than no diff.
+- The snapshot is skipped when custom `BashOperations` are configured (the command may run on another
+  machine), for files over 256 KiB, and for binary content. A failing command still gets its diff: the
+  shell sets up a redirect before the command runs, so `cat missing.txt > f` really did empty `f`.
+
 ## Phase 6 — Cleanup & regression
 
 - `npm run check`, `npm run build`.

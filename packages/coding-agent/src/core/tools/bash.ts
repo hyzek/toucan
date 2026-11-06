@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access as fsAccess } from "node:fs/promises";
+import { access as fsAccess, stat as fsStat, readFile } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
 import { spawn } from "child_process";
 import { type Static, Type } from "typebox";
@@ -13,7 +13,11 @@ import {
 	untrackDetachedChildPid,
 } from "../../utils/shell.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
+import { detectShellFileEdit, type ShellEditTool, type ShellFileEdit } from "./bash-edit.ts";
+import { generateDiffString } from "./edit-diff.ts";
 import { OutputAccumulator } from "./output-accumulator.ts";
+import { resolveToCwd } from "./path-utils.ts";
+import { SHELL_EMPTY_OUTPUT } from "./render-utils.ts";
 import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.ts";
 import { type TypeBoxAgentTool, wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "./truncate.ts";
@@ -62,9 +66,74 @@ const bashOutputSchema = Type.Object({
 
 export type BashToolOutput = Static<typeof bashOutputSchema>;
 
+/** The change a shell command made to the one file it edits. */
+export interface ShellFileEditDetails {
+	/** Which command did it, so the row can say `edit (sed)`. */
+	tool: ShellEditTool;
+	/** Absolute path of the edited file. */
+	path: string;
+	/** Display diff in the same shape the edit tool stores in its details. */
+	diff: string;
+	firstChangedLine: number | undefined;
+}
+
 export interface BashToolDetails {
 	truncation?: TruncationResult;
 	fullOutputPath?: string;
+	/**
+	 * Set when the command was recognised as editing exactly one file and that file changed: the change
+	 * is shown instead of the command's usually empty output. Computed whatever the exit code, because a
+	 * redirect can change the file before the command fails.
+	 */
+	fileEdit?: ShellFileEditDetails;
+}
+
+/** Files above this size are not diffed for a shell edit. */
+const SHELL_EDIT_MAX_BYTES = 256 * 1024;
+
+/** What the edited file looked like when it was sampled around the command. */
+type FileSnapshot = { kind: "content"; text: string } | { kind: "missing" } | { kind: "unusable" };
+
+/**
+ * Reads a file for a shell edit's before and after. A missing file is a create; a directory, a binary or
+ * an over-large file says it cannot be shown, rather than passing as empty.
+ */
+async function snapshotFile(path: string): Promise<FileSnapshot> {
+	try {
+		const info = await fsStat(path);
+		if (!info.isFile() || info.size > SHELL_EDIT_MAX_BYTES) {
+			return { kind: "unusable" };
+		}
+		const text = await readFile(path, "utf8");
+		return text.includes("\0") ? { kind: "unusable" } : { kind: "content", text };
+	} catch {
+		return { kind: "missing" };
+	}
+}
+
+/**
+ * The change a recognised edit command made, or `undefined` when there is nothing honest to show: not an
+ * edit command, a file that cannot be diffed, or no difference once it ran.
+ */
+async function shellFileEdit(
+	target: ShellFileEdit | undefined,
+	path: string | undefined,
+	before: FileSnapshot | undefined,
+): Promise<ShellFileEditDetails | undefined> {
+	if (!target || !path || !before || before.kind === "unusable") {
+		return undefined;
+	}
+	const after = await snapshotFile(path);
+	if (after.kind === "unusable") {
+		return undefined;
+	}
+	const beforeText = before.kind === "content" ? before.text : "";
+	const afterText = after.kind === "content" ? after.text : "";
+	if (beforeText === afterText) {
+		return undefined;
+	}
+	const { diff, firstChangedLine } = generateDiffString(beforeText, afterText);
+	return { tool: target.tool, path, diff, firstChangedLine };
 }
 
 /**
@@ -274,6 +343,9 @@ export function createShellToolDefinition(
 	options?: BashToolOptions,
 ): ToolDefinition<typeof bashSchema, BashToolDetails | undefined, BashRenderState> {
 	const ops = options?.operations ?? createLocalBashOperations({ shellPath: options?.shellPath });
+	// Custom operations can run the command on another machine, where reading the local file says
+	// nothing about what the command did.
+	const localFilesystem = options?.operations === undefined;
 	const commandPrefix = options?.commandPrefix;
 	const exposeSessionEnvironment = options?.exposeSessionEnvironment ?? true;
 	const spawnHook = options?.spawnHook;
@@ -363,7 +435,7 @@ export function createShellToolDefinition(
 				return snapshot;
 			};
 
-			const formatOutput = (snapshot: Awaited<ReturnType<typeof finishOutput>>, emptyText = "(no output)") => {
+			const formatOutput = (snapshot: Awaited<ReturnType<typeof finishOutput>>, emptyText = SHELL_EMPTY_OUTPUT) => {
 				const truncation = snapshot.truncation;
 				let text = snapshot.content || emptyText;
 				let details: BashToolDetails | undefined;
@@ -385,6 +457,11 @@ export function createShellToolDefinition(
 
 			const appendStatus = (text: string, status: string) => `${text ? `${text}\n\n` : ""}${status}`;
 			const startedAt = performance.now();
+
+			// The before image has to be read while the old file is still there.
+			const editTarget = localFilesystem ? detectShellFileEdit(command) : undefined;
+			const editPath = editTarget ? resolveToCwd(editTarget.path, spawnContext.cwd) : undefined;
+			const beforeEdit = editPath ? await snapshotFile(editPath) : undefined;
 
 			try {
 				let exitCode: number | null;
@@ -431,15 +508,19 @@ export function createShellToolDefinition(
 					exit_code: exitCode,
 					wall_time_seconds: wallTimeSeconds,
 				};
+				// A non-zero exit does not mean nothing changed: the shell sets up a redirect before the
+				// command runs, so `cat missing.txt > f` truncates f and fails.
+				const fileEdit = await shellFileEdit(editTarget, editPath, beforeEdit);
+				const resultDetails = fileEdit ? { ...details, fileEdit } : details;
 				if (exitCode !== 0) {
 					return {
 						content: [{ type: "text", text: appendStatus(outputText, `Command exited with code ${exitCode}`) }],
-						details,
+						details: resultDetails,
 						structuredContent,
 						isError: true,
 					};
 				}
-				return { content: [{ type: "text", text: outputText }], details, structuredContent };
+				return { content: [{ type: "text", text: outputText }], details: resultDetails, structuredContent };
 			} finally {
 				clearUpdateTimer();
 			}
