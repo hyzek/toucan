@@ -133,6 +133,32 @@ Manual check:
 - [ ] Click expands it again.
 - [ ] `Thinking level off`: no row at all.
 
+### Phase 4 decisions (settled)
+
+- Nothing in the codebase stores when a thinking block started or ended: `ThinkingContent` is text
+  plus a signature, and no provider reports reasoning time. So the duration is measured while
+  rendering. `AssistantMessageComponent` records, per thinking run, the first update that carried the
+  run and the first update that shows it is over, and caches the pair so redraws (theme change,
+  click, ctrl+t) keep the same number.
+- A run counts as live only while it is the last content block of a still-streaming message. Once an
+  answer or a tool call follows it, or the message ends, it collapses. No new setting:
+  `hideThinkingBlock: false` (default) means "expanded while the model reasons, collapsed after",
+  `true` means "collapsed from the start, `Thinking...` instead of the text".
+- Resumed sessions show `Thought` with no duration. The only timestamps a resumed message offers are
+  its request start (`AssistantMessage.timestamp`) and the moment its session entry was written, and
+  that span also covers the answer and the streamed call arguments: measured on a live session and
+  then resumed, the real 3s of reasoning read as 12s. Printing that is worse than printing nothing,
+  so the fallback was dropped; storing the real span means a session-format change, which this phase
+  excludes.
+- Adjacent thinking blocks are one run, so they collapse to one row. A run whose blocks are all empty
+  (redacted reasoning carries only a signature) renders nothing, as before.
+- A blank `hiddenThinkingLabel` stays the way to render no thinking row at all, for finished runs as
+  well as live ones.
+- Expand routes: click the row (existing per-run override). The plan's `ctrl+o` is not wired to
+  thinking: `app.tools.expand` is the tool-row toggle and ctrl+t (`app.thinking.toggle`) already
+  expands every thinking run, which is what the row needs. Status text and `docs/settings.md` now say
+  collapsed/expanded instead of hidden/visible.
+
 ## Phase 5 — Diffs (edit/write)
 
 Goal: edit/write calls render as syntax-highlighted diffs with word-level

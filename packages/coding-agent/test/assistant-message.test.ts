@@ -11,9 +11,12 @@ const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
 const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
 
+/** Fixed request start, so thought durations do not depend on the clock. */
+const START = 1_800_000_000_000;
+
 function createAssistantMessage(
 	content: AssistantMessage["content"],
-	overrides: Partial<Pick<AssistantMessage, "stopReason">> = {},
+	overrides: Partial<Pick<AssistantMessage, "stopReason" | "timestamp">> = {},
 ): AssistantMessage {
 	return {
 		role: "assistant",
@@ -30,8 +33,30 @@ function createAssistantMessage(
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
 		stopReason: overrides.stopReason ?? "stop",
-		timestamp: Date.now(),
+		timestamp: overrides.timestamp ?? Date.now(),
 	};
+}
+
+/** Left-clicks the first rendered line containing `text`. */
+function clickLine(component: AssistantMessageComponent, width: number, text: string): boolean {
+	const lines = component.render(width);
+	const y = lines.findIndex((line) => stripAnsi(line).includes(text));
+	if (y < 0) throw new Error(`no rendered line contains ${text}`);
+	const event: TuiMouseEvent = {
+		type: "click",
+		button: "left",
+		x: 1,
+		y,
+		screenX: 1,
+		screenY: y,
+		width,
+		height: lines.length,
+		shift: false,
+		alt: false,
+		ctrl: false,
+		clickCount: 1,
+	};
+	return component.handleMouse(event)?.handled === true;
 }
 
 describe("AssistantMessageComponent", () => {
@@ -102,11 +127,11 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = component.render(80).join("\n");
 
-		expect(rendered).toContain("Thinking...");
+		expect(rendered).toContain("Thought");
 		expect(rendered).toContain("Response was truncated before completion.");
 	});
 
-	test("coalesces adjacent thinking blocks into one hidden thinking label", () => {
+	test("coalesces adjacent thinking blocks into one thought row", () => {
 		initTheme("dark");
 
 		const component = new AssistantMessageComponent(
@@ -120,7 +145,8 @@ describe("AssistantMessageComponent", () => {
 		);
 		const rendered = stripAnsi(component.render(80).join("\n"));
 
-		expect(rendered.match(/Thinking\.\.\./g)).toHaveLength(1);
+		expect(rendered).toContain("Thought");
+		expect(rendered.match(/Thought/g)).toHaveLength(1);
 		expect(rendered).toContain("answer");
 	});
 
@@ -153,7 +179,7 @@ describe("AssistantMessageComponent", () => {
 		expect(withText.render(80).map((line) => stripAnsi(line).trim())).toEqual(["", "answer"]);
 	});
 
-	test("keeps label row and spacing for hidden thinking with a label", () => {
+	test("keeps the thought row and its spacing for collapsed thinking", () => {
 		initTheme("dark");
 
 		const component = new AssistantMessageComponent(
@@ -163,56 +189,84 @@ describe("AssistantMessageComponent", () => {
 			]),
 			true,
 		);
-		expect(component.render(80).map((line) => stripAnsi(line).trim())).toEqual(["", "Thinking...", "", "answer"]);
+		expect(component.render(80).map((line) => stripAnsi(line).trim())).toEqual(["", "Thought", "", "answer"]);
 	});
 
-	test("collapses individual thinking runs when clicked", () => {
+	test("expands a collapsed thinking run when clicked", () => {
 		initTheme("dark");
-		const component = new AssistantMessageComponent(
+		const component = new AssistantMessageComponent();
+		component.updateContent(
 			createAssistantMessage([
 				{ type: "thinking", thinking: "first reasoning" },
 				{ type: "text", text: "answer" },
 				{ type: "thinking", thinking: "second reasoning" },
 			]),
+			true,
 		);
 		const width = 80;
-		const lines = component.render(width);
-		const firstThinkingRow = lines.findIndex((line) => stripAnsi(line).includes("first reasoning"));
-		expect(firstThinkingRow).toBeGreaterThanOrEqual(0);
-		const event: TuiMouseEvent = {
-			type: "click",
-			button: "left",
-			x: 1,
-			y: firstThinkingRow,
-			screenX: 1,
-			screenY: firstThinkingRow,
-			width,
-			height: lines.length,
-			shift: false,
-			alt: false,
-			ctrl: false,
-			clickCount: 1,
-		};
-		expect(component.handleMouse(event)?.handled).toBe(true);
+
+		const collapsed = stripAnsi(component.render(width).join("\n"));
+		expect(collapsed).toContain("Thought");
+		expect(collapsed).toContain("second reasoning");
+		expect(clickLine(component, width, "Thought")).toBe(true);
+
+		const expanded = stripAnsi(component.render(width).join("\n"));
+		expect(expanded).toContain("first reasoning");
+		expect(expanded).toContain("second reasoning");
+	});
+
+	test("collapses a live thinking run when clicked", () => {
+		initTheme("dark");
+		const component = new AssistantMessageComponent();
+		component.updateContent(createAssistantMessage([{ type: "thinking", thinking: "first reasoning" }]), true);
+		const width = 80;
+
+		expect(stripAnsi(component.render(width).join("\n"))).toContain("first reasoning");
+		expect(clickLine(component, width, "first reasoning")).toBe(true);
 
 		const collapsed = stripAnsi(component.render(width).join("\n"));
 		expect(collapsed).not.toContain("first reasoning");
 		expect(collapsed).toContain("Thinking...");
-		expect(collapsed).toContain("second reasoning");
+	});
+
+	test("streams thinking while it runs and times it once the answer follows", () => {
+		initTheme("dark");
+		const now = vi.spyOn(Date, "now").mockReturnValue(START);
+		const component = new AssistantMessageComponent();
+		const thinking: AssistantMessage["content"] = [{ type: "thinking", thinking: "step by step" }];
+
+		component.updateContent(createAssistantMessage(thinking, { timestamp: START }), true);
+		const live = stripAnsi(component.render(80).join("\n"));
+		expect(live).toContain("step by step");
+		expect(live).not.toContain("Thought");
+
+		now.mockReturnValue(START + 2000);
+		component.updateContent(
+			createAssistantMessage([...thinking, { type: "text", text: "answer" }], { timestamp: START }),
+			false,
+		);
+		const finished = stripAnsi(component.render(80).join("\n"));
+		expect(finished).not.toContain("step by step");
+		expect(finished).toContain("Thought for 2s");
+	});
+
+	test("renders no thought row for a reply without thinking", () => {
+		initTheme("dark");
+
+		const component = new AssistantMessageComponent(createAssistantMessage([{ type: "text", text: "hello" }]));
+		expect(stripAnsi(component.render(80).join("\n"))).not.toContain("Thought");
 	});
 
 	test("uses configured output padding for text and thinking", () => {
 		initTheme("dark");
 
-		const component = new AssistantMessageComponent(
+		const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking...", 1);
+		component.updateContent(
 			createAssistantMessage([
 				{ type: "text", text: "hello" },
 				{ type: "thinking", thinking: "reasoning" },
 			]),
-			false,
-			undefined,
-			"Thinking...",
-			1,
+			true,
 		);
 		const lines = component.render(80).map((line) => stripAnsi(line));
 
@@ -322,11 +376,12 @@ describe("AssistantMessageComponent", () => {
 			{ type: "text", text: "answer" },
 			{ type: "thinking", thinking: "reasoning" },
 		]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking...", 1, [
 			(markdown, { messageType }) => {
 				return `${messageType}:${markdown}`;
 			},
 		]);
+		component.updateContent(message, true);
 
 		const rendered = stripAnsi(component.render(80).join("\n"));
 		expect(rendered).toContain("assistant:answer");

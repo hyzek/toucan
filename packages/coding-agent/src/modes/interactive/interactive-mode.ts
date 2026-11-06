@@ -4482,7 +4482,7 @@ export class InteractiveMode {
 		this.hideThinkingBlock = !this.hideThinkingBlock;
 		this.settingsManager.setHideThinkingBlock(this.hideThinkingBlock);
 		this.updateThinkingBlockVisibility();
-		this.showStatus(`Thinking blocks: ${this.hideThinkingBlock ? "hidden" : "visible"}`);
+		this.showStatus(`Thinking blocks: ${this.hideThinkingBlock ? "collapsed" : "expanded while thinking"}`);
 	}
 
 	private async handleOpenExternalEditor(): Promise<void> {

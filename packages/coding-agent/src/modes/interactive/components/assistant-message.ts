@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@hyzek/toucan-ai";
 import { type Component, Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@hyzek/toucan-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+import { formatElapsedSeconds } from "../../../utils/duration.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 
@@ -15,6 +16,16 @@ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
 interface MarkdownSlot {
 	kind: "text" | "thinking";
 	markdown: Markdown;
+}
+
+/**
+ * The row a finished thinking run collapses to: `Thought for 3s`, or the bare `Thought` when the run
+ * came from a resumed session and nothing was timed. A blank hidden label is the configured way to
+ * show no thinking row, so it collapses to no row here as well.
+ */
+function thoughtLabel(hiddenLabel: string, durationMs: number | undefined): string {
+	if (!hiddenLabel.trim()) return "";
+	return durationMs === undefined ? "Thought" : `Thought for ${formatElapsedSeconds(durationMs)}`;
 }
 
 /**
@@ -33,6 +44,9 @@ export class AssistantMessageComponent extends Container {
 	private messageId?: string;
 	private timestamp?: string;
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
+	/** When each thinking run was first seen streaming, and when it stopped: the wall time of `Thought for 3s`. */
+	private thinkingRunStarts = new Map<number, number>();
+	private thinkingRunEnds = new Map<number, number>();
 	private markdownSlots: MarkdownSlot[] = [];
 
 	constructor(
@@ -71,6 +85,29 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
+	/**
+	 * The wall time of a thinking run, or `undefined` when it cannot be known.
+	 *
+	 * Only a run the transcript watched stream can be timed: the first update carrying it starts the
+	 * clock, the first update that shows it is over stops it. A resumed session has no deltas, and
+	 * the session stores no reasoning timings, so its rows get no duration; the request span that
+	 * the entry timestamps do give covers the answer and the call arguments as well, which is a
+	 * number too wrong to print. Storing the span would be a session format change.
+	 */
+	private thinkingRunDuration(runIndex: number, running: boolean): number | undefined {
+		if (running) {
+			this.thinkingRunStarts.set(runIndex, this.thinkingRunStarts.get(runIndex) ?? Date.now());
+			return undefined;
+		}
+		const startedAt = this.thinkingRunStarts.get(runIndex);
+		if (startedAt === undefined) {
+			return undefined;
+		}
+		const endedAt = this.thinkingRunEnds.get(runIndex) ?? Date.now();
+		this.thinkingRunEnds.set(runIndex, endedAt);
+		return endedAt - startedAt;
+	}
+
 	setHideThinkingBlock(hide: boolean): void {
 		this.hideThinkingBlock = hide;
 		this.thinkingVisibilityOverrides.clear();
@@ -104,6 +141,14 @@ export class AssistantMessageComponent extends Container {
 		lines[0] = OSC133_ZONE_START + lines[0];
 		lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
 		return lines;
+	}
+
+	/**
+	 * Whether this message row shows anything. A reply that is only tool calls builds no visible
+	 * children, so it sits between tool rows without breaking up the run they group into.
+	 */
+	hasVisibleContent(): boolean {
+		return this.contentContainer.children.length > 0;
 	}
 
 	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {
@@ -170,6 +215,8 @@ export class AssistantMessageComponent extends Container {
 						thinkingBlocks.push(thinking);
 					}
 				}
+				// `i` is the index after the run: the run is live only when nothing follows it.
+				const thinkingRunEndsAt = i;
 				i--;
 
 				if (thinkingBlocks.length === 0) {
@@ -177,14 +224,19 @@ export class AssistantMessageComponent extends Container {
 				}
 
 				const runIndex = thinkingRunIndex++;
-				const hidden = this.thinkingVisibilityOverrides.get(runIndex) ?? this.hideThinkingBlock;
+				// A thinking run is live only while it is the last thing in a message that keeps streaming.
+				// Once an answer or a tool call follows it, or the message ends, it collapses.
+				const running = isStreaming && thinkingRunEndsAt === message.content.length;
+				const durationMs = this.thinkingRunDuration(runIndex, running);
+				const label = running ? this.hiddenThinkingLabel : thoughtLabel(this.hiddenThinkingLabel, durationMs);
+				const hidden = this.thinkingVisibilityOverrides.get(runIndex) ?? (this.hideThinkingBlock || !running);
 				// A hidden run with an empty label renders nothing, including no spacing.
-				if (hidden && !this.hiddenThinkingLabel.trim()) {
+				if (hidden && !label.trim()) {
 					continue;
 				}
 				const thinking = thinkingBlocks.join("\n\n");
 				const thinkingComponent = hidden
-					? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0)
+					? new Text(theme.italic(theme.fg("thinkingText", label)), this.outputPad, 0)
 					: markdownBlock(
 							"thinking",
 							thinking,
