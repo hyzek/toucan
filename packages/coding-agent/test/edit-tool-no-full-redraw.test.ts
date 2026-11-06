@@ -7,6 +7,7 @@ import { createEditToolDefinition } from "../src/core/tools/edit.ts";
 import { computeEditsDiff, type Edit } from "../src/core/tools/edit-diff.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { stripAnsi } from "../src/utils/ansi.ts";
 
 class FakeTerminal implements Terminal {
 	columns = 80;
@@ -50,7 +51,7 @@ async function waitForRenderedText(
 	while (Date.now() < deadline) {
 		onRetry?.();
 		await waitForRender();
-		lastRender = getRender();
+		lastRender = stripAnsi(getRender());
 		if (lastRender.includes(expectedText)) {
 			return lastRender;
 		}
@@ -116,6 +117,8 @@ describe("edit tool TUI rendering", () => {
 		await waitForRender();
 
 		component.setArgsComplete();
+		// The fold budget would hide all but the first change; the test wants the whole diff.
+		component.setExpanded(true);
 		tui.requestRender();
 		await waitForRender();
 		await waitForRender();
@@ -144,7 +147,7 @@ describe("edit tool TUI rendering", () => {
 		expect(tui.fullRedraws).toBe(redrawsBeforeResult);
 		expect(terminal.fullClearCount).toBe(clearsBeforeResult);
 
-		const settledRender = component.render(80).join("\n");
+		const settledRender = stripAnsi(component.render(80).join("\n"));
 		expect(settledRender).toContain("line 50 changed");
 		expect(settledRender).toContain("line 950 changed");
 		expect(settledRender).not.toContain("Successfully replaced");
@@ -194,7 +197,9 @@ describe("edit tool TUI rendering", () => {
 		await waitForRender();
 		await waitForRender();
 
-		const rendered = component.render(80).join("\n");
+		// The fold budget would hide the second change; this test checks the whole diff is rebuilt.
+		component.setExpanded(true);
+		const rendered = stripAnsi(component.render(80).join("\n"));
 		expect(rendered).toContain("line 50 changed");
 		expect(rendered).toContain("line 150 changed");
 	});

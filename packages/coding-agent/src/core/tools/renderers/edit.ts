@@ -7,12 +7,17 @@
  */
 
 import { Box, Container, Spacer, Text } from "@hyzek/toucan-tui";
-import { renderDiff } from "../../../modes/interactive/components/diff.ts";
+import {
+	COLLAPSED_DIFF_ROWS,
+	DiffComponent,
+	type DiffViewOptions,
+	renderDiff,
+} from "../../../modes/interactive/components/diff.ts";
 import type { Theme } from "../../../modes/interactive/theme/theme.ts";
-import type { ToolDefinition } from "../../extensions/types.ts";
+import type { ToolDefinition, ToolRenderContext } from "../../extensions/types.ts";
 import type { EditToolDetails } from "../edit.ts";
 import { computeEditsDiff, type Edit, type EditDiffError, type EditDiffResult } from "../edit-diff.ts";
-import { renderToolPath, str, type ToolRowContext, toolRowCallLine } from "../render-utils.ts";
+import { renderToolPath, str, toolRowCallLine } from "../render-utils.ts";
 
 type EditPreview = EditDiffResult | EditDiffError;
 export type EditRenderState = {
@@ -34,6 +39,7 @@ type EditCallRenderComponent = Box & {
 	previewArgsKey?: string;
 	previewPending?: boolean;
 	settledError?: boolean;
+	diffView?: DiffComponent;
 };
 function createEditCallRenderComponent(): EditCallRenderComponent {
 	return Object.assign(new Box(1, 1), {
@@ -41,6 +47,7 @@ function createEditCallRenderComponent(): EditCallRenderComponent {
 		previewArgsKey: undefined as string | undefined,
 		previewPending: false,
 		settledError: false,
+		diffView: undefined as DiffComponent | undefined,
 	});
 }
 function getEditCallRenderComponent(state: EditRenderState, lastComponent: unknown): EditCallRenderComponent {
@@ -118,20 +125,36 @@ function buildEditCallComponent(
 	theme: Theme,
 	cwd: string,
 	outputPad: number,
-	row: ToolRowContext,
+	context: ToolRenderContext,
 ): EditCallRenderComponent {
 	component.setPaddingX(outputPad);
 	component.clear();
-	component.addChild(new Text(toolRowCallLine(formatEditCall(args, theme, cwd), row, theme), 0, 0));
+	component.addChild(new Text(toolRowCallLine(formatEditCall(args, theme, cwd), context, theme), 0, 0));
 
 	if (!component.preview) {
 		return component;
 	}
 
-	const body =
-		"error" in component.preview ? theme.fg("error", component.preview.error) : renderDiff(component.preview.diff);
 	component.addChild(new Spacer(1));
-	component.addChild(new Text(body, 0, 0));
+	if ("error" in component.preview) {
+		component.addChild(new Text(theme.fg("error", component.preview.error), 0, 0));
+		return component;
+	}
+
+	// One view per tool row: it keeps the syntax colours of a diff the model is still streaming.
+	const options: DiffViewOptions = {
+		filePath: str(args?.file_path ?? args?.path) ?? undefined,
+		expanded: context.expanded,
+		maxRows: COLLAPSED_DIFF_ROWS,
+		expandHint: `(${context.keyHint("app.tools.expand", "to expand")})`,
+	};
+	if (component.diffView) {
+		component.diffView.setDiff(component.preview.diff);
+	} else {
+		component.diffView = new DiffComponent(component.preview.diff, options);
+	}
+	component.diffView.setOptions(options);
+	component.addChild(component.diffView);
 	return component;
 }
 function setEditPreview(
