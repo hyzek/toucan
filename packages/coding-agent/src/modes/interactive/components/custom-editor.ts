@@ -1,11 +1,35 @@
-import { Editor, type EditorOptions, type EditorTheme, type TUI, visibleWidth } from "@hyzek/toucan-tui";
+import {
+	Editor,
+	type EditorOptions,
+	type EditorTheme,
+	type TUI,
+	truncateToWidth,
+	visibleWidth,
+} from "@hyzek/toucan-tui";
 import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
+import { theme } from "../theme/theme.ts";
 import type { StatusIndicator } from "./status-indicator.ts";
 
 export type CustomEditorOptions = EditorOptions & {
 	/** Render working, compaction, summarization, and retry status in the editor's top border. */
 	embedWorkingStatus?: boolean;
 };
+
+/** Prompt at the start of the input band; the footer indents to where the caret sits after it. */
+export const INPUT_PROMPT = "› ";
+
+/** The solid input-band style used by the interactive main editor. */
+export function inputBandOptions(): CustomEditorOptions {
+	return {
+		placeholder: "give toucan a task",
+		placeholderStyle: (text) => theme.fg("muted", text),
+		lineBackground: (line) => theme.bg("editorBg", line),
+		borders: false,
+		prompt: INPUT_PROMPT,
+		promptStyle: (text) => theme.fg("accent", text),
+		minLines: 3,
+	};
+}
 
 /**
  * Custom editor that handles app-level keybindings for coding-agent.
@@ -41,6 +65,7 @@ export class CustomEditor extends Editor {
 		let status = this.workingStatusIndicator.renderInBorder(Math.max(1, width - 5));
 		let statusWidth = visibleWidth(status);
 		if (statusWidth === 0) return super.renderTopBorder(width, hiddenLineCount);
+		if (!this.borders) return truncateToWidth(` ${status}`, width, "");
 
 		const overflowLabel = hiddenLineCount > 0 ? ` ↑ ${hiddenLineCount} more ` : undefined;
 		const overflowLabelWidth = overflowLabel ? visibleWidth(overflowLabel) : 0;

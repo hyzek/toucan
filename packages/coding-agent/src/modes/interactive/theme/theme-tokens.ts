@@ -44,6 +44,11 @@ export const THEME_TOKENS = defineThemeTokens({
 		fallback: "text",
 	},
 	selectedBg: { slot: "background", description: "Selected item background" },
+	editorBg: {
+		slot: "background",
+		description: "Input box band background (falls back to selectedBg when omitted)",
+		fallback: "selectedBg",
+	},
 	searchMatchBg: {
 		slot: "background",
 		description: "Transcript search match background and current-match text (falls back to selectedBg when omitted)",

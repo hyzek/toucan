@@ -1,0 +1,5 @@
+                                       Tip: Use /new for a fresh context for fresh tasks.
+                                                                                          
+› give toucan a task                                                                      
+                                                                                          
+  gpt-6.1-sol • high (main) • layout test  ·  0.0%/200k (auto)

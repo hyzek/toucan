@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { type AutocompleteProvider, CombinedAutocompleteProvider } from "../src/autocomplete.ts";
 import { Editor, wordWrapLine } from "../src/components/editor.ts";
-import { FAKE_CURSOR_START, renderFakeCursor, type TUI } from "../src/tui.ts";
+import { FAKE_CURSOR_END, FAKE_CURSOR_START, renderFakeCursor, type TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
 import { stripTerminalSequences, visibleWidth } from "../src/utils.ts";
 import { defaultEditorTheme } from "./test-themes.ts";
@@ -4406,5 +4406,61 @@ describe("Editor component", () => {
 
 			assert.strictEqual(submitted, pastedText);
 		});
+	});
+});
+
+describe("Editor band options", () => {
+	it("renders a borderless band with prompt and placeholder", () => {
+		const editor = new Editor(createTestTUI(), defaultEditorTheme, {
+			borders: false,
+			prompt: "> ",
+			placeholder: "give toucan a task",
+			lineBackground: (line) => `<${line}>`,
+		});
+		const lines = editor.render(40);
+		assert.strictEqual(lines.length, 1);
+		assert.ok(lines[0]!.startsWith("<") && lines[0]!.endsWith(">"), "band decorator must wrap the line");
+		const plain = stripTerminalSequences(lines[0]!.slice(1, -1));
+		assert.ok(plain.startsWith("> "), "prompt renders before the input");
+		assert.ok(plain.includes("give toucan a task"), "placeholder renders on the empty line");
+		assert.ok(visibleWidth(plain) <= 40);
+	});
+
+	it("keeps the rules when borders are on", () => {
+		const editor = new Editor(createTestTUI(), defaultEditorTheme, {});
+		const lines = editor.render(20);
+		assert.strictEqual(stripTerminalSequences(lines[0]!), "─".repeat(20));
+		assert.strictEqual(stripTerminalSequences(lines[lines.length - 1]!), "─".repeat(20));
+	});
+
+	it("renders the empty-input cursor block over the placeholder's first character", () => {
+		const editor = new Editor(createTestTUI(), defaultEditorTheme, {
+			borders: false,
+			prompt: "› ",
+			placeholder: "give toucan a task",
+		});
+		const line = editor.render(40)[0]!;
+		assert.ok(
+			line.includes(`${FAKE_CURSOR_START}g${FAKE_CURSOR_END}`),
+			"cursor block must carry the placeholder letter so it shows through",
+		);
+		const plain = stripTerminalSequences(line);
+		assert.ok(plain.startsWith("› give"), "placeholder starts at the caret column, no extra gap");
+	});
+
+	it("pads an empty input to minLines band rows with the prompt vertically centered", () => {
+		const editor = new Editor(createTestTUI(), defaultEditorTheme, {
+			borders: false,
+			prompt: "❯ ",
+			minLines: 3,
+		});
+		const lines = editor.render(30);
+		assert.strictEqual(lines.length, 3);
+		for (const line of lines) {
+			assert.strictEqual(visibleWidth(stripTerminalSequences(line)), 30);
+		}
+		assert.strictEqual(stripTerminalSequences(lines[0]!).trim(), "");
+		assert.ok(stripTerminalSequences(lines[1]!).startsWith("❯ "), "text row sits in the middle");
+		assert.strictEqual(stripTerminalSequences(lines[2]!).trim(), "");
 	});
 });

@@ -243,6 +243,20 @@ export interface EditorTheme {
 export interface EditorOptions {
 	paddingX?: number;
 	autocompleteMaxVisible?: number;
+	/** Shown on the empty input line, after the cursor. */
+	placeholder?: string;
+	/** Styling for the placeholder; defaults to ANSI dim. */
+	placeholderStyle?: (text: string) => string;
+	/** Decorator applied to every line the editor renders (borders and content), e.g. a background band. */
+	lineBackground?: (line: string) => string;
+	/** Draw the top and bottom horizontal rules. Default true; false renders a borderless band. */
+	borders?: boolean;
+	/** Prompt prefix rendered before the first visual input line, e.g. "❯ ". */
+	prompt?: string;
+	/** Styling for the prompt; defaults to unstyled text. */
+	promptStyle?: (text: string) => string;
+	/** Minimum number of visible input lines; the text block is vertically centered inside them. */
+	minLines?: number;
 }
 
 const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -312,6 +326,14 @@ export class Editor implements Component, Focusable {
 	protected tui: TUI;
 	private theme: EditorTheme;
 	private paddingX: number = 0;
+	private readonly placeholder: string | undefined;
+	private readonly placeholderStyle: (text: string) => string = (text) => `\x1b[2m${text}\x1b[22m`;
+	private readonly lineBackground: ((line: string) => string) | undefined;
+	protected readonly borders: boolean = true;
+	private readonly prompt: string = "";
+	private readonly promptStyle: (text: string) => string = (text) => text;
+	private readonly minLines: number = 0;
+	private renderedTopPad = 0;
 
 	// Store last render geometry for cursor navigation and mouse hit-testing.
 	private lastWidth: number = 80;
@@ -382,6 +404,13 @@ export class Editor implements Component, Focusable {
 		this.borderColor = theme.borderColor;
 		const paddingX = options.paddingX ?? 0;
 		this.paddingX = Number.isFinite(paddingX) ? Math.max(0, Math.floor(paddingX)) : 0;
+		this.placeholder = options.placeholder;
+		this.placeholderStyle = options.placeholderStyle ?? ((text) => `\x1b[2m${text}\x1b[22m`);
+		this.lineBackground = options.lineBackground;
+		this.borders = options.borders ?? true;
+		this.prompt = options.prompt ?? "";
+		this.promptStyle = options.promptStyle ?? ((text) => text);
+		this.minLines = Number.isFinite(options.minLines) ? Math.max(0, Math.floor(options.minLines!)) : 0;
 		const maxVisible = options.autocompleteMaxVisible ?? 5;
 		this.autocompleteMaxVisible = Number.isFinite(maxVisible) ? Math.max(3, Math.min(20, Math.floor(maxVisible))) : 5;
 	}
@@ -514,19 +543,27 @@ export class Editor implements Component, Focusable {
 	}
 
 	protected renderTopBorder(width: number, hiddenLineCount: number): string {
+		if (!this.borders) return "";
 		const border = hiddenLineCount > 0 ? createScrollBorder("↑", hiddenLineCount, width) : "─".repeat(width);
 		return this.borderColor(border);
 	}
 
 	protected renderBottomBorder(width: number, hiddenLineCount: number): string {
+		if (!this.borders) return hiddenLineCount > 0 ? `  ↓ ${hiddenLineCount} more` : "";
 		const border = hiddenLineCount > 0 ? createScrollBorder("↓", hiddenLineCount, width) : "─".repeat(width);
 		return this.borderColor(border);
 	}
 
+	/** Applies the configured line background to one rendered editor line. */
+	private decorateLine(line: string): string {
+		return this.lineBackground ? this.lineBackground(line) : line;
+	}
+
 	render(width: number): string[] {
-		const maxPadding = Math.max(0, Math.floor((width - 1) / 2));
+		const promptWidth = visibleWidth(this.prompt);
+		const maxPadding = Math.max(0, Math.floor((width - 1 - promptWidth) / 2));
 		const paddingX = Math.min(this.paddingX, maxPadding);
-		const contentWidth = Math.max(1, width - paddingX * 2);
+		const contentWidth = Math.max(1, width - paddingX * 2 - promptWidth);
 
 		// Layout width: with padding the cursor can overflow into it,
 		// without padding we reserve 1 column for the cursor.
@@ -565,8 +602,21 @@ export class Editor implements Component, Focusable {
 		const leftPadding = " ".repeat(paddingX);
 		const rightPadding = leftPadding;
 
+		// Empty band rows are split above and below the text so short content sits in the
+		// middle of the minLines block. Stored for click-to-cursor mapping.
+		const padTotal = Math.max(0, this.minLines - layoutLines.length);
+		this.renderedTopPad = Math.floor(padTotal / 2);
+		const bandRow = `${leftPadding}${" ".repeat(promptWidth)}${" ".repeat(contentWidth)}${rightPadding}`;
+
 		// Render top border (with scroll indicator if scrolled down)
-		result.push(this.renderTopBorder(width, this.scrollOffset));
+		const topBorder = this.renderTopBorder(width, this.scrollOffset);
+		if (topBorder !== "") result.push(this.decorateLine(topBorder));
+
+		// Empty band rows split above and below the text so short content sits in the middle
+		// of the minLines block. Stored for click-to-cursor mapping.
+		for (let padIndex = 0; padIndex < this.renderedTopPad; padIndex++) {
+			result.push(this.decorateLine(bandRow));
+		}
 
 		// Render each visible layout line
 		// Emit hardware cursor marker when focused so TUI can position the
@@ -574,10 +624,20 @@ export class Editor implements Component, Focusable {
 		// autocomplete (e.g. slash-command menu) is visible.
 		const emitCursorMarker = this.focused;
 
-		for (const layoutLine of visibleLines) {
+		for (let visibleIndex = 0; visibleIndex < visibleLines.length; visibleIndex++) {
+			const layoutLine = visibleLines[visibleIndex]!;
 			let displayText = layoutLine.text;
 			let lineVisibleWidth = visibleWidth(layoutLine.text);
 			let cursorInPadding = false;
+			// The prompt sits on the first logical line only; other visual lines keep the column indent.
+			const hasPromptCell = promptWidth > 0 && this.scrollOffset + visibleIndex === 0;
+			const promptCell = hasPromptCell ? this.promptStyle(this.prompt) : " ".repeat(promptWidth);
+			// On an empty input the cursor block renders over the placeholder's first
+			// character so the letter shows through the block.
+			const showPlaceholder = this.placeholder !== undefined && layoutLine.text === "" && layoutLines.length === 1;
+			const placeholderOverlay = showPlaceholder
+				? ([...this.segment(this.placeholder, "grapheme")][0]?.segment ?? "")
+				: "";
 
 			// Add cursor if this line has it
 			if (layoutLine.hasCursor && layoutLine.cursorPos !== undefined) {
@@ -597,10 +657,12 @@ export class Editor implements Component, Focusable {
 					displayText = before + marker + cursor + restAfter;
 					// lineVisibleWidth stays the same - we're replacing, not adding
 				} else {
-					// Cursor is at the end - add highlighted space
-					const cursor = renderFakeCursor(" ");
+					// Cursor is at the end - highlighted space, or over the placeholder's first
+					// character when the input is empty.
+					const overlay = showPlaceholder ? placeholderOverlay : " ";
+					const cursor = renderFakeCursor(overlay);
 					displayText = before + marker + cursor;
-					lineVisibleWidth = lineVisibleWidth + 1;
+					lineVisibleWidth = lineVisibleWidth + visibleWidth(overlay);
 					// If cursor overflows content width into the padding, flag it
 					if (lineVisibleWidth > contentWidth && paddingX > 0) {
 						cursorInPadding = true;
@@ -608,17 +670,32 @@ export class Editor implements Component, Focusable {
 				}
 			}
 
+			// An empty input shows the placeholder after the cursor; its first character is
+			// already drawn under the cursor block when the cursor sits here.
+			if (showPlaceholder) {
+				const underCursor = layoutLine.hasCursor && layoutLine.cursorPos !== undefined;
+				const shown = underCursor ? this.placeholder!.slice(placeholderOverlay.length) : this.placeholder!;
+				displayText += this.placeholderStyle(shown);
+				lineVisibleWidth += visibleWidth(shown);
+			}
+
 			// Calculate padding based on actual visible width
 			const padding = " ".repeat(Math.max(0, contentWidth - lineVisibleWidth));
 			const lineRightPadding = cursorInPadding ? rightPadding.slice(1) : rightPadding;
 
 			// Render the line (no side borders, just horizontal lines above and below)
-			result.push(`${leftPadding}${displayText}${padding}${lineRightPadding}`);
+			result.push(this.decorateLine(`${leftPadding}${promptCell}${displayText}${padding}${lineRightPadding}`));
+		}
+
+		// Remaining empty band rows below the text (the rows above were emitted first).
+		for (let padIndex = this.renderedTopPad; padIndex < padTotal; padIndex++) {
+			result.push(this.decorateLine(bandRow));
 		}
 
 		// Render bottom border (with scroll indicator if more content below)
 		const linesBelow = layoutLines.length - (this.scrollOffset + visibleLines.length);
-		result.push(this.renderBottomBorder(width, linesBelow));
+		const bottomBorder = this.renderBottomBorder(width, linesBelow);
+		if (bottomBorder !== "") result.push(this.decorateLine(bottomBorder));
 
 		// Add autocomplete list if active
 		this.renderedAutocompleteHeight = 0;
@@ -661,10 +738,11 @@ export class Editor implements Component, Focusable {
 		// The renderer synthesizes a click when press and release land on the same
 		// cell without movement, which is the gesture that positions the cursor.
 		if (event.type !== "click" || event.button !== "left") return undefined;
-		if (event.y <= 0 || event.y > this.renderedVisibleLineCount) return { handled: true, focus: true };
+		if (event.y <= this.renderedTopPad || event.y > this.renderedTopPad + this.renderedVisibleLineCount)
+			return { handled: true, focus: true };
 
 		const visualLines = this.buildVisualLineMap(this.lastWidth);
-		const visualLineIndex = this.scrollOffset + event.y - 1;
+		const visualLineIndex = this.scrollOffset + event.y - 1 - this.renderedTopPad;
 		const visualLine = visualLines[visualLineIndex];
 		if (!visualLine) return { handled: true, focus: true };
 		const logicalLine = this.state.lines[visualLine.logicalLine] ?? "";
@@ -672,7 +750,8 @@ export class Editor implements Component, Focusable {
 		const chunk = logicalLine.slice(visualLine.startCol, chunkEnd);
 		const maxPadding = Math.max(0, Math.floor((event.width - 1) / 2));
 		const paddingX = Math.min(this.paddingX, maxPadding);
-		const targetColumn = Math.max(0, event.x - paddingX);
+		// Every input row reserves the prompt cell column (prompt or blank indent).
+		const targetColumn = Math.max(0, event.x - paddingX - visibleWidth(this.prompt));
 		let visibleColumn = 0;
 		let targetIndex = chunk.length;
 		let lastGraphemeIndex = 0;

@@ -264,7 +264,8 @@ export const SettingsSchema = Type.Object(
 		),
 		quietStartup: Type.Optional(
 			Type.Union([Type.Boolean(), Type.Literal("header")], {
-				description: 'When true, hide all startup output. When "header", keep only the startup header.',
+				description:
+					'When true, hide all startup output. Otherwise only the launch header is shown; loaded skills, context files, prompts and extensions are never listed. "header" behaves like false.',
 				default: SETTINGS_DEFAULTS.quietStartup,
 			}),
 		),

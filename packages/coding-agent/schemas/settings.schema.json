@@ -235,8 +235,8 @@
           "const": "header"
         }
       ],
-      "description": "When true, hide all startup output. When \"header\", keep only the startup header.",
-      "default": false
+      "description": "When true, hide all startup output. Otherwise only the launch header is shown; loaded skills, context files, prompts and extensions are never listed. \"header\" behaves like false.",
+      "default": "header"
     },
     "defaultProjectTrust": {
       "anyOf": [

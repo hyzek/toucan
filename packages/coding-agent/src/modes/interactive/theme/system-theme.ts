@@ -67,6 +67,7 @@ type FamilyName = keyof typeof FAMILIES;
 
 const TOKEN_FAMILIES: Record<ThemeToken, FamilyName> = {
 	selectedBg: "blue",
+	editorBg: "neutral",
 	searchMatchBg: "orange",
 	userMessageBg: "blue",
 	customMessageBg: "violet",
@@ -264,6 +265,7 @@ const PANELS: ThemeBg[] = [
 	"toolSuccessBg",
 	"toolErrorBg",
 	"selectedBg",
+	"editorBg",
 	"searchMatchBg",
 	"customMessageBg",
 ];
@@ -292,12 +294,20 @@ const each = (tokens: ThemeToken[], on: Surface[], level: Level): Rule[] =>
 const RULES: Rule[] = [
 	...each(PANELS, ["background"], "panel"),
 	{ token: "text", on: ["background"], level: "text" },
-	{ token: "text", on: ["selectedBg"], level: "textOnPanel" },
+	{ token: "text", on: ["selectedBg", "editorBg"], level: "textOnPanel" },
 	{ token: "userMessageText", on: ["userMessageBg"], level: "textOnPanel" },
 	{ token: "toolTitle", on: TOOL_PANELS, level: "textOnPanel" },
-	...each(["accent", "success", "error", "warning"], ["background", "selectedBg", ...TOOL_PANELS], "readable"),
-	{ token: "muted", on: ["background", "selectedBg", "customMessageBg", ...TOOL_PANELS], level: "readable" },
-	{ token: "dim", on: ["background", "selectedBg", "customMessageBg", ...TOOL_PANELS], level: "subtle" },
+	...each(
+		["accent", "success", "error", "warning"],
+		["background", "selectedBg", "editorBg", ...TOOL_PANELS],
+		"readable",
+	),
+	{
+		token: "muted",
+		on: ["background", "selectedBg", "editorBg", "customMessageBg", ...TOOL_PANELS],
+		level: "readable",
+	},
+	{ token: "dim", on: ["background", "selectedBg", "editorBg", "customMessageBg", ...TOOL_PANELS], level: "subtle" },
 	{ token: "thinkingText", on: ["background"], level: "readable" },
 	{ token: "customMessageText", on: ["customMessageBg", ...TOOL_PANELS], level: "readable" },
 	{

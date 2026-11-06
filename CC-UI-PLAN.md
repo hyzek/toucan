@@ -1,0 +1,147 @@
+# CC-UI plan: porting pi-claude-code-ui pieces into core
+
+Source: `pi-claude-code-ui` (npm, v1.0.109), repo `FammasMaz/pi-cc-tools`, MIT.
+It is a pi extension. We port only the rendering behavior into fixed core code
+(no extension, no commands, no settings). Hardcoded decisions replace its config:
+
+- `toolBackground: "transparent"` — no rules, no panel backgrounds on tool rows.
+- `groupToolCalls: true` — consecutive calls fold into one sentence.
+- `thinkingMode: "live"` — thinking streams, then collapses to `Thought for Xs`.
+
+Out of scope (deliberate): input-box restyle (our solid band stays), terminal
+palette theme switching (`/cc-theme`), bash intent labels (`/cc-tools intent`),
+subagents, LaTeX, RTK badges, `Ctrl+Shift+O` detail mode.
+
+Reference checkout for implementation (never commit it):
+`npm pack pi-claude-code-ui` into /tmp/opencode and read the sources.
+
+Build & run for manual checks:
+
+```
+npm run build
+node packages/coding-agent/dist/bundle/cli.js
+```
+
+Each phase: implement, targeted tests only, `npm run check`, then the manual
+check below. Check off `[ ]` items by hand after verifying in the real TUI.
+
+## Phase 1 — Hide the tip when the session has messages
+
+Goal: the `Tip: ...` line above the input box shows only while the session is
+message-free; any user/assistant message (or a resumed session) hides it.
+
+Files: `interactive-mode.ts` (tipContainer), `components/tip-line.ts`,
+`test/launch-layout.test.ts`.
+
+Manual check:
+- [ ] Fresh empty session: tip visible above the input band.
+- [ ] Launch in a repo with an existing session (resume): no tip.
+- [ ] Send one message in a fresh session: tip gone immediately.
+- [ ] `/new`: tip back.
+
+## Phase 2 — Spinner (working indicator)
+
+Goal: replace the current working/compaction status text:
+
+- While the model thinks (no tool running): a playful gerund chosen randomly,
+  rotating every few seconds (`Thinking…` is never reused twice in a row):
+  e.g. Transfiguring, Reticulating, Ballooning, Caramelizing, …
+- While a tool runs: the line names it (`Running npm test…`, `Reading stats.py…`,
+  `Searching for TODO…`) — driven by the running tool call, not a guess.
+- Status tail on the same line: streamed token count for the request (output +
+  reasoning + tool args, counting up smoothly) and elapsed time:
+  `Transfiguring… 1.2k tokens · 4s`.
+- Colors: verb `accent`, status text `muted`. No verb-color config.
+
+Files: `status-indicator.ts`, `components/status-indicator.ts` (renderInBorder),
+the request/stream event plumbing in `interactive-mode.ts` that feeds it.
+
+Manual check:
+- [ ] Send a prompt with a reasoning model: verb rotates while thinking,
+  token count rises during streaming, seconds tick.
+- [ ] Start a tool (e.g. ask it to run `sleep 5`): line switches to the named
+  command with time counting.
+- [ ] Working status still renders correctly on the input band's top row
+  (3-row box unchanged, no `─` rules appear).
+- [ ] Retry/compaction states still show (kind transitions).
+
+## Phase 3 — Tool rows, transparent style
+
+Goal: tool calls render as compact one-line rows instead of the current
+background panels:
+
+- Each call: `● Tool Label` (dot colored by state: dim pending, green done,
+  red failed) with the key argument (`Read src/app.ts`, `Bash npm test`).
+- Consecutive finished calls fold into one sentence: `Read 2 files, ran 1
+  shell command`; while running: `Reading 2 files, running 1 shell command… · 3s`,
+  plus a `· 1 failed` suffix when any failed.
+- Expanded state (click in fullscreen, or ctrl+o): each call in the group with
+  its output preview (hardcoded: collapsed preview 8 lines, bash collapsed 10).
+- No backgrounds, no top/bottom rules on tool rows. Error dot + error text keep
+  theme `error` color. `toolPendingBg/toolSuccessBg/toolErrorBg` tokens stay in
+  the schema (third-party themes) but the default chat rendering stops using them.
+
+Files: `components/tool-*.ts` (read/bash/edit/diff/mcp renderers),
+`chat-viewport.ts`/click hit-testing for expand, tests.
+
+Manual check:
+- [ ] Ask: "read package.json and run ls" — one grouped sentence after both
+  finish; during run the live sentence + in-progress call below it.
+- [ ] Click the row (fullscreen): expands with output; click again collapses.
+- [ ] ctrl+o keyboard expand works.
+- [ ] Failing bash: red dot, `· 1 failed` on the group.
+- [ ] Long bash output collapses at 10 lines.
+- [ ] No panel backgrounds/rule lines around any tool row.
+
+## Phase 4 — Thinking rendering
+
+Goal: reasoning display:
+
+- Live: thinking streams inline (current behavior).
+- On finish: collapses to one row `Thought for 3s` (dim).
+- Click / ctrl+o on that row: re-expand the full thinking.
+- Only rendering changes; the thinking stays in session/context.
+
+Files: thinking message component, expand plumbing from phase 3.
+
+Manual check:
+- [ ] Reasoning model prompt: thinking streams, then folds to `Thought for Xs`.
+- [ ] Click expands it again.
+- [ ] `Thinking level off`: no row at all.
+
+## Phase 5 — Diffs (edit/write)
+
+Goal: edit/write calls render as syntax-highlighted diffs with word-level
+marks; unified layout, side-by-side when both sides fit (wide terminals).
+Pending edit shows the diff before the result. Collapses at 24 lines (ctrl+o
+expands). Port/strip the plugin's diff renderer rather than write fresh.
+
+Also port: bash commands that only edit files (`sed -i`, `perl -pi`,
+`cat > f <<EOF`, `tee`, `echo > f`) render as `Edit (sed) file` with the real
+diff; anything ambiguous (pipes, variables) stays a plain bash row.
+
+Manual check:
+- [ ] Ask it to edit a file: colored unified diff with +/- markers and
+  word-level highlights inside changed lines.
+- [ ] Wide terminal (>=160 cols): side-by-side view.
+- [ ] `echo hi > t.txt` via bash renders as a Create/edit row with a diff;
+  `ls | grep x` stays a normal bash row.
+- [ ] Diff taller than 24 lines collapses; ctrl+o shows all.
+
+## Phase 6 — Cleanup & regression
+
+- `npm run check`, `npm run build`.
+- coding-agent suite + tui `editor.test.ts` (targeted files per repo rule).
+- Regenerate `test/snapshots/launch-layout.txt` if footer/band moved.
+- Changelog entries under `## [Unreleased]` (`### Changed` / `### Added`).
+- Manual check:
+  - [ ] Full session (prompt → thinking → tools → edits → reply) looks like a
+    coherent transcript, no leftover old panel rendering paths.
+  - [ ] Light theme spot check (tool dots, diff colors readable).
+
+## Open questions (answer before starting the phase)
+
+- Phase 2: exact verb list — copy the plugin's gerunds or write our own?
+- Phase 3: keep any click-free fallback (expand-all keybinding already ctrl+o)?
+- Phase 5: vendor the plugin's diff renderer (MIT, code size) or re-implement
+  on our existing shiki/syntax-highlight infra?
