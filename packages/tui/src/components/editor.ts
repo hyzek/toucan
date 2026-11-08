@@ -262,6 +262,10 @@ export interface EditorOptions {
 const SLASH_COMMAND_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	minPrimaryColumnWidth: 12,
 	maxPrimaryColumnWidth: 32,
+	selectionMarker: "\u203a", // the same arrow the input prompt leads with
+	solidSelection: true,
+	keepSelectionInView: true,
+	hideScrollInfo: true,
 };
 
 const ATTACHMENT_AUTOCOMPLETE_DEBOUNCE_MS = 20;
@@ -618,6 +622,18 @@ export class Editor implements Component, Focusable {
 		this.renderedTopPad = Math.floor(padTotal / 2);
 		const bandRow = `${leftPadding}${" ".repeat(promptWidth)}${" ".repeat(contentWidth)}${rightPadding}`;
 
+		// The autocomplete menu sits above the input band, at the band's own indent.
+		this.renderedAutocompleteHeight = 0;
+		if (this.autocompleteState && this.autocompleteList) {
+			const autocompleteResult = this.autocompleteList.render(contentWidth);
+			this.renderedAutocompleteHeight = autocompleteResult.length;
+			for (const line of autocompleteResult) {
+				const lineWidth = visibleWidth(line);
+				const linePadding = " ".repeat(Math.max(0, contentWidth - lineWidth));
+				result.push(`${leftPadding}${line}${linePadding}${rightPadding}`);
+			}
+		}
+
 		// Header lines (top border or embedded status) are counted so click-to-cursor
 		// mapping knows where the input rows start.
 		const headerLines = this.renderHeaderLines(width, this.scrollOffset);
@@ -709,23 +725,11 @@ export class Editor implements Component, Focusable {
 		const bottomBorder = this.renderBottomBorder(width, linesBelow);
 		if (bottomBorder !== "") result.push(this.decorateLine(bottomBorder));
 
-		// Add autocomplete list if active
-		this.renderedAutocompleteHeight = 0;
-		if (this.autocompleteState && this.autocompleteList) {
-			const autocompleteResult = this.autocompleteList.render(contentWidth);
-			this.renderedAutocompleteHeight = autocompleteResult.length;
-			for (const line of autocompleteResult) {
-				const lineWidth = visibleWidth(line);
-				const linePadding = " ".repeat(Math.max(0, contentWidth - lineWidth));
-				result.push(`${leftPadding}${line}${linePadding}${rightPadding}`);
-			}
-		}
-
 		return result;
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-		const autocompleteStartRow = this.renderedVisibleLineCount + 2;
+		const autocompleteStartRow = 0;
 		if (
 			this.autocompleteState &&
 			this.autocompleteList &&
@@ -751,8 +755,8 @@ export class Editor implements Component, Focusable {
 		// cell without movement, which is the gesture that positions the cursor.
 		if (event.type !== "click" || event.button !== "left") return undefined;
 		// Header rows (border or status line) and the blank band rows above the text are not
-		// clickable input rows.
-		const rowsAboveText = this.renderedHeaderLines + this.renderedTopPad;
+		// clickable input rows. The open menu occupies the rows above them all.
+		const rowsAboveText = this.renderedAutocompleteHeight + this.renderedHeaderLines + this.renderedTopPad;
 		if (event.y < rowsAboveText || event.y >= rowsAboveText + this.renderedVisibleLineCount)
 			return { handled: true, focus: true };
 

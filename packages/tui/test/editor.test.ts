@@ -2162,6 +2162,46 @@ describe("Editor component", () => {
 			assert.strictEqual(submitted, "/command-5");
 		});
 
+		it("renders the menu above the input band", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			editor.setAutocompleteProvider({
+				getSuggestions: async () => ({
+					items: [
+						{ value: "model", label: "/model", description: "choose what model and reasoning effort to use" },
+					],
+					prefix: "/",
+				}),
+				applyCompletion,
+			});
+
+			editor.handleInput("/");
+			await flushAutocomplete();
+			const lines = editor.render(80).map((line) => stripVTControlCharacters(line));
+
+			const menuRow = lines.findIndex((line) => line.includes("choose what model"));
+			const bandRow = lines.findIndex((line) => line.trimStart().startsWith("\u2500"));
+			assert.ok(menuRow >= 0 && bandRow >= 0);
+			assert.ok(menuRow < bandRow);
+		});
+
+		it("leads the selected command with the input arrow, not the old one", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			editor.setAutocompleteProvider(
+				new CombinedAutocompleteProvider(
+					[{ name: "model", description: "choose what model" }],
+					process.cwd(),
+					null,
+				),
+			);
+
+			editor.handleInput("/");
+			await flushAutocomplete();
+			const lines = editor.render(80).map((line) => stripVTControlCharacters(line));
+
+			assert.ok(lines[0].includes("\u203a /model")); // menu first, slash-prefixed label, prompt's arrow
+			assert.ok(!lines.some((line) => line.includes("\u2192")));
+		});
+
 		it("triggers and debounces symbol completion after CJK punctuation", async (t) => {
 			t.mock.timers.enable({ apis: ["setTimeout"] });
 			for (const before of [

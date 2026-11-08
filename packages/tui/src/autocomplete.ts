@@ -345,7 +345,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 					const fullDesc = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
 					return {
 						name,
-						label: name,
+						// The menu shows commands as they are typed; matching and completion still use `name`.
+						label: `/${name}`,
 						description: fullDesc || undefined,
 					};
 				});

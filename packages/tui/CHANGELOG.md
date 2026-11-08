@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SelectListLayoutOptions` gained `selectionMarker` (the glyph leading the selected row), `solidSelection` (paint the selected row as a bar across the menu width, styled by the new optional `SelectListTheme.selectedRow`), `keepSelectionInView` (scroll the window the least needed instead of centering it on the selection), and `hideScrollInfo` (drop the `(1/35)` count row)
+
 ### Fixed
 
 - Fixed Markdown rendering HTML comments (`<!-- ... -->`) as visible text ([#11710](https://github.com/earendil-works/pi/issues/11710))

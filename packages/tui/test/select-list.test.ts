@@ -128,4 +128,49 @@ describe("SelectList", () => {
 		list.handleInput("\x1b[6~");
 		assert.deepStrictEqual(selections, ["item-5", "item-10", "item-11", "item-6"]);
 	});
+
+	it("paints the selected row as a solid bar with the menu's own marker", () => {
+		const barTheme = { ...testTheme, selectedRow: (text: string) => `\x1b[44m${text}\x1b[49m` };
+		const items = [
+			{ value: "model", label: "/model", description: "choose what model and reasoning effort to use" },
+			{ value: "fast", label: "/fast", description: "1.5x speed" },
+		];
+		const list = new SelectList(items, 5, barTheme, {
+			selectionMarker: "\u203a",
+			solidSelection: true,
+			keepSelectionInView: true,
+		});
+
+		const rendered = list.render(60);
+		assert.ok(rendered[0].startsWith("\x1b[44m\u203a /model"));
+		assert.equal(visibleWidth(rendered[0]), 60 + visibleWidth("\x1b[44m") + visibleWidth("\x1b[49m"));
+		// An unselected row gets no bar.
+		assert.ok(!rendered[1].includes("\x1b[44m"));
+	});
+
+	it("drops the selected/total row when the layout asks", () => {
+		const items = Array.from({ length: 12 }, (_, index) => ({ value: `c${index}`, label: `/c${index}` }));
+		const counting = new SelectList(items, 5, testTheme);
+		assert.equal(counting.render(60).length, 6); // 5 rows plus the count
+
+		const hidden = new SelectList(items, 5, testTheme, { keepSelectionInView: true, hideScrollInfo: true });
+		assert.equal(hidden.render(60).length, 5);
+	});
+
+	it("slides the window the least needed to keep the selection in view", () => {
+		const items = Array.from({ length: 8 }, (_, index) => ({ value: `c${index}`, label: `/c${index}` }));
+		const list = new SelectList(items, 5, testTheme, { keepSelectionInView: true });
+
+		list.setSelectedIndex(3);
+		assert.ok(list.render(40)[0].includes("/c0")); // the window stays put while the selection fits
+
+		list.setSelectedIndex(5);
+		const lines = list.render(40).map((line) => line.trim());
+		assert.deepStrictEqual(lines.slice(0, 5), ["/c1", "/c2", "/c3", "/c4", "→ /c5"]); // one row in from the bottom
+
+		// Without the option the visible window centers on the selection.
+		const centered = new SelectList(items, 5, testTheme);
+		centered.setSelectedIndex(5);
+		assert.ok(centered.render(40)[0].includes("/c3"));
+	});
 });

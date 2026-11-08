@@ -18,6 +18,8 @@ export interface SelectItem {
 export interface SelectListTheme {
 	selectedPrefix: (text: string) => string;
 	selectedText: (text: string) => string;
+	/** Solid bar across the whole menu width for the selected row, used when a layout asks for one. */
+	selectedRow?: (text: string) => string;
 	description: (text: string) => string;
 	scrollInfo: (text: string) => string;
 	noMatch: (text: string) => string;
@@ -35,6 +37,14 @@ export interface SelectListLayoutOptions {
 	minPrimaryColumnWidth?: number;
 	maxPrimaryColumnWidth?: number;
 	truncatePrimary?: (context: SelectListTruncatePrimaryContext) => string;
+	/** The glyph that leads the selected row; `→` unless a menu says otherwise. */
+	selectionMarker?: string;
+	/** Paint the selected row as a solid bar across the menu width. Needs `selectedRow` on the theme. */
+	solidSelection?: boolean;
+	/** Scroll only as much as keeping the selection visible needs; the selection is not centered. */
+	keepSelectionInView?: boolean;
+	/** Drop the `(selected/total)` row the long list would otherwise add. */
+	hideScrollInfo?: boolean;
 }
 
 export class SelectList implements Component {
@@ -46,6 +56,8 @@ export class SelectList implements Component {
 	private maxVisible: number = 5;
 	private theme: SelectListTheme;
 	private layout: SelectListLayoutOptions;
+	/** First visible row when the layout keeps the selection in view instead of centering it. */
+	private viewStart = 0;
 
 	public onSelect?: (item: SelectItem) => void;
 	public onCancel?: () => void;
@@ -63,6 +75,7 @@ export class SelectList implements Component {
 		this.filteredItems = this.items.filter((item) => item.value.toLowerCase().startsWith(filter.toLowerCase()));
 		// Reset selection when filter changes
 		this.selectedIndex = 0;
+		this.viewStart = 0;
 	}
 
 	setSelectedIndex(index: number): void {
@@ -98,7 +111,7 @@ export class SelectList implements Component {
 		}
 
 		// Add scroll indicators if needed
-		if (startIndex > 0 || endIndex < this.filteredItems.length) {
+		if (!this.layout.hideScrollInfo && (startIndex > 0 || endIndex < this.filteredItems.length)) {
 			const scrollText = `  (${this.selectedIndex + 1}/${this.filteredItems.length})`;
 			// Truncate if too long for terminal
 			lines.push(this.theme.scrollInfo(truncateToWidth(scrollText, width - 2, "")));
@@ -178,6 +191,19 @@ export class SelectList implements Component {
 	}
 
 	private getVisibleRange(): { startIndex: number; endIndex: number } {
+		const window = Math.min(this.maxVisible, Math.max(1, this.filteredItems.length));
+		if (this.layout.keepSelectionInView) {
+			// The window slides the least it can, so a selected row enters it from an edge rather
+			// than dragging the whole list to center it.
+			this.viewStart = Math.max(0, Math.min(this.viewStart, this.filteredItems.length - window));
+			if (this.selectedIndex < this.viewStart) {
+				this.viewStart = this.selectedIndex;
+			} else if (this.selectedIndex >= this.viewStart + window) {
+				this.viewStart = this.selectedIndex - window + 1;
+			}
+			const start = this.viewStart;
+			return { startIndex: start, endIndex: Math.min(start + window, this.filteredItems.length) };
+		}
 		const startIndex = Math.max(
 			0,
 			Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.filteredItems.length - this.maxVisible),
@@ -195,8 +221,11 @@ export class SelectList implements Component {
 		descriptionSingleLine: string | undefined,
 		primaryColumnWidth: number,
 	): string {
-		const prefix = isSelected ? "→ " : "  ";
+		const marker = this.layout.selectionMarker ?? "\u2192";
+		const prefix = isSelected ? `${marker} ` : "  ";
 		const prefixWidth = visibleWidth(prefix);
+		// A solid bar carries its own contrast, so the row keeps plain text and the theme paints the background.
+		const bar = isSelected && this.layout.solidSelection && this.theme.selectedRow !== undefined;
 
 		if (descriptionSingleLine && width > 40) {
 			const effectivePrimaryColumnWidth = Math.max(1, Math.min(primaryColumnWidth, width - prefixWidth - 4));
@@ -209,6 +238,10 @@ export class SelectList implements Component {
 
 			if (remainingWidth > MIN_DESCRIPTION_WIDTH) {
 				const truncatedDesc = truncateToWidth(descriptionSingleLine, remainingWidth, "");
+				if (bar) {
+					const line = `${prefix}${truncatedValue}${spacing}${truncatedDesc}`;
+					return this.theme.selectedRow!(truncateToWidth(line, width, "", true));
+				}
 				if (isSelected) {
 					return this.theme.selectedText(`${prefix}${truncatedValue}${spacing}${truncatedDesc}`);
 				}
@@ -220,6 +253,9 @@ export class SelectList implements Component {
 
 		const maxWidth = width - prefixWidth - 2;
 		const truncatedValue = this.truncatePrimary(item, isSelected, maxWidth, maxWidth);
+		if (bar) {
+			return this.theme.selectedRow!(truncateToWidth(`${prefix}${truncatedValue}`, width, "", true));
+		}
 		if (isSelected) {
 			return this.theme.selectedText(`${prefix}${truncatedValue}`);
 		}
