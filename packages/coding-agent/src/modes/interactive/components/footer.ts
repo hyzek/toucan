@@ -103,9 +103,9 @@ export class FooterComponent implements Component {
 		}
 		// Indent to the caret column of the input band above (the prompt cell width).
 		const indent = " ".repeat(visibleWidth(INPUT_PROMPT));
-		let bar = `${indent}${left}  ·  ${theme.fg("success", directory)}`;
+		let bar = `${indent}${left} · ${theme.fg("success", directory)}`;
 		if (areExperimentalFeaturesEnabled()) {
-			bar += `  ·  ${theme.bold(theme.fg("warning", "xp"))}`;
+			bar += ` · ${theme.bold(theme.fg("warning", "xp"))}`;
 		}
 		if (visibleWidth(bar) > width) {
 			bar = truncateToWidth(bar, width, theme.fg("dim", "..."));
