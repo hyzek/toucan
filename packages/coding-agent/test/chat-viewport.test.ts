@@ -1,4 +1,4 @@
-import { Container, Text, TuiAltScreen } from "@hyzek/toucan-tui";
+import { Container, stripTerminalSequences, Text, TuiAltScreen, visibleWidth } from "@hyzek/toucan-tui";
 import { beforeAll, describe, expect, test } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { createChatViewport } from "../src/modes/interactive/chat-viewport.ts";
@@ -35,6 +35,50 @@ describe("chat viewport", () => {
 
 		expect(automatic.transcript.scrollbar).toBe("auto");
 		expect(hidden.transcript.scrollbar).toBe("hidden");
+	});
+
+	test("shows the jump-to-latest line in the tip slot while scrolled up and jumps on click", async () => {
+		const terminal = new VirtualTerminal(WIDTH, HEIGHT);
+		const ui = new TuiAltScreen(terminal);
+		const viewport = createChatViewport({
+			document: new Text(Array.from({ length: 30 }, (_, index) => `transcript ${index + 1}`).join("\n"), 1, 0),
+			pendingMessages: new Container(),
+			status: new Container(),
+			tip: new SessionTip(
+				() => true,
+				() => viewport.transcript,
+			),
+			editor: new Text("\u203a editor band", 1, 0),
+			footer: new Text("  footer bar", 1, 0),
+		});
+		ui.setLayoutRoot(viewport.root);
+		ui.start();
+		await terminal.waitForRender();
+		expect(terminal.getViewport().some((line) => line.includes("Jump to latest"))).toBe(false);
+
+		terminal.sendInput("\x1b[<64;2;2M"); // wheel up over the transcript
+		await terminal.waitForRender();
+		expect(viewport.transcript.isFollowingEnd).toBe(false);
+
+		const lines = terminal.getViewport();
+		const jumpRow = lines.findIndex((line) => line.includes("Jump to latest ↓"));
+		expect(jumpRow).toBeGreaterThan(-1);
+		expect(stripTerminalSequences(lines[jumpRow]!).trimEnd().endsWith("Jump to latest ↓")).toBe(true);
+		expect(lines[jumpRow]).not.toContain("\x1b[4"); // no background
+		expect(lines[jumpRow]).not.toContain("Ctrl"); // no hotkey hint
+
+		// Clicking beside the label does not jump; clicking the label resumes end-following.
+		const labelStart = WIDTH - visibleWidth("Jump to latest ↓") - 1;
+		terminal.sendInput(`\x1b[<0;${labelStart};${jumpRow + 1}M`);
+		terminal.sendInput(`\x1b[<0;${labelStart};${jumpRow + 1}m`);
+		await terminal.waitForRender();
+		expect(viewport.transcript.isFollowingEnd).toBe(false);
+		terminal.sendInput(`\x1b[<0;${labelStart + 5};${jumpRow + 1}M`);
+		terminal.sendInput(`\x1b[<0;${labelStart + 5};${jumpRow + 1}m`);
+		await terminal.waitForRender();
+		expect(viewport.transcript.isFollowingEnd).toBe(true);
+		expect(terminal.getViewport().some((line) => line.includes("Jump to latest"))).toBe(false);
+		ui.stop();
 	});
 
 	test("hiding the hints row does not move the editor or footer", async () => {

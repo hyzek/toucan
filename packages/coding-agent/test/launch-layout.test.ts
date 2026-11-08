@@ -1,4 +1,4 @@
-import { Container, Editor, Spacer, stripTerminalSequences, Text, TuiMainScreen } from "@hyzek/toucan-tui";
+import { Container, Editor, ScrollView, Spacer, stripTerminalSequences, Text, TuiMainScreen } from "@hyzek/toucan-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AgentSession } from "../src/core/agent-session.ts";
@@ -84,6 +84,32 @@ describe("launch bottom layout", () => {
 		expect(tip.render(WIDTH)).toHaveLength(0);
 		hasTranscript = false; // /new clears the transcript
 		expect(tip.render(WIDTH)).toHaveLength(1);
+	});
+
+	it("shows a right-aligned jump-to-latest line while the transcript is scrolled up", () => {
+		const transcript = new ScrollView(
+			new Text(Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join("\n"), 0, 0),
+			{
+				follow: "end",
+			},
+		);
+		transcript.updateLayout(12, 4, () => {});
+		const tip = new SessionTip(
+			() => true,
+			() => transcript,
+		);
+		expect(tip.render(WIDTH)).toHaveLength(0);
+		transcript.scrollBy(-2);
+		const [line] = tip.render(WIDTH);
+		expect(
+			stripTerminalSequences(line ?? "")
+				.trimEnd()
+				.endsWith("Jump to latest ↓"),
+		).toBe(true);
+		expect(line).not.toContain("\x1b[4"); // no background
+		expect(line).not.toContain("Ctrl"); // no hotkey hint
+		transcript.scrollToEnd();
+		expect(tip.render(WIDTH)).toHaveLength(0);
 	});
 
 	it("hides the tip on any chat history, keeps it above notices", () => {

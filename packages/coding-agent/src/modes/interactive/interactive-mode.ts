@@ -673,8 +673,10 @@ export class InteractiveMode {
 		this.tipContainer = new Container();
 		this.tipContainer.addChild(
 			// The tip yields to the `/` menu: both sit above the input and would stack.
+			// The jump-to-latest line only exists while the fullscreen transcript scroll view is live.
 			new SessionTip(
 				() => hasChatTranscript(this.chatContainer.children) || this.editor.isShowingAutocomplete?.() === true,
+				() => (this.renderer.mode === "fullscreen" ? this.transcriptScrollView : undefined),
 			),
 		);
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
