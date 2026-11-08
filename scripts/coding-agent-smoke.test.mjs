@@ -27,7 +27,7 @@ function createFixture(t, { importUndeclared = false } = {}) {
 		join(repoRoot, "packages", codingAgentName.split("/")[1]),
 		{
 			name: codingAgentName,
-			version: "1.0.0",
+			version: "23.0.0",
 			type: "module",
 			main: "./dist/index.js",
 			types: "./dist/index.d.ts",
@@ -42,8 +42,8 @@ export class SessionManager { static inMemory() {} }
 export class ModelRuntime { static create() {} }
 `,
 			"dist/index.d.ts": "export {};\n",
-			"dist/cli.js": 'console.log("1.0.0");\n',
-			"dist/bundle/cli.js": 'console.log("1.0.0");\n',
+			"dist/cli.js": 'console.log("b23");\n',
+			"dist/bundle/cli.js": 'console.log("b23");\n',
 		},
 	);
 	const artifactSet = produceArtifactSet({ build: false, outDir: join(root, "artifacts"), repoRoot, source: null });

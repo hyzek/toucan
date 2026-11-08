@@ -39,10 +39,8 @@ for (const pkg of [...publishedPackages].sort((a, b) => a.data.name.localeCompar
 const versions = new Set(publishedPackages.map((pkg) => pkg.data.version));
 if (versions.size > 1) {
 	console.error("\nERROR: Not all non-private packages have the same version.");
-	console.error("Expected lockstep versioning. Run one of:");
-	console.error("  npm run version:patch");
-	console.error("  npm run version:minor");
-	console.error("  npm run version:major");
+	console.error("Expected lockstep versioning. Set one build version (N.0.0) for all packages, e.g.:");
+	console.error("  npm version 23.0.0 --workspaces --no-git-tag-version --no-workspaces-update");
 	process.exit(1);
 }
 

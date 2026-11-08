@@ -3,14 +3,17 @@
  * Release script for toucan-mono
  *
  * Usage:
- *   node scripts/release.mjs <major|minor|patch>
- *   node scripts/release.mjs <x.y.z>
+ *   node scripts/release.mjs                # cut the build numbered by the release commit
+ *   node scripts/release.mjs <build-number> # override, only for release recovery
+ *
+ * Versions are build numbers: build N is package version N.0.0, tagged vN.0.0, announced as bN.
+ * See scripts/build-name.mjs.
  *
  * Steps:
  * 1. Check for uncommitted changes
- * 2. Verify every public workspace package is registered on npm,
+ * 2. Resolve the build number and verify every public workspace package is registered on npm,
  *    pin the newest model catalog for Nix, and build with it
- * 3. Bump version via npm run version:xxx or set an explicit version
+ * 3. Set the version to <build>.0.0
  * 4. Update CHANGELOG.md files: [Unreleased] -> [version] - date
  * 5. Regenerate release artifacts
  * 6. Run checks and tests
@@ -23,16 +26,14 @@
 import { execSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { buildNameFromVersion, buildNumberFromVersion, versionFromBuildNumber } from "./build-name.mjs";
 import { findPackageDirectories } from "./package-workspaces.mjs";
 import { getPublicWorkspacePackages } from "./release-packages.mjs";
 import { hydrateModelCatalogBytes, updateModelCatalogPin } from "./update-model-catalog-pin.mjs";
 
-const RELEASE_TARGET = process.argv[2];
-const BUMP_TYPES = new Set(["major", "minor", "patch"]);
-const SEMVER_RE = /^\d+\.\d+\.\d+$/;
-
-if (!RELEASE_TARGET || (!BUMP_TYPES.has(RELEASE_TARGET) && !SEMVER_RE.test(RELEASE_TARGET))) {
-	console.error("Usage: node scripts/release.mjs <major|minor|patch|x.y.z>");
+const BUILD_OVERRIDE = process.argv[2];
+if (BUILD_OVERRIDE !== undefined && !/^\d+$/.test(BUILD_OVERRIDE)) {
+	console.error("Usage: node scripts/release.mjs [build-number]");
 	process.exit(1);
 }
 
@@ -128,22 +129,54 @@ async function pinAndBuildWithNewestModelCatalog() {
 	}
 }
 
-function compareVersions(a, b) {
-	const aParts = a.split(".").map(Number);
-	const bParts = b.split(".").map(Number);
-
-	for (let i = 0; i < 3; i++) {
-		const diff = (aParts[i] || 0) - (bParts[i] || 0);
-		if (diff !== 0) {
-			return diff;
-		}
-	}
-
-	return 0;
-}
-
 function shellQuote(value) {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The build number this release carries: the release commit's position on main, so build N is tagged
+ * on the commit where `git rev-list --count HEAD` equals N. Commit counts only stay monotonic on
+ * main, hence the branch check and the `<build-number>` override for release recovery.
+ */
+function resolveBuildNumber(currentVersion) {
+	const currentBuild = buildNumberFromVersion(currentVersion);
+	if (currentBuild === undefined) {
+		console.error(
+			`Error: current version ${currentVersion} is not a build version (N.0.0). Migrate the checkout first:\n` +
+				"  npm version <N>.0.0 --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.js",
+		);
+		process.exit(1);
+	}
+
+	const branch = run("git rev-parse --abbrev-ref HEAD", { silent: true }).trim();
+	if (branch !== "main") {
+		console.error(`Error: releases cut their build number from main, but HEAD is on ${branch}.`);
+		process.exit(1);
+	}
+
+	const commitsBeforeRelease = Number.parseInt(run("git rev-list --count HEAD", { silent: true }).trim(), 10);
+	const buildNumber = BUILD_OVERRIDE === undefined ? commitsBeforeRelease + 1 : Number.parseInt(BUILD_OVERRIDE, 10);
+	if (buildNumber <= currentBuild) {
+		console.error(
+			`Error: build ${buildNumber} does not succeed ${currentBuild}. A rebase or squash lowered the ` +
+				"commit count; pass the next build number explicitly.",
+		);
+		process.exit(1);
+	}
+	return buildNumber;
+}
+
+function applyVersion(version) {
+	console.log(`Setting version (${version})...`);
+	run(`npm version ${version} --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.js && npm install --package-lock-only --ignore-scripts`);
+
+	// npm version can temporarily install the previous workspace versions before
+	// sync-versions updates inter-package ranges. Remove those stale lock entries,
+	// refresh the lockfile, then hydrate from the final dependency graph.
+	removeStaleWorkspaceLockEntries();
+	run("npm install --package-lock-only --ignore-scripts");
+	run("npm ci --ignore-scripts");
+	return getVersion();
 }
 
 function removeStaleWorkspaceLockEntries() {
@@ -181,31 +214,6 @@ function stageChangedFiles() {
 	}
 
 	run(`git add -- ${paths.map(shellQuote).join(" ")}`);
-}
-
-function bumpOrSetVersion(target) {
-	const currentVersion = getVersion();
-
-	if (BUMP_TYPES.has(target)) {
-		console.log(`Bumping version (${target})...`);
-		run(`npm run version:${target}`);
-	} else {
-		if (compareVersions(target, currentVersion) <= 0) {
-			console.error(`Error: explicit version ${target} must be greater than current version ${currentVersion}.`);
-			process.exit(1);
-		}
-
-		console.log(`Setting explicit version (${target})...`);
-		run(`npm version ${target} --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.js && npm install --package-lock-only --ignore-scripts`);
-	}
-
-	// npm version can temporarily install the previous workspace versions before
-	// sync-versions updates inter-package ranges. Remove those stale lock entries,
-	// refresh the lockfile, then hydrate from the final dependency graph.
-	removeStaleWorkspaceLockEntries();
-	run("npm install --package-lock-only --ignore-scripts");
-	run("npm ci --ignore-scripts");
-	return getVersion();
 }
 
 function getChangelogs() {
@@ -265,7 +273,10 @@ if (status && status.trim()) {
 }
 console.log("  Working directory clean\n");
 
-// 2. Verify npm package registration before modifying the worktree.
+// 2. Resolve the build number and verify npm package registration before modifying the worktree.
+const version = versionFromBuildNumber(resolveBuildNumber(getVersion()));
+const buildName = buildNameFromVersion(version);
+console.log(`Cutting ${buildName} (package version ${version})\n`);
 assertPackagesAreRegisteredWithNpm();
 
 // Pin and verify the Nix model catalog before modifying versions, so the pin
@@ -274,9 +285,9 @@ console.log("Pinning and building with the newest model catalog for Nix...");
 await pinAndBuildWithNewestModelCatalog();
 console.log();
 
-// 3. Bump or set version
-const version = bumpOrSetVersion(RELEASE_TARGET);
-console.log(`  New version: ${version}\n`);
+// 3. Set the version
+applyVersion(version);
+console.log(`  New version: ${getVersion()}\n`);
 
 // 4. Update changelogs
 console.log("Updating CHANGELOG.md files...");
@@ -316,7 +327,7 @@ console.log();
 // 7. Commit and tag
 console.log("Committing and tagging...");
 stageChangedFiles();
-run(`git commit -m "Release v${version}"`);
+run(`git commit -m "Release ${buildName} (v${version})"`);
 run(`git tag v${version}`);
 console.log();
 
@@ -337,4 +348,6 @@ run("git push origin main");
 run(`git push origin v${version}`);
 console.log();
 
-console.log(`=== Prepared release v${version}; CI publication and pi.dev announcement start after the tag push ===`);
+console.log(
+	`=== Prepared ${buildName} (v${version}); CI publication and pi.dev announcement start after the tag push ===`,
+);

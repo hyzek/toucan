@@ -130,7 +130,9 @@ jobs:
           ./result/bin/toucan --version
           ./result/bin/toucan --help > /dev/null
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            test "$(./result/bin/toucan --version)" = "${GITHUB_REF_NAME#v}"
+            # Release tags are vN.0.0; the binary reports the build name bN.
+            release_version="${GITHUB_REF_NAME#v}"
+            test "$(./result/bin/toucan --version)" = "b${release_version%%.*}"
           fi
 
   update-stable:

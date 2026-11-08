@@ -50,9 +50,7 @@
 		"release:local": "node scripts/local-release.mjs",
 		"pack:packages": "node scripts/pack-packages.mjs",
 		"install-lock:coding-agent": "node scripts/generate-coding-agent-install-lock.mjs",
-		"release:patch": "node scripts/release.mjs patch",
-		"release:minor": "node scripts/release.mjs minor",
-		"release:major": "node scripts/release.mjs major",
+		"release:build": "node scripts/release.mjs",
 		"release:fix-links": "node scripts/release-notes.mjs fix-github-releases",
 		"prepare": "husky"
 	},

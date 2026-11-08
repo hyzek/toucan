@@ -146,7 +146,8 @@ stdenv.mkDerivation {
   doInstallCheck = true;
   installCheckPhase = ''
     runHook preInstallCheck
-    test "$("$out/bin/toucan" --version)" = "${packageJson.version}"
+    # `toucan --version` prints the build name, e.g. package version 23.0.0 is b23.
+    test "$("$out/bin/toucan" --version)" = "b${lib.head (lib.splitVersion packageJson.version)}"
     # Load host-platform TUI helpers directly so missing native dependencies
     # fail the build rather than silently disabling clipboard support.
     ${nodejs}/bin/node -e \

@@ -606,6 +606,27 @@ export const APP_TITLE: string = toucanConfigName ? APP_NAME : "TC";
 export const CONFIG_DIR_NAME: string = pkg.toucanConfig?.configDir || ".toucan";
 export const VERSION: string = pkg.version || "0.0.0";
 
+/**
+ * Toucan's version is a build number: package version `23.0.0` is announced as `b23`. The numeric
+ * form stays in package.json, npm, and the model-catalog User-Agent because those compare semver;
+ * this is the name shown to users. scripts/build-name.mjs applies the same mapping in release tooling.
+ */
+export function buildName(version: string): string {
+	return `b${version.split(".")[0]}`;
+}
+
+/** Build name of this checkout, e.g. `b23`. */
+export const BUILD_NAME: string = buildName(VERSION);
+
+/**
+ * Turns a version string back into the numeric form npm and settings compare. `toucan --version`
+ * prints a build name, self-update compares against the numeric version from the registry.
+ */
+export function numericVersion(version: string): string {
+	const build = /^b(\d+)$/.exec(version.trim());
+	return build ? `${build[1]}.0.0` : version.trim();
+}
+
 // e.g., TOUCAN_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR
 export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
 export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;

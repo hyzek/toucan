@@ -7,7 +7,7 @@ description: Prepare, publish, verify, and recover toucan releases. Use for rele
 
 Run repository commands from the repo root (two directories above this skill), unless instructed otherwise.
 
-**Lockstep versioning**: all packages share one version; every release updates all together. `patch` = fixes + additions, `minor` = breaking changes. No major releases.
+**Build versions**: toucan ships build numbers, not semver semantics. Build `N` is numbered by its position on `main`: the release commit is commit `N`, its package version is `N.0.0` (npm only accepts semver), its tag is `vN.0.0`, and every string a person reads says `bN` (`toucan --version`, the launch screen, the GitHub release title, the release commit). All packages stay in lockstep at `N.0.0`; never bump patch or minor. `scripts/build-name.mjs` and `packages/coding-agent/src/config.ts` hold the `N.0.0` to `bN` mapping.
 
 1. **Update CHANGELOGs**: ask the user whether they ran the `/cl` prompt on the latest commit on `main`. If not, they must run `/cl` first to audit and update each package's `[Unreleased]` section before releasing.
 
@@ -30,23 +30,23 @@ Run repository commands from the repo root (two directories above this skill), u
    /tmp/toucan-local-release/bun/toucan -p "Say exactly: ok"
    /tmp/toucan-local-release/bun/toucan
    ```
-   Verify both Node and Bun startup, model/account listing, interactive startup, and at least one real prompt with the intended default provider. The bare commands `/tmp/toucan-local-release/node/toucan` and `/tmp/toucan-local-release/bun/toucan` start interactive mode; run each in tmux, submit a prompt, and wait for the model reply before considering the interactive smoke test passed. Failures are release blockers unless the user explicitly accepts the risk.
+   Verify both Node and Bun startup, model/account listing, interactive startup, and at least one real prompt with the intended default provider. Each `--version` prints the build name (`bN`), not the package version. The bare commands `/tmp/toucan-local-release/node/toucan` and `/tmp/toucan-local-release/bun/toucan` start interactive mode; run each in tmux, submit a prompt, and wait for the model reply before considering the interactive smoke test passed. Failures are release blockers unless the user explicitly accepts the risk.
 
    Load and follow [interactive-testing.md](interactive-testing.md) for the tmux workflow. Start each release binary from `/tmp`, not the repo root.
 
 3. **Run the release script**:
    ```bash
-   TOUCAN_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:patch    # fixes + additions
-   TOUCAN_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:minor    # breaking changes
+   TOUCAN_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:build
    ```
+   The script takes the build number from `main` (`git rev-list --count HEAD` of the release commit), so the release cut at commit 23 is b23. Pass a number (`npm run release:build -- 24`) only to recover a release or when a rebase lowered the commit count; the script refuses a build that does not succeed the current one, and refuses to run when HEAD is not on `main`.
    If the test suite already passed in `npm run release:local` and only fails from machine load, `TOUCAN_RELEASE_SKIP_TESTS=1` skips `./test.sh` in the release script; checks and the packed install check still run. Use it only with the user's approval.
 
    Use `npm_config_min_release_age=0` only for the release command. The repo's normal npm age gate can otherwise block the release lockfile refresh when the current workspace package version was published recently. Review any lockfile or install lock diffs the release creates before push.
 
-   The release script pins the newest published model catalog for Nix (`nix/model-catalog.json`) and builds the checkout with it as the Nix build does (it fails if that catalog predates main's model changes; publish one first), bumps all package versions, updates changelogs, regenerates release artifacts, runs `npm run check`, commits `Release vX.Y.Z`, tags `vX.Y.Z`, adds fresh `## [Unreleased]` changelog sections, commits `Add [Unreleased] section for next cycle`, then pushes `main` and the tag. Do not rerun the release script after a tag was pushed.
+   The release script pins the newest published model catalog for Nix (`nix/model-catalog.json`) and builds the checkout with it as the Nix build does (it fails if that catalog predates main's model changes; publish one first), sets all package versions to `N.0.0`, updates changelogs, regenerates release artifacts, runs `npm run check`, commits `Release bN (vN.0.0)`, tags `vN.0.0`, adds fresh `## [Unreleased]` changelog sections, commits `Add [Unreleased] section for next cycle`, then pushes `main` and the tag. Do not rerun the release script after a tag was pushed.
 
-4. **CI verifies and announces the npm release**: pushing the `vX.Y.Z` tag triggers `.github/workflows/build-binaries.yml`. The `publish-npm` job uses npm trusted publishing through GitHub Actions OIDC with environment `npm-publish`; no local `npm publish`, `npm whoami`, OTP, or WebAuthn flow is required. After publishing, `announce-toucan-dev-release` verifies every public workspace package resolves at the exact release version and that its npm tarball is available, then writes the verified release marker to R2. `pi.dev/api/latest-version` reads that marker; it must never announce a release from npm before this job succeeds.
+4. **CI verifies and announces the npm release**: pushing the `vN.0.0` tag triggers `.github/workflows/build-binaries.yml`. The `publish-npm` job uses npm trusted publishing through GitHub Actions OIDC with environment `npm-publish`; no local `npm publish`, `npm whoami`, OTP, or WebAuthn flow is required. After publishing, `announce-toucan-dev-release` verifies every public workspace package resolves at the exact release version and that its npm tarball is available, then writes the verified release marker to R2. `pi.dev/api/latest-version` reads that marker; it must never announce a release from npm before this job succeeds.
 
 5. **CI builds the Nix release**: the tag push also triggers `.github/workflows/nix.yml`, which builds the tagged flake on Linux and macOS and then fast-forwards the `stable` branch to the release commit. `nix run github:hyzek/toucan/stable` runs the latest release. If the Nix build fails, `stable` stays on the previous release; the tag cannot be fixed, so fix `main` and ship the fix in the next release.
 
-6. **If CI publish or announcement fails**: inspect the failed job. The publish helper is idempotent and skips package versions already present on npm; the announcement job rechecks availability before updating the R2 marker. Rerun the failed job or workflow after fixing CI or transient npm issues. Do not rerun `npm run release:patch` or `npm run release:minor` for the same version.
+6. **If CI publish or announcement fails**: inspect the failed job. The publish helper is idempotent and skips package versions already present on npm; the announcement job rechecks availability before updating the R2 marker. Rerun the failed job or workflow after fixing CI or transient npm issues. Do not rerun `npm run release:build` for the same build number.

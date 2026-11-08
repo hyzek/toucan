@@ -3,6 +3,8 @@ import { tmpdir } from "os";
 import { delimiter, join } from "path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
+	BUILD_NAME,
+	buildName,
 	detectInstallChange,
 	detectInstallMethod,
 	findNodePackageDir,
@@ -11,6 +13,8 @@ import {
 	getSelfUpdateUnavailableInstruction,
 	getUpdateInstruction,
 	makeConfiguredSelfUpdateCommand,
+	numericVersion,
+	VERSION,
 } from "../src/config.ts";
 
 const execPathDescriptor = Object.getOwnPropertyDescriptor(process, "execPath");
@@ -148,6 +152,16 @@ function createFakeBunScript(bunBin: string): string {
 	const escapedBunBin = bunBin.replaceAll("'", "'\\''");
 	return `#!/bin/sh\nif [ "$1" = "pm" ] && [ "$2" = "bin" ] && [ "$3" = "-g" ]; then\n\tprintf '%s\\n' '${escapedBunBin}'\n\texit 0\nfi\nexit 1\n`;
 }
+
+describe("build naming", () => {
+	test("maps a build version to its name and back", () => {
+		expect(buildName("23.0.0")).toBe("b23");
+		expect(BUILD_NAME).toBe(buildName(VERSION));
+		expect(numericVersion("b23")).toBe("23.0.0");
+		// Older releases and prerelease lines are already numeric.
+		expect(numericVersion(" 1.5.0 ")).toBe("1.5.0");
+	});
+});
 
 describe("findNodePackageDir", () => {
 	test("skips binary metadata copied into dist", () => {

@@ -37,6 +37,7 @@
 - The OpenAI Codex provider is shown as "OpenAI Codex" again instead of "OpenAI Codex (legacy)" in `/login` and the model selector
 - The working indicator is now a fading bullet `•` pulsing gray→near-white on a one-second cycle instead of the braille spinner, and the working label sweeps white→gray left to right; both ride the same shine curve as the input band's glint. The label no longer takes the thinking-level accent color, and extensions can still replace the indicator with `setWorkingIndicator()`
 - The fullscreen jump-to-latest control no longer floats as a highlighted pill over the transcript. While the transcript is scrolled away from its end, the tip slot above the input shows a plain right-aligned `Jump to latest ↓` instead, with no background and no shortcut text; it is still clickable, and the bottom keybinding is unchanged
+- Toucan versions are build numbers now: build 23 is package version `23.0.0`, tagged `v23.0.0`, and named `b23` everywhere a person reads it. `toucan --version` prints `b23`, the launch panel shows `toucan b23`, and the What's New notice, the Update Available notice and `toucan update` messages say `b23`. Changelog files, npm and the model catalog keep the numeric `23.0.0`
 
 ### Fixed
 

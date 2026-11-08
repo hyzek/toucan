@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";
+import { BUILD_NAME, buildName, ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { DefaultPackageManager, type ResolvedPaths } from "../src/core/package-manager.ts";
 import { InMemorySettingsStorage, SettingsManager } from "../src/core/settings-manager.ts";
@@ -36,9 +36,10 @@ describe("package commands", () => {
 	let originalExitCode: typeof process.exitCode;
 	let originalExecPath: string;
 
-	function getNewerPatchVersion(): string {
-		const [major = "0", minor = "0", patch = "0"] = VERSION.split(".");
-		return `${major}.${minor}.${Number.parseInt(patch, 10) + 1}`;
+	// Releases are builds: 23.0.0 → 24.0.0, so the numeric version and the build name round-trip.
+	function getNewerBuildVersion(): string {
+		const [major = "0"] = VERSION.split(".");
+		return `${Number.parseInt(major, 10) + 1}.0.0`;
 	}
 
 	function prepareManagedInstall(
@@ -679,7 +680,7 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 
 			expect(fetchMock).toHaveBeenCalledOnce();
 			expect(logSpy.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-				`toucan is already up to date (v${VERSION})`,
+				`toucan is already up to date (${BUILD_NAME})`,
 			);
 			expect(errorSpy).not.toHaveBeenCalled();
 			expect(process.exitCode).toBeUndefined();
@@ -717,7 +718,7 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 	});
 
 	it("updates installer-managed Toucan through a staged immutable release", async () => {
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const { managedRoot, npmRecordPath } = prepareManagedInstall(targetVersion);
 		const abandonedStage = join(managedRoot, "staging", "update-abandoned");
 		mkdirSync(abandonedStage, { recursive: true });
@@ -739,14 +740,14 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 			expect.arrayContaining(["ci", "--ignore-scripts"]),
 		);
 		expect(logSpy.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-			`Updated toucan from ${VERSION} to ${targetVersion}`,
+			`Updated toucan from ${BUILD_NAME} to ${buildName(targetVersion)}`,
 		);
 		expect(errorSpy).not.toHaveBeenCalled();
 		expect(process.exitCode).toBeUndefined();
 	});
 
 	it("accepts a managed install marker with a UTF-8 BOM", async () => {
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const { managedRoot } = prepareManagedInstall(targetVersion);
 		writeFileSync(
 			join(managedRoot, "managed-install.json"),
@@ -765,7 +766,7 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 
 	it("removes older managed releases after an update", async () => {
 		// https://github.com/hyzek/toucan/issues/10392
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const { managedRoot } = prepareManagedInstall(targetVersion);
 		const releasesRoot = join(managedRoot, "releases");
 		mkdirSync(join(releasesRoot, "0.0.1", "node_modules"), { recursive: true });
@@ -783,7 +784,7 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 	});
 
 	it("rejects a concurrent managed update", async () => {
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const { managedRoot, npmRecordPath } = prepareManagedInstall(targetVersion);
 		const releaseLock = await lockfile.lock(join(managedRoot, "update"), { realpath: false });
 		mockManagedUpdate(targetVersion);
@@ -806,7 +807,7 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 	});
 
 	it("rejects forced managed reinstalls", async () => {
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const { npmRecordPath } = prepareManagedInstall(targetVersion);
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
@@ -846,7 +847,8 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 process.exit(${exitCode});
 `,
 		);
-		writeFileSync(toucanScriptPath, `console.log(${JSON.stringify(toucanVersion)});\n`);
+		// The toucan on PATH prints its build name, like the real binary does.
+		writeFileSync(toucanScriptPath, `console.log(${JSON.stringify(buildName(toucanVersion))});\n`);
 		writeNodeShim(binDir, "toucan-wrapper", scriptPath);
 		writeNodeShim(binDir, "toucan", toucanScriptPath);
 		process.env.PATH = `${binDir}${delimiter}${originalPath ?? ""}`;
@@ -854,7 +856,7 @@ process.exit(${exitCode});
 	}
 
 	it("runs TOUCAN_SELF_UPDATE_COMMAND instead of the managed update and the selfUpdateCommand setting", async () => {
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const { npmRecordPath } = prepareManagedInstall(targetVersion);
 		const { scriptPath, recordPath } = prepareSelfUpdateCommand(targetVersion);
 		const settingRecordPath = join(tempDir, "setting-record.json");
@@ -883,13 +885,13 @@ process.exit(${exitCode});
 		const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
 		expect(stdout).toContain("Read me");
 		// Like mise, the command leaves this installation untouched; the toucan on PATH reports the new version.
-		expect(stdout).toContain(`Updated toucan from ${VERSION} to ${targetVersion}`);
+		expect(stdout).toContain(`Updated toucan from ${BUILD_NAME} to ${buildName(targetVersion)}`);
 		expect(errorSpy).not.toHaveBeenCalled();
 		expect(process.exitCode).toBeUndefined();
 	});
 
 	it("runs the global selfUpdateCommand setting only when a newer release exists", async () => {
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const { scriptPath, recordPath } = prepareSelfUpdateCommand(targetVersion);
 		const projectRecordPath = join(tempDir, "project-record.json");
 		writeFileSync(
@@ -910,7 +912,7 @@ process.exit(${exitCode});
 		await expect(runPackageCommandDirectly(["update", "--self"])).resolves.toBeUndefined();
 		expect(existsSync(recordPath)).toBe(false);
 		expect(logSpy.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-			`toucan is already up to date (v${VERSION})`,
+			`toucan is already up to date (${BUILD_NAME})`,
 		);
 
 		fetchMock.mockImplementation(async () => Response.json({ version: targetVersion }));
@@ -920,7 +922,7 @@ process.exit(${exitCode});
 	});
 
 	it("warns when the toucan on PATH does not report the new version", async () => {
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		prepareSelfUpdateCommand(VERSION);
 		vi.stubEnv("TOUCAN_SELF_UPDATE_COMMAND", "toucan-wrapper upgrade");
 		vi.stubGlobal(
@@ -933,7 +935,7 @@ process.exit(${exitCode});
 
 		const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
 		expect(stdout).toContain(
-			`Ran toucan-wrapper upgrade, but \`toucan --version\` reports ${VERSION}, not ${targetVersion}.`,
+			`Ran toucan-wrapper upgrade, but \`toucan --version\` reports ${buildName(VERSION)}, not ${targetVersion}.`,
 		);
 		expect(stdout).not.toContain("Updated toucan from");
 		expect(process.exitCode).toBeUndefined();
@@ -944,7 +946,7 @@ process.exit(${exitCode});
 		vi.stubEnv("TOUCAN_SELF_UPDATE_COMMAND", "toucan-wrapper upgrade");
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => Response.json({ version: getNewerPatchVersion() })),
+			vi.fn(async () => Response.json({ version: getNewerBuildVersion() })),
 		);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -959,7 +961,7 @@ process.exit(${exitCode});
 	});
 
 	it("keeps the managed release active when its update fails", async () => {
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const { managedRoot } = prepareManagedInstall(targetVersion, 23);
 		mkdirSync(join(managedRoot, "releases", "0.0.1"), { recursive: true });
 		mockManagedUpdate(targetVersion);
@@ -1030,7 +1032,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 			expect(recordedArgs).toContain(`${PACKAGE_NAME}@${VERSION}`);
 			expect(recordedArgs).not.toContain(PACKAGE_NAME);
 			expect(recordedArgs).not.toContain(projectPrefix);
-			expect(stdout).toContain(`Updated toucan from ${VERSION} to ${VERSION}`);
+			expect(stdout).toContain(`Updated toucan from ${BUILD_NAME} to ${BUILD_NAME}`);
 		} finally {
 			logSpy.mockRestore();
 			errorSpy.mockRestore();
@@ -1059,7 +1061,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 			value: join(selfPackageDir, "dist", "cli.js"),
 			configurable: true,
 		});
-		const targetVersion = getNewerPatchVersion();
+		const targetVersion = getNewerBuildVersion();
 		const fetchMock = vi.fn(async () => Response.json({ version: targetVersion }));
 		vi.stubGlobal("fetch", fetchMock);
 
@@ -1076,7 +1078,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 			const recordedArgs = JSON.parse(readFileSync(recordPath, "utf-8")) as string[];
 			expect(recordedArgs).toContain(`${PACKAGE_NAME}@${targetVersion}`);
 			expect(recordedArgs).not.toContain(PACKAGE_NAME);
-			expect(stdout).toContain(`Updated toucan from ${VERSION} to ${targetVersion}`);
+			expect(stdout).toContain(`Updated toucan from ${BUILD_NAME} to ${buildName(targetVersion)}`);
 		} finally {
 			logSpy.mockRestore();
 			errorSpy.mockRestore();
@@ -1156,7 +1158,7 @@ else {
 		});
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => Response.json({ version: getNewerPatchVersion() })),
+			vi.fn(async () => Response.json({ version: getNewerBuildVersion() })),
 		);
 
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});

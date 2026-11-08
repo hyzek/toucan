@@ -1,6 +1,6 @@
 {
 	"name": "@hyzek/toucan-coding-agent",
-	"version": "1.5.0",
+	"version": "23.0.0",
 	"description": "Coding agent CLI with read, bash, edit, write tools and session management",
 	"type": "module",
 	"toucanConfig": {
@@ -41,11 +41,11 @@
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"dependencies": {
-		"@hyzek/toucan-agent-core": "1.5.0",
-		"@hyzek/toucan-ai": "1.5.0",
-		"@hyzek/toucan-codemode": "1.5.0",
-		"@hyzek/toucan-mcp": "1.5.0",
-		"@hyzek/toucan-tui": "1.5.0",
+		"@hyzek/toucan-agent-core": "23.0.0",
+		"@hyzek/toucan-ai": "23.0.0",
+		"@hyzek/toucan-codemode": "23.0.0",
+		"@hyzek/toucan-mcp": "23.0.0",
+		"@hyzek/toucan-tui": "23.0.0",
 		"@silvia-odwyer/photon-node": "0.3.4",
 		"brace-expansion": "5.0.12",
 		"chalk": "6.0.0",

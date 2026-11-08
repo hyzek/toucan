@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildNameFromVersion } from "./build-name.mjs";
 
 export const codingAgentName = "@hyzek/toucan-coding-agent";
 
@@ -41,7 +42,9 @@ assert.equal(typeof ModelRuntime.create, "function");
 				stdio: ["inherit", "pipe", "pipe"],
 				timeout: 30_000,
 			});
-			if (output.trim() !== manifest.version) throw new Error(`Unexpected version from ${cli}: ${output}`);
+			// `toucan --version` prints the build name (b23), not the package version.
+			if (output.trim() !== buildNameFromVersion(manifest.version))
+				throw new Error(`Unexpected version from ${cli}: ${output}`);
 		}
 	} finally {
 		rmSync(entry, { force: true });

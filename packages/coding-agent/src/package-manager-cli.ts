@@ -16,6 +16,8 @@ import { selectConfig } from "./cli/config-selector.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import {
 	APP_NAME,
+	BUILD_NAME,
+	buildName,
 	CONFIG_DIR_NAME,
 	detectInstallChange,
 	detectInstallMethod,
@@ -25,6 +27,7 @@ import {
 	getSelfUpdateCommand,
 	getSelfUpdateUnavailableInstruction,
 	makeConfiguredSelfUpdateCommand,
+	numericVersion,
 	PACKAGE_NAME,
 	type SelfUpdateCommand,
 	type SelfUpdatePackageTarget,
@@ -124,7 +127,8 @@ function verifyManagedRelease(releaseDir: string, expectedVersion: string): void
 		throw new Error(`Could not verify managed Toucan ${expectedVersion}: ${reason}`);
 	}
 	const installedVersion = result.stdout.trim();
-	if (installedVersion !== expectedVersion) {
+	// `--version` prints a build name (b24), the managed install compares against the numeric release version.
+	if (numericVersion(installedVersion) !== expectedVersion) {
 		throw new Error(`Managed Toucan smoke test returned version ${installedVersion}; expected ${expectedVersion}.`);
 	}
 }
@@ -715,7 +719,7 @@ async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
 		};
 	}
 
-	console.log(chalk.green(`${APP_NAME} is already up to date (v${VERSION})`));
+	console.log(chalk.green(`${APP_NAME} is already up to date (${BUILD_NAME})`));
 	return { packageName, installSpec, version: latestRelease.version, shouldRun: false };
 }
 
@@ -761,8 +765,8 @@ async function runConfiguredSelfUpdate(argv: string[], plan: SelfUpdatePlan): Pr
 	const change = detectInstallChange();
 	const installedVersion =
 		change?.kind === "updated" && change.version === plan.version ? change.version : readVersionOnPath();
-	if (installedVersion === plan.version) {
-		console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${plan.version}`));
+	if (installedVersion && numericVersion(installedVersion) === plan.version) {
+		console.log(chalk.green(`Updated ${APP_NAME} from ${BUILD_NAME} to ${buildName(plan.version)}`));
 		return;
 	}
 	console.log(
@@ -1168,7 +1172,9 @@ export async function handlePackageCommand(
 							process.exitCode = 1;
 							return true;
 						}
-						console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
+						console.log(
+							chalk.green(`Updated ${APP_NAME} from ${BUILD_NAME} to ${buildName(selfUpdatePlan.version)}`),
+						);
 						return true;
 					}
 
@@ -1209,7 +1215,9 @@ export async function handlePackageCommand(
 						process.exitCode = 1;
 						return true;
 					}
-					console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
+					console.log(
+						chalk.green(`Updated ${APP_NAME} from ${BUILD_NAME} to ${buildName(selfUpdatePlan.version)}`),
+					);
 					// The pi.dev installer migrates global npm installs to a managed install
 					// that pins all dependencies. It does not migrate pnpm, yarn, or bun installs.
 					if (installMethod === "npm") {
