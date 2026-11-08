@@ -117,7 +117,6 @@ function rebuildBashResultRenderComponent(
 	}
 
 	if (fileEdit) {
-		component.addChild(new Spacer(1));
 		component.addChild(
 			createChangeBlock(
 				component,
@@ -133,7 +132,6 @@ function rebuildBashResultRenderComponent(
 	} else if (noChange) {
 		const block = new ToolBranchBlock();
 		block.addChild(new Text(theme.fg("muted", "no change"), 0, 0));
-		component.addChild(new Spacer(1));
 		component.addChild(block);
 	}
 

@@ -4,10 +4,17 @@
  * Renderers live apart from the implementation so a process that only displays tool output does not
  * load the execution path or its typebox parameter schema. `write.ts` spreads these into its
  * definition, so the tool's public shape is unchanged.
+ *
+ * The row names the file, and a block under it says what the write did: the diff against the file's
+ * previous content (all added lines for a new file), a `no change` line when the write left the file
+ * as it was, or nothing when the file cannot be diffed. While the call is still running, the row
+ * previews the content instead, so the write can be watched as it arrives.
  */
 
 import { Container, Text } from "@hyzek/toucan-tui";
+import { COLLAPSED_DIFF_ROWS, type DiffComponent } from "../../../modes/interactive/components/diff.ts";
 import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
+import { ToolBranchBlock } from "../../../modes/interactive/components/tool-branch.ts";
 import {
 	CodeHighlighter,
 	getLanguageFromPath,
@@ -16,6 +23,8 @@ import {
 } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
 import { normalizeDisplayText, renderToolPath, replaceTabs, str, toolRowCallLine } from "../render-utils.ts";
+import type { WriteToolDetails } from "../write.ts";
+import { createChangeBlock } from "./change-block.ts";
 
 type WriteHighlightCache = {
 	rawPath: string | null;
@@ -36,6 +45,8 @@ class WriteCallRenderComponent extends Text {
 		super("", 0, 0);
 	}
 }
+/** The result component, kept between renders so the diff keeps its syntax cache. */
+type WriteResultComponent = Container & { diffView?: DiffComponent };
 const WRITE_PARTIAL_FULL_HIGHLIGHT_LINES = 50;
 function highlightSingleLine(line: string, lang: string): string {
 	const highlighted = highlightCode(line, lang);
@@ -105,6 +116,10 @@ function trimTrailingEmptyLines(lines: readonly string[]): string[] {
 	}
 	return lines.slice(0, end);
 }
+function formatWriteHeader(args: { path?: string; file_path?: string } | undefined, theme: Theme, cwd: string): string {
+	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
+	return `${theme.fg("toolTitle", theme.bold("Write"))} ${pathDisplay}`;
+}
 function formatWriteCall(
 	args: { path?: string; file_path?: string; content?: string } | undefined,
 	options: ToolRenderResultOptions,
@@ -115,8 +130,7 @@ function formatWriteCall(
 ): string {
 	const rawPath = str(args?.file_path ?? args?.path);
 	const fileContent = str(args?.content);
-	const pathDisplay = renderToolPath(rawPath, theme, cwd);
-	let text = `${theme.fg("toolTitle", theme.bold("Write"))} ${pathDisplay}`;
+	let text = formatWriteHeader(args, theme, cwd);
 
 	if (fileContent === null) {
 		text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;
@@ -138,22 +152,6 @@ function formatWriteCall(
 
 	return text;
 }
-function formatWriteResult(
-	result: { content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>; isError?: boolean },
-	theme: Theme,
-): string | undefined {
-	if (!result.isError) {
-		return undefined;
-	}
-	const output = result.content
-		.filter((c) => c.type === "text")
-		.map((c) => c.text || "")
-		.join("\n");
-	if (!output) {
-		return undefined;
-	}
-	return `\n${theme.fg("error", output)}`;
-}
 
 export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "renderResult"> = {
 	renderCall(args, theme, context) {
@@ -163,34 +161,69 @@ export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rend
 		const component =
 			(context.lastComponent as WriteCallRenderComponent | undefined) ?? new WriteCallRenderComponent();
 		component.cache =
-			fileContent !== null && !context.argsComplete
+			fileContent !== null && context.isPartial && !context.argsComplete
 				? updateWriteHighlightCacheIncremental(component.cache, rawPath, fileContent, component.highlighter)
 				: undefined;
+		// The content preview belongs to a running call, so the write can be watched as it arrives.
+		// Once a final result lands, the change is told by the block under the row, from the tool's
+		// recorded diff; a replayed call shows that block straight away.
 		component.setText(
 			toolRowCallLine(
-				formatWriteCall(
-					renderArgs,
-					{ expanded: context.expanded, isPartial: context.isPartial },
-					theme,
-					component.cache,
-					component.highlighter,
-					context.cwd,
-				),
+				context.isPartial
+					? formatWriteCall(
+							renderArgs,
+							{ expanded: context.expanded, isPartial: context.isPartial },
+							theme,
+							component.cache,
+							component.highlighter,
+							context.cwd,
+						)
+					: formatWriteHeader(renderArgs, theme, context.cwd),
 				context,
 				theme,
 			),
 		);
 		return component;
 	},
-	renderResult(result, _options, theme, context) {
-		const output = formatWriteResult({ ...result, isError: context.isError }, theme);
-		if (!output) {
-			const component = (context.lastComponent as Container | undefined) ?? new Container();
-			component.clear();
+	renderResult(result, options, theme, context) {
+		const component: WriteResultComponent =
+			(context.lastComponent as WriteResultComponent | undefined) ?? new Container();
+		component.clear();
+
+		if (context.isError) {
+			const output = result.content
+				.filter((c) => c.type === "text")
+				.map((c) => c.text || "")
+				.join("\n");
+			if (output) {
+				component.addChild(new Text(`\n${theme.fg("error", output)}`, context.outputPad, 0));
+			}
 			return component;
 		}
-		const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-		text.setText(output);
-		return text;
+
+		const details = result.details as WriteToolDetails | undefined;
+		if (details?.diff) {
+			component.addChild(
+				createChangeBlock(
+					component,
+					{
+						diff: details.diff,
+						path: details.path,
+						edits: 1,
+						view: {
+							expanded: options.expanded,
+							maxRows: COLLAPSED_DIFF_ROWS,
+							expandHint: `(${context.keyHint("app.tools.expand", "to expand")})`,
+						},
+					},
+					theme,
+				),
+			);
+		} else if (details?.unchanged) {
+			const block = new ToolBranchBlock();
+			block.addChild(new Text(theme.fg("muted", "no change"), 0, 0));
+			component.addChild(block);
+		}
+		return component;
 	},
 };

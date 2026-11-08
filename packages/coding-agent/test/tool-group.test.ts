@@ -55,7 +55,7 @@ describe("ToolGroupComponent", () => {
 		settle(read);
 		group.addTool(read);
 
-		expect(render(group)).toEqual(["• Read package.json"]);
+		expect(render(group)).toEqual(["• Read package.json", "└ 1 lines loaded ( to expand)"]);
 	});
 
 	test("two finished calls say one sentence and hide their rows", () => {

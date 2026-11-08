@@ -142,7 +142,6 @@ function buildEditCallComponent(
 		return component;
 	}
 
-	component.addChild(new Spacer(1));
 	if ("error" in component.preview) {
 		const block = new ToolBranchBlock();
 		block.addChild(new Text(theme.fg("error", component.preview.error), 0, 0));

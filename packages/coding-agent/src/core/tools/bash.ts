@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access as fsAccess, stat as fsStat, readFile } from "node:fs/promises";
+import { access as fsAccess } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
 import { spawn } from "child_process";
 import { type Static, Type } from "typebox";
@@ -15,6 +15,7 @@ import {
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import { detectShellFileEdit, type ShellEditTool, type ShellFileEdit } from "./bash-edit.ts";
 import { generateDiffString } from "./edit-diff.ts";
+import { type FileSnapshot, snapshotFile } from "./file-snapshot.ts";
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { resolveToCwd } from "./path-utils.ts";
 import { SHELL_EMPTY_OUTPUT } from "./render-utils.ts";
@@ -86,29 +87,6 @@ export interface BashToolDetails {
 	 * redirect can change the file before the command fails.
 	 */
 	fileEdit?: ShellFileEditDetails;
-}
-
-/** Files above this size are not diffed for a shell edit. */
-const SHELL_EDIT_MAX_BYTES = 256 * 1024;
-
-/** What the edited file looked like when it was sampled around the command. */
-type FileSnapshot = { kind: "content"; text: string } | { kind: "missing" } | { kind: "unusable" };
-
-/**
- * Reads a file for a shell edit's before and after. A missing file is a create; a directory, a binary or
- * an over-large file says it cannot be shown, rather than passing as empty.
- */
-async function snapshotFile(path: string): Promise<FileSnapshot> {
-	try {
-		const info = await fsStat(path);
-		if (!info.isFile() || info.size > SHELL_EDIT_MAX_BYTES) {
-			return { kind: "unusable" };
-		}
-		const text = await readFile(path, "utf8");
-		return text.includes("\0") ? { kind: "unusable" } : { kind: "content", text };
-	} catch {
-		return { kind: "missing" };
-	}
 }
 
 /**

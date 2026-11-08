@@ -56,7 +56,6 @@ export function createChangeBlock(state: ChangeBlockState, change: ChangeBlock, 
 
 	const block = new ToolBranchBlock();
 	block.addChild(new Text(summary, 0, 0));
-	block.addChild(new Spacer(1));
 	block.addChild(diffView(state, change.diff, options));
 	if (parts) {
 		block.addChild(new Spacer(1));

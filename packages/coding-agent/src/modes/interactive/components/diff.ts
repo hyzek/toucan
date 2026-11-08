@@ -200,9 +200,9 @@ export class DiffComponent implements Component {
 	}
 }
 
-/** One row of the one-column view, cut to the terminal width rather than wrapped. */
+/** One row of the one-column view, painted to the terminal width rather than wrapped. */
 function flatRow(cell: DiffCell, prepared: PreparedDiff, palette: DiffPalette, width: number): string {
-	return truncateToWidth(renderRow(cell, prepared, palette), width);
+	return renderRow(cell, prepared, palette, width - prepared.numWidth - GUTTER_EXTRA);
 }
 
 /** One row of the two-column view: both sides to `bodyWidth`, with the divider between them. */

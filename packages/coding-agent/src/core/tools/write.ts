@@ -2,7 +2,9 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "fs/promises";
 import { dirname } from "path";
 import { type Static, Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
+import { generateDiffString } from "./edit-diff.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
+import { type FileSnapshot, snapshotFile } from "./file-snapshot.ts";
 import { resolveToCwd } from "./path-utils.ts";
 import { writeRenderers } from "./renderers/write.ts";
 import { type TypeBoxAgentTool, wrapToolDefinition } from "./tool-definition-wrapper.ts";
@@ -40,11 +42,28 @@ export interface WriteToolOptions {
 	operations?: WriteOperations;
 }
 
+export interface WriteToolDetails {
+	/** Absolute path of the written file. */
+	path: string;
+	/**
+	 * Display diff against the previous content, in the shape `generateDiffString` writes, so resumed
+	 * sessions and the HTML export can show the change the way the live transcript does. Absent when the
+	 * file cannot be diffed (custom operations, binary, over-large) or when nothing changed.
+	 */
+	diff?: string;
+	firstChangedLine?: number;
+	/** The write left the file exactly as it was. */
+	unchanged?: boolean;
+}
+
 export function createWriteToolDefinition(
 	cwd: string,
 	options?: WriteToolOptions,
-): ToolDefinition<typeof writeSchema, undefined> {
+): ToolDefinition<typeof writeSchema, WriteToolDetails | undefined> {
 	const ops = options?.operations ?? defaultWriteOperations;
+	// With custom operations the write may land on another machine, so the local file says nothing
+	// about what changed; only the default filesystem path gets a diff.
+	const localFilesystem = options?.operations === undefined;
 	return {
 		name: "write",
 		label: "write",
@@ -73,6 +92,7 @@ export function createWriteToolDefinition(
 				};
 
 				throwIfAborted();
+				const before = localFilesystem ? await snapshotFile(absolutePath) : undefined;
 				// Create parent directories if needed.
 				await ops.mkdir(dir);
 				throwIfAborted();
@@ -83,12 +103,34 @@ export function createWriteToolDefinition(
 
 				return {
 					content: [{ type: "text", text: `Successfully wrote to ${path}` }],
-					details: undefined,
+					details: await writeChange(absolutePath, before),
 				};
 			});
 		},
 		...writeRenderers,
 	};
+}
+
+/**
+ * What the write changed, for the transcript: a diff against the previous content, a note that the
+ * file came out as it was, or just the path when the file cannot be diffed (binary, over-large, or
+ * replaced one the snapshot could not read).
+ */
+async function writeChange(path: string, before: FileSnapshot | undefined): Promise<WriteToolDetails | undefined> {
+	if (!before) {
+		return undefined;
+	}
+	const after = await snapshotFile(path);
+	if (before.kind === "unusable" || after.kind === "unusable") {
+		return { path };
+	}
+	const beforeText = before.kind === "content" ? before.text : "";
+	const afterText = after.kind === "content" ? after.text : "";
+	if (beforeText === afterText) {
+		return { path, unchanged: true };
+	}
+	const { diff, firstChangedLine } = generateDiffString(beforeText, afterText);
+	return { path, diff, firstChangedLine };
 }
 
 export function createWriteTool(cwd: string, options?: WriteToolOptions): TypeBoxAgentTool<typeof writeSchema> {

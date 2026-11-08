@@ -620,7 +620,8 @@ describe("ToolExecutionComponent parity", () => {
 
 		const rendered = component.render(120).join("\n");
 		expect(stripAnsi(rendered)).toContain(error);
-		expect(rendered).toContain(theme.fg("toolOutput", error));
+		expect(rendered).toContain(theme.fg("error", error));
+		expect(rendered).not.toContain(theme.getFgAnsi("syntaxKeyword"));
 	});
 
 	test("expands a collapsed tool result when clicked", () => {

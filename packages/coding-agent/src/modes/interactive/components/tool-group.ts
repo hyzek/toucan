@@ -112,8 +112,7 @@ export class ToolGroupComponent extends Container {
 		const markerToken = this.summary.failed > 0 ? "error" : this.summary.running ? "dim" : "success";
 		const parts = [
 			theme.fg(markerToken, TOOL_ROW_MARKER),
-			` ${this.summary.sentence}`,
-			this.summary.running ? "…" : "",
+			` ${theme.fg("muted", `${this.summary.sentence}${this.summary.running ? "…" : ""}`)}`,
 		];
 		if (this.summary.running && this.runStartedAt !== undefined) {
 			parts.push(theme.fg("muted", ` · ${formatElapsedSeconds(Date.now() - this.runStartedAt)}`));

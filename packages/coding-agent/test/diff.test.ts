@@ -142,7 +142,8 @@ describe("DiffComponent", () => {
 	it("shows one column below the split width and two above it", () => {
 		const diff = change(3);
 
-		expect(rows(new DiffComponent(diff), 100)).toEqual([
+		const flat = rows(new DiffComponent(diff), 100);
+		expect(flat.map((row) => row.trimEnd())).toEqual([
 			RULE.repeat(100),
 			"▌1- │ line 0",
 			"▌2- │ line 1",
@@ -152,6 +153,7 @@ describe("DiffComponent", () => {
 			"▌3+ │ line x2",
 			RULE.repeat(100),
 		]);
+		expect(flat[1]).toHaveLength(100); // the band reaches the block's right edge
 
 		const split = rows(new DiffComponent(diff), 160);
 		expect(split).toHaveLength(5);

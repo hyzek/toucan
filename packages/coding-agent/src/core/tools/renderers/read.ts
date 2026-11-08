@@ -4,13 +4,18 @@
  * Renderers live apart from the implementation so a process that only displays tool output does not
  * load the execution path or its typebox parameter schema. `read.ts` spreads these into its
  * definition, so the tool's public shape is unchanged.
+ *
+ * Under the row, a guide holds a block that says what was loaded (`185 lines loaded`, muted): expanded,
+ * the file's content follows under the same guide, syntax-coloured from its language; collapsed, the
+ * block is that one line plus the key that expands it. A failed read shows the error line instead.
  */
 
 import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
 import type { ImageContent, TextContent } from "@hyzek/toucan-ai";
-import { Text } from "@hyzek/toucan-tui";
+import { Container, Text } from "@hyzek/toucan-tui";
 import { getReadmePath } from "../../../config.ts";
-import { keyHint, keyText } from "../../../modes/interactive/components/keybinding-hints.ts";
+import { keyText } from "../../../modes/interactive/components/keybinding-hints.ts";
+import { ToolBranchBlock } from "../../../modes/interactive/components/tool-branch.ts";
 import { getLanguageFromPath, highlightCode, type Theme } from "../../../modes/interactive/theme/theme.ts";
 import { formatPathRelativeToCwdOrAbsolute } from "../../../utils/paths.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
@@ -121,25 +126,31 @@ function formatReadResult(
 	showImages: boolean,
 	_cwd: string,
 	isError: boolean,
+	expandHint: string,
 ): string {
-	if (!options.expanded && !isError) {
-		return "";
+	if (isError) {
+		const message = getTextOutput(result, showImages).trim().split("\n");
+		return theme.fg("error", options.expanded ? message.join("\n") : (message[0] ?? "Error"));
 	}
 
 	const rawPath = str(args?.file_path ?? args?.path);
 	const output = getTextOutput(result, showImages);
-	const lang = !isError && rawPath ? getLanguageFromPath(rawPath) : undefined;
-	const renderedLines = lang ? highlightCode(replaceTabs(output), lang) : output.split("\n");
-	const lines = trimTrailingEmptyLines(renderedLines);
-	const maxLines = options.expanded ? lines.length : 10;
-	const displayLines = lines.slice(0, maxLines);
-	const remaining = lines.length - maxLines;
-	let text = `\n${displayLines.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
-	if (remaining > 0) {
-		text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+	const lines = trimTrailingEmptyLines(output.split("\n"));
+	const truncation = result.details?.truncation;
+	let text = theme.fg("muted", `${lines.length} lines loaded`);
+	if (truncation?.truncated) {
+		text += ` ${theme.fg("warning", "(truncated)")}`;
+	}
+	if (!options.expanded) {
+		return `${text} ${theme.fg("muted", `(${expandHint})`)}`;
 	}
 
-	const truncation = result.details?.truncation;
+	const lang = rawPath ? getLanguageFromPath(rawPath) : undefined;
+	const renderedLines = lang
+		? trimTrailingEmptyLines(highlightCode(replaceTabs(output), lang))
+		: lines.map((line) => theme.fg("toolOutput", replaceTabs(line)));
+	text += `\n${renderedLines.join("\n")}`;
+
 	if (truncation?.truncated) {
 		if (truncation.firstLineExceedsLimit) {
 			text += `\n${theme.fg("warning", `[First line exceeds ${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit]`)}`;
@@ -164,18 +175,26 @@ export const readRenderers: Pick<ToolDefinition<any, ReadToolDetails | undefined
 		return text;
 	},
 	renderResult(result, options, theme, context) {
-		const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-		text.setText(
-			formatReadResult(
-				context.args as ReadRenderArgs | undefined,
-				result,
-				options,
-				theme,
-				context.showImages,
-				context.cwd,
-				context.isError,
+		const container = (context.lastComponent as Container | undefined) ?? new Container();
+		container.clear();
+		const block = new ToolBranchBlock();
+		block.addChild(
+			new Text(
+				formatReadResult(
+					context.args as ReadRenderArgs | undefined,
+					result,
+					options,
+					theme,
+					context.showImages,
+					context.cwd,
+					context.isError,
+					context.keyHint("app.tools.expand", "to expand"),
+				),
+				0,
+				0,
 			),
 		);
-		return text;
+		container.addChild(block);
+		return container;
 	},
 };

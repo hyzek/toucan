@@ -65,11 +65,10 @@ describe("bash tool rendering of file edits", () => {
 	it("states the change under the row, then the diff, joined by a guide", () => {
 		const lines = resultLines("sed -i 's/one/two/' src/app.ts", "-1 one\n+1 two");
 
-		expect(lines[1]).toBe("  ├ +1 -1 at line 1");
-		expect(lines[2]).toBe("");
-		expect(lines[3]).toBe(`  │ ${"\u2500".repeat(76)}`);
-		expect(lines[4]).toBe("  │ ▌1- │ one");
-		expect(lines[5]).toBe("  │ ▌1+ │ two");
+		expect(lines[0]).toBe("  ├ +1 -1 at line 1");
+		expect(lines[1]).toBe(`  │ ${"\u2500".repeat(76)}`);
+		expect(lines[2]).toBe("  │ ▌1- │ one");
+		expect(lines[3]).toBe("  │ ▌1+ │ two");
 		expect(lines.at(-1)).toBe(`  └ ${"\u2500".repeat(76)}`);
 	});
 
@@ -82,7 +81,7 @@ describe("bash tool rendering of file edits", () => {
 			context,
 		);
 
-		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["", "  └ no change"]);
+		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["  └ no change"]);
 	});
 
 	it("keeps the plain output of a command that is not an edit", () => {
@@ -103,6 +102,6 @@ describe("bash tool rendering of file edits", () => {
 
 		expect(folded.filter((line) => line.includes("▌"))).toHaveLength(24);
 		expect(folded.at(-1)).toContain("16 more diff lines (ctrl+o to expand)");
-		expect(resultLines("sed -i 's/one/two/' src/app.ts", diff, true)).toHaveLength(45);
+		expect(resultLines("sed -i 's/one/two/' src/app.ts", diff, true)).toHaveLength(43);
 	});
 });

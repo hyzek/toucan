@@ -266,7 +266,7 @@ describe("Coding Agent Tools", () => {
 			const result = await writeTool.execute("test-call-3", { path: testFile, content });
 
 			expect(getTextOutput(result)).toBe(`Successfully wrote to ${testFile}`);
-			expect(result.details).toBeUndefined();
+			expect(result.details).toMatchObject({ path: testFile, diff: "+1 Test content", firstChangedLine: 1 });
 		});
 
 		it("should create parent directories", async () => {
@@ -276,6 +276,47 @@ describe("Coding Agent Tools", () => {
 			const result = await writeTool.execute("test-call-4", { path: testFile, content });
 
 			expect(getTextOutput(result)).toContain("Successfully wrote");
+		});
+
+		it("says so when the write left the file unchanged", async () => {
+			const testFile = join(testDir, "write-same.txt");
+			writeFileSync(testFile, "same\n", "utf8");
+
+			const result = await writeTool.execute("test-call-write-same", { path: testFile, content: "same\n" });
+
+			expect(result.details).toEqual({ path: testFile, unchanged: true });
+		});
+
+		it("diffs a write that overwrites a file", async () => {
+			const testFile = join(testDir, "write-overwrite.txt");
+			writeFileSync(testFile, "one\ntwo\n", "utf8");
+
+			const result = await writeTool.execute("test-call-write-overwrite", {
+				path: testFile,
+				content: "one\ntwo changed\n",
+			});
+
+			expect(result.details?.diff).toContain("-2 two");
+			expect(result.details?.diff).toContain("+2 two changed");
+		});
+
+		it("adds no diff when custom operations do the writing", async () => {
+			const remoteTool = createWriteToolDefinition(testDir, {
+				operations: {
+					writeFile: async () => {},
+					mkdir: async () => {},
+				},
+			});
+
+			const result = await remoteTool.execute(
+				"test-call-write-remote",
+				{ path: join(testDir, "remote.txt"), content: "remote content" },
+				undefined,
+				undefined,
+				fakeCtx(testDir),
+			);
+
+			expect(result.details).toBeUndefined();
 		});
 	});
 

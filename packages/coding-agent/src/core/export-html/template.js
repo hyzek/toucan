@@ -1105,11 +1105,20 @@
 
             if (content === null) {
               html += `<div class="tool-error">[invalid content arg - expected string]</div>`;
+            } else if (result?.details?.diff) {
+              html += '<div class="tool-diff">';
+              for (const line of result.details.diff.split('\n')) {
+                const cls = line.match(/^\+/) ? 'diff-added' : line.match(/^-/) ? 'diff-removed' : 'diff-context';
+                html += `<div class="${cls}">${escapeHtml(replaceTabs(line))}</div>`;
+              }
+              html += '</div>';
+            } else if (result?.details?.unchanged) {
+              html += `<div class="tool-output"><div>no change</div></div>`;
             } else if (content) {
               const lang = filePath ? getLanguageFromPath(filePath) : null;
               html += formatExpandableOutput(content, 10, lang);
             }
-            if (result) {
+            if (result && !result.details?.diff && !result.details?.unchanged) {
               const output = getResultText().trim();
               if (output) html += `<div class="tool-output"><div>${escapeHtml(output)}</div></div>`;
             }
