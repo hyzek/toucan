@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pairChanges, parseDisplayDiff, wordMarks } from "../src/core/tools/diff-lines.ts";
+import { diffStats, pairChanges, parseDisplayDiff, wordMarks } from "../src/core/tools/diff-lines.ts";
 import { generateDiffString } from "../src/core/tools/edit-diff.ts";
 
 function line(kind: string, text: string, extra: object = {}) {
@@ -47,6 +47,34 @@ describe("parseDisplayDiff", () => {
 
 	it("treats text it does not recognise as context", () => {
 		expect(parseDisplayDiff("warning: not a diff")).toEqual([line("context", "warning: not a diff")]);
+	});
+});
+
+describe("diffStats", () => {
+	it("counts added and removed lines and every line of the display", () => {
+		const stats = diffStats(parseDisplayDiff("  1 a\n-  1 b\n+  2 c\n+  3 d"));
+
+		expect(stats).toMatchObject({ lines: 4, added: 2, removed: 1 });
+		expect(stats.hunks).toHaveLength(1);
+	});
+
+	it("divides hunks at separators and numbers each by its first changed line", () => {
+		const stats = diffStats(parseDisplayDiff("  5 a\n-  6 b\n+  6 c\n      ...\n  12 d\n+ 13 e"));
+
+		expect(stats.hunks).toEqual([
+			{ start: 0, length: 3, line: 6, added: 1, removed: 1 },
+			{ start: 4, length: 2, line: 13, added: 1, removed: 0 },
+		]);
+	});
+
+	it("takes the line from the old file when the hunk starts by removing", () => {
+		const stats = diffStats(parseDisplayDiff("  5 a\n-  6 b\n-  7 c\n  8 d"));
+
+		expect(stats.hunks[0]).toMatchObject({ line: 6, added: 0, removed: 2 });
+	});
+
+	it("reports no line for a hunk that holds no change", () => {
+		expect(diffStats(parseDisplayDiff("  1 a\n  2 b")).hunks[0]).toMatchObject({ line: 0 });
 	});
 });
 

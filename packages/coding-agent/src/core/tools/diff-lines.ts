@@ -4,7 +4,8 @@
  * Tools store a diff for display as a string, one line per changed or context line, written by
  * `generateDiffString` as `sign + padded number + " " + text`. A view that colours, highlights and
  * folds a diff needs the pieces that string hides: which side a line belongs to, its number, its
- * text, and which characters inside a changed pair actually differ. This file recovers them.
+ * text, which runs of lines form one change, and which characters inside a changed pair actually
+ * differ. This file recovers them.
  */
 
 import * as Diff from "diff";
@@ -116,6 +117,66 @@ function sharedIndent(oldText: string, newText: string): number {
 		index++;
 	}
 	return index;
+}
+
+/** A run of diff lines the display shows together; separators divide them. */
+export interface DiffHunk {
+	/** Index in the parsed lines where the hunk starts. */
+	start: number;
+	/** Parsed lines the hunk covers, its separators excluded. */
+	length: number;
+	/**
+	 * Where the change sits: the number of the hunk's first changed line, in the old file when the
+	 * hunk starts by removing lines. Zero when the hunk holds no change.
+	 */
+	line: number;
+	added: number;
+	removed: number;
+}
+
+/** The counts a diff block states about itself, for its summary line and its footer. */
+export interface DiffStats {
+	/** Every line of the display, separators included. */
+	lines: number;
+	added: number;
+	removed: number;
+	hunks: DiffHunk[];
+}
+
+/**
+ * Groups parsed lines into hunks and counts what a diff block says about itself.
+ *
+ * A hunk is a run of lines with no separator in it, which is how a display diff already divides a
+ * change that touches several places.
+ */
+export function diffStats(lines: readonly DiffLine[]): DiffStats {
+	const hunks: DiffHunk[] = [];
+	let added = 0;
+	let removed = 0;
+	let index = 0;
+	while (index < lines.length) {
+		if (lines[index].kind === "separator") {
+			index++;
+			continue;
+		}
+		const hunk: DiffHunk = { start: index, length: 0, line: 0, added: 0, removed: 0 };
+		while (index < lines.length && lines[index].kind !== "separator") {
+			const line = lines[index];
+			hunk.length++;
+			if (line.kind === "added") {
+				hunk.added++;
+				added++;
+				hunk.line ||= line.newNumber ?? 0;
+			} else if (line.kind === "removed") {
+				hunk.removed++;
+				removed++;
+				hunk.line ||= line.oldNumber ?? 0;
+			}
+			index++;
+		}
+		hunks.push(hunk);
+	}
+	return { lines: lines.length, added, removed, hunks };
 }
 
 /**

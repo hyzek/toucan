@@ -6,6 +6,7 @@ import { stripAnsi } from "../../utils/ansi.ts";
 import { resolvePath, shortenHomePath } from "../../utils/paths.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
 import type { ToolRenderContext } from "../extensions/types.ts";
+import type { DiffStats } from "./diff-lines.ts";
 
 export function shortenPath(path: unknown): string {
 	if (typeof path !== "string") return "";
@@ -170,9 +171,32 @@ export function invalidArgText(theme: Theme): string {
 	return theme.fg("error", "[invalid arg]");
 }
 
+/**
+ * What a change did, as `+5 -4` in the diff's colours, or `no change` when it moved nothing.
+ */
+export function diffCountsText(added: number, removed: number, theme: Theme): string {
+	const parts: string[] = [];
+	if (added > 0) parts.push(theme.fg("toolDiffAdded", `+${added}`));
+	if (removed > 0) parts.push(theme.fg("toolDiffRemoved", `-${removed}`));
+	return parts.length > 0 ? parts.join(" ") : theme.fg("muted", "no change");
+}
+
+/** Where a change starts, as `at line 6`; empty when the diff carries no line number. */
+export function diffLineText(line: number, theme: Theme): string {
+	return line > 0 ? ` ${theme.fg("muted", `at line ${line}`)}` : "";
+}
+
+/**
+ * How a change is divided, as `· 2 hunks (11 diff lines)`; empty for the single hunk a reader can count
+ * on one screen.
+ */
+export function diffHunkText(stats: DiffStats, theme: Theme): string {
+	if (stats.hunks.length <= 1) return "";
+	return ` ${theme.fg("muted", `· ${stats.hunks.length} hunks (${stats.lines} diff lines)`)}`;
+}
+
 /** State a tool row shows in its leading marker. */
 export type ToolRowStatus = "pending" | "done" | "failed";
-
 /**
  * The glyph that leads a tool row.
  *

@@ -13,9 +13,11 @@
  *   # then select mock/mock-coder via /model and type any prompt
  *
  * Run it from a directory containing a package.json and a git history so the calls succeed; write and
- * edit only touch files under /tmp.
+ * edit only touch files under /tmp, which are reset when the extension loads so every run replays the
+ * same diffs.
  */
 
+import { rmSync } from "node:fs";
 import {
 	type AssistantMessage,
 	createFauxCore,
@@ -115,6 +117,11 @@ function scriptedResponses(): AssistantMessage[] {
 }
 
 export default function (toucan: ExtensionAPI) {
+	// Reset the files the script writes, so every run shows the same `write`, `edit` and `printf` diffs
+	// instead of an unchanged second pass.
+	rmSync(NOTES_FILE, { force: true });
+	rmSync(STATUS_FILE, { force: true });
+
 	const core = createFauxCore({ api: "mock-api", tokensPerSecond: 60 });
 	const responses = scriptedResponses();
 	let index = 0;

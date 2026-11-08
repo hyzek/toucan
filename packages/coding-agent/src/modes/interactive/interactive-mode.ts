@@ -184,6 +184,7 @@ import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { ToolGroupComponent } from "./components/tool-group.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { TrustSelectorComponent } from "./components/trust-selector.ts";
+import { turnDurationLine } from "./components/turn-duration.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
 import { WorkingStatusEngine } from "./components/working-status.ts";
@@ -494,6 +495,13 @@ export class InteractiveMode {
 
 	// Tool execution tracking: toolCallId -> component
 	private pendingTools = new Map<string, ToolExecutionComponent>();
+
+	// The turns the transcript has already counted, for the `Turn took` line. A rebuilt transcript that
+	// renders in parts keeps counting across the parts, so the totals live here rather than in a loop.
+	private countedTurnMs = 0;
+	private countedTurns = 0;
+	// When the running turn started, live only: a replayed turn is timed from the session's timestamps.
+	private liveTurnStartedAt: number | undefined = undefined;
 
 	// Which tool group each row currently sits in, so a settling call re-says its group's sentence.
 	private readonly toolGroups = new WeakMap<ToolExecutionComponent, ToolGroupComponent>();
@@ -3256,7 +3264,12 @@ export class InteractiveMode {
 							usage: event.entry.usage,
 						});
 					}
-					this.renderSessionEntries(retainedEntries.filter((entry) => entriesAfterCompaction.has(entry.id)));
+					this.renderSessionEntries(
+						retainedEntries.filter((entry) => entriesAfterCompaction.has(entry.id)),
+						{
+							turnTotals: "continue",
+						},
+					);
 					for (const entryId of entriesAfterCompaction) this.entriesRenderedByBoundaryCompaction.add(entryId);
 					this.footer.invalidate();
 					this.ui.requestRender();
@@ -3279,6 +3292,8 @@ export class InteractiveMode {
 					this.addMessageToChat(event.message);
 					this.ui.requestRender();
 				} else if (event.message.role === "user") {
+					// The turn's clock starts at the prompt; `agent_end` prints the line that closes it.
+					this.liveTurnStartedAt ??= Date.now();
 					this.addMessageToChat(event.message);
 					this.updatePendingMessagesDisplay();
 					this.ui.requestRender();
@@ -3443,6 +3458,10 @@ export class InteractiveMode {
 					this.streamingMessage = undefined;
 				}
 				this.pendingTools.clear();
+				if (this.liveTurnStartedAt !== undefined) {
+					this.addTurnDuration(Date.now() - this.liveTurnStartedAt);
+					this.liveTurnStartedAt = undefined;
+				}
 
 				this.ui.requestRender();
 				break;
@@ -3859,9 +3878,26 @@ export class InteractiveMode {
 	private renderSessionItems(
 		items: readonly RenderSessionItem[],
 		messageMeta?: Map<AgentMessage, { id: string; timestamp: string }>,
-		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
+		options: { updateFooter?: boolean; populateHistory?: boolean; turnTotals?: "reset" | "continue" } = {},
 	): void {
 		this.pendingTools.clear();
+		if (options.turnTotals !== "continue") {
+			this.countedTurnMs = 0;
+			this.countedTurns = 0;
+			// The rebuilt transcript says what the session timed. A live clock left over from before the
+			// rebuild would add a turn on top of those, so it goes with them.
+			this.liveTurnStartedAt = undefined;
+		}
+		// A replayed turn is timed from the session's own timestamps: its prompt to the last entry before
+		// the next prompt. The `Turn took` line is added as each turn closes.
+		let turnStartMs: number | undefined;
+		let turnEndMs: number | undefined;
+		const closeTurn = (): void => {
+			if (turnStartMs === undefined || turnEndMs === undefined) return;
+			this.addTurnDuration(turnEndMs - turnStartMs);
+			turnStartMs = undefined;
+			turnEndMs = undefined;
+		};
 		const renderedPendingTools = new Map<string, ToolExecutionComponent>();
 		// Cache misses are not persisted, unlike successful cache-warming usage.
 		// Re-derive them and inject them after the assistant messages that paid for them.
@@ -3889,9 +3925,19 @@ export class InteractiveMode {
 			}
 
 			const message = item;
+			const meta = messageMeta?.get(message);
+			const at = meta ? Date.parse(meta.timestamp) : Number.NaN;
+			if (Number.isFinite(at)) {
+				if (message.role === "user") {
+					closeTurn();
+					turnStartMs = at;
+					turnEndMs = at;
+				} else if (turnStartMs !== undefined) {
+					turnEndMs = Math.max(turnEndMs ?? at, at);
+				}
+			}
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
-				const meta = messageMeta?.get(message);
 				this.addMessageToChat(message, {
 					messageId: meta?.id,
 					timestamp: meta?.timestamp,
@@ -3946,7 +3992,6 @@ export class InteractiveMode {
 				}
 			} else {
 				// All other messages use standard rendering
-				const meta = messageMeta?.get(message);
 				this.addMessageToChat(message, {
 					...options,
 					messageId: meta?.id,
@@ -3955,6 +4000,7 @@ export class InteractiveMode {
 			}
 		}
 
+		closeTurn();
 		for (const [toolCallId, component] of renderedPendingTools) {
 			this.pendingTools.set(toolCallId, component);
 		}
@@ -3969,7 +4015,7 @@ export class InteractiveMode {
 	 */
 	private renderSessionEntries(
 		entries: SessionEntry[],
-		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
+		options: { updateFooter?: boolean; populateHistory?: boolean; turnTotals?: "reset" | "continue" } = {},
 	): void {
 		// Selection coordinates point into the transcript being replaced (#9311).
 		if (this.renderer instanceof TuiAltScreen) this.renderer.resetTextSelection();
@@ -3988,6 +4034,19 @@ export class InteractiveMode {
 			return messages;
 		});
 		this.renderSessionItems(items, messageMeta, options);
+	}
+
+	/**
+	 * The line that closes a turn: how long it took, then how long the session has taken and how many
+	 * turns that covers.
+	 */
+	private addTurnDuration(turnMs: number): void {
+		this.countedTurnMs += turnMs;
+		this.countedTurns += 1;
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(
+			new Text(turnDurationLine(turnMs, this.countedTurnMs, this.countedTurns, theme), this.outputPad, 0),
+		);
 	}
 
 	private addCacheWarmingUsage(entry: UsageEntry): void {

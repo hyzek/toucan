@@ -4,7 +4,8 @@ Source: `pi-claude-code-ui` (npm, v1.0.109), repo `FammasMaz/pi-cc-tools`, MIT.
 It is a pi extension. We port only the rendering behavior into fixed core code
 (no extension, no commands, no settings). Hardcoded decisions replace its config:
 
-- `toolBackground: "transparent"` — no rules, no panel backgrounds on tool rows.
+- `toolBackground: "transparent"` — no panel backgrounds and no rules on tool
+  rows. Revised in Phase 7: a change (edit) block does paint its own surfaces.
 - `groupToolCalls: true` — consecutive calls fold into one sentence.
 - `thinkingMode: "live"` — thinking streams, then collapses to `Thought for Xs`.
 
@@ -187,6 +188,8 @@ Manual check:
   column work. The plugin's useful ideas are kept: highlight each side as one block rather than line
   by line (so a change inside a multi-line string still colours correctly), gate word marks by
   similarity, and cap highlighting by size.
+  Revised by Phase 7: the block now paints those backgrounds and rules. The renderer is still
+  toucan's own, not a port.
 - `core/tools/diff-lines.ts` holds the model: the display-diff string back into
   `{kind, oldNumber, newNumber, text}`, word ranges for a -/+ pair, and the pairing rule.
   `EditToolDetails.diff` stays the string it is today: the HTML export template parses it in the
@@ -228,6 +231,79 @@ Manual check:
   - [ ] Full session (prompt → thinking → tools → edits → reply) looks like a
     coherent transcript, no leftover old panel rendering paths.
   - [ ] Light theme spot check (tool dots, diff colors readable).
+
+## Phase 7 — The change block: surfaces, guide, turn line
+
+Goal: a tool row's output should read the way the plugin's does — the change on tinted
+surfaces, its parts named, the block joined to the call it belongs to, and the turn
+closed by a duration line.
+
+Trigger: after Phases 1-6 the transcript was structurally right and still did not look
+like the plugin. Compared side by side, the whole gap was the change block: the plugin's
+state lives in line backgrounds, a left accent bar, number-then-sign gutters, rules
+around each hunk, a summary line, a footer and a per-hunk label, none of which Phase 5
+had kept.
+
+### Phase 7 decisions (settled)
+
+- Phase 3's rule holds for tool rows: no panel behind a row, no rule around it. What
+  changed is the inside of a change block. A diff row is painted with the terminal
+  background mixed toward its state colour (added 0.24, removed 0.12), the words that
+  differ inside an edited line sit on a deeper mix (0.44 and 0.26), and the block's
+  context rows sit on a surface 0.05 toward the text colour. The base comes from
+  `Theme.terminalBackground` (OSC 11, or the colour the appearance implies), so the
+  tints are correct on a black, a white and a tinted terminal. `▌` in the state colour
+  marks the left edge of a changed row.
+- The gutter reads number then sign (`12-`, `13+`), and a `│` in `borderMuted` separates
+  it from the body. A rule opens and closes every hunk. The `...` row the display diff
+  used to draw is gone: the rule plus the hunk's label say the same thing.
+- The fold budget still counts diff rows only (24); rules, labels and blanks are on top.
+- Word marks are the deeper band now. `renderDiff` no longer colours the changed words
+  with the state foreground, so a highlighted line keeps its syntax colours. A line with
+  no partner, or a pair too unlike to be an edit, is one band across with no word picked
+  out.
+- Hunk labels come from the tool through `DiffViewOptions.hunkLabel`. The edit tool names
+  them `Edit i/n at line L` when it made more than one edit and `Hunk i/n at line L` when
+  one edit landed in several places: the hunks of the stored diff are not the operations.
+  One hunk gets no label, and its position goes on the summary line instead
+  (`+1 -1 at line 8`).
+- Summary and footer: `2 edits +5 -4` above the diff and `2 edits +5 -4 · 2 hunks
+  (11 diff lines)` below it when there is more than one hunk. `renderers/change-block.ts`
+  builds both, so the edit tool and a shell command that rewrote a file read the same.
+- Guide: `ToolBranchBlock` wraps the block under a call row. The first row joins with
+  `├`, middle rows continue with `│`, the last closes with `└`, blank rows carry no glyph.
+  The glyph sits two columns right of the row's marker, under the first letter of the
+  label.
+- Turn line: `✻ Turn took 6s (Total time 6s · 1 turn)` when a turn ends. Live it is the
+  prompt to `agent_end`; a replayed transcript uses the session's own timestamps, a turn
+  running from its prompt entry to the last entry before the next prompt. Nothing new is
+  stored. Sub-second turns print one decimal, as thinking rows do.
+- Row verbs are title-case (`Read`, `Edit`, `Write`, `Grep`, `Find`, `Ls`), matching the
+  plugin's labels and this plan's own Phase 3 text (`Read src/app.ts`). A shell row keeps
+  its `$ command` form.
+- Shell edits that change nothing: when a command that can only write one file leaves it
+  as it was, the row says `no change` under the guide rather than `(no output)`, because
+  the header already claims it was an edit.
+
+Files: `core/tools/diff-lines.ts` (hunks and counts), `modes/interactive/components/diff.ts`
+(surfaces, rules, labels), `components/tool-branch.ts`, `components/turn-duration.ts`,
+`core/tools/renderers/change-block.ts`, `core/tools/renderers/{edit,bash}.ts`,
+`interactive-mode.ts` (turn lines), `theme/theme.ts` (`terminalBackground`).
+
+Manual check:
+- [ ] Edit at 100 columns: `• Edit path`, `├ +A -R at line L`, rules, banded rows with
+  `▌` and `12-`, `└` closing the block.
+- [ ] Two or more edits in one call: `Edit path (2 edits)`, `├ 2 edits +A -R`,
+  `Edit 1/2 at line L` labels, and the `· N hunks (M diff lines)` footer.
+- [ ] One edit landing in two places: labels read `Hunk 1/2 at line L`.
+- [ ] Wide terminal (>= 160): sides sit side by side inside the guide, rules span the
+  block, bands reach the block's edge.
+- [ ] Group of shell commands expanded: each row's block reads like an edit's.
+- [ ] `printf 'x' > file` twice: the second row says `no change`.
+- [ ] End of a turn: `✻ Turn took 6s (Total time 6s · 1 turn)`; after a second prompt the
+  total and turn count grow.
+- [ ] Resume a session: the same turn lines appear, timed from the stored timestamps.
+- [ ] Light theme: bands, accent bars and gutters stay readable.
 
 ## Open questions (answer before starting the phase)
 

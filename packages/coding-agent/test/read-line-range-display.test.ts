@@ -132,7 +132,7 @@ describe("read line range display", () => {
 			{ requestRender() {} } as TUI,
 			tempDir,
 		);
-		expect(stripVTControlCharacters(tool.render(120).join("\n"))).toContain("read notes.txt:25-37");
+		expect(stripVTControlCharacters(tool.render(120).join("\n"))).toContain("Read notes.txt:25-37");
 
 		const tree = new TreeSelectorComponent(
 			SessionManager.open(sessionPath).getTree(),

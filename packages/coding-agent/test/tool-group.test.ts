@@ -55,7 +55,7 @@ describe("ToolGroupComponent", () => {
 		settle(read);
 		group.addTool(read);
 
-		expect(render(group)).toEqual(["• read package.json"]);
+		expect(render(group)).toEqual(["• Read package.json"]);
 	});
 
 	test("two finished calls say one sentence and hide their rows", () => {
@@ -111,8 +111,8 @@ describe("ToolGroupComponent", () => {
 		group.setExpanded(true);
 		const lines = render(group);
 		expect(lines[0]).toContain("to collapse");
-		expect(lines).toContain("• read package.json");
-		expect(lines).toContain("• ls .");
+		expect(lines).toContain("• Read package.json");
+		expect(lines).toContain("• Ls .");
 
 		group.setExpanded(false);
 		expect(render(group)).toHaveLength(1);
@@ -131,8 +131,8 @@ describe("ToolGroupComponent", () => {
 		group.handleMouse(event);
 
 		const lines = render(group);
-		expect(lines).toContain("• read package.json");
-		expect(lines).toContain("• ls .");
+		expect(lines).toContain("• Read package.json");
+		expect(lines).toContain("• Ls .");
 	});
 
 	test("ticks the elapsed tail while calls run and stops once they settle", () => {

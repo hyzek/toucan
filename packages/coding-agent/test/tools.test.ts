@@ -835,7 +835,8 @@ describe("Coding Agent Tools", () => {
 			expect(output).toContain("line-2001");
 			expect(output).toContain("line-4000");
 			expect(output).toMatch(/\[Showing lines 2001-4000 of 4000\. Full output: /);
-			expect(output).not.toContain("4001");
+			// Check the count text, not the bare number: the full-output path could contain "4001".
+			expect(output).not.toMatch(/of 4001|2001-4001/);
 		});
 
 		it("should decode UTF-8 characters split across output chunks", async () => {

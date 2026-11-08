@@ -7,12 +7,28 @@ function rows(component: DiffComponent, width: number): string[] {
 	return component.render(width).map((line) => stripAnsi(line));
 }
 
+/** The distinct background colours a rendered row opens. */
+function bands(line: string): string[] {
+	return [...new Set(line.match(/\x1b\[48;[0-9;]*m/g) ?? [])];
+}
+
+/** The columns where a row draws a divider. */
+function dividerColumns(row: string): number[] {
+	const columns: number[] = [];
+	for (const [index, char] of [...row].entries()) {
+		if (char === "\u2502") columns.push(index);
+	}
+	return columns;
+}
+
 /** A diff in the shape `generateDiffString` writes for a file with single-digit line numbers. */
 function change(count: number, prefix = "line"): string {
 	const removed = Array.from({ length: count }, (_, i) => `-${i + 1} ${prefix} ${i}`);
 	const added = Array.from({ length: count }, (_, i) => `+${i + 1} ${prefix} x${i}`);
 	return [...removed, ...added].join("\n");
 }
+
+const RULE = "\u2500";
 
 describe("renderDiff", () => {
 	beforeAll(() => initTheme("dark"));
@@ -21,124 +37,147 @@ describe("renderDiff", () => {
 		{
 			name: "text is inserted at the start of a line",
 			diff: "-83   await commitRecordingChunk({\n+83   const result = await commitRecordingChunk({",
-			expected: ["-83   await commitRecordingChunk({", "+83   const result = await commitRecordingChunk({"],
+			expected: ["▌83- │   await commitRecordingChunk({", "▌83+ │   const result = await commitRecordingChunk({"],
 		},
 		{
 			name: "indented text is replaced",
 			diff: "-12     const value = oldValue\n+12     const value = newValue",
-			expected: ["-12     const value = oldValue", "+12     const value = newValue"],
+			expected: ["▌12- │     const value = oldValue", "▌12+ │     const value = newValue"],
 		},
-	])("preserves indentation when $name", ({ diff, expected }) => {
-		const rendered = renderDiff(diff);
-
-		expect(stripAnsi(rendered).split("\n")).toEqual(expected);
+	])("puts the number before the sign and keeps indentation when $name", ({ diff, expected }) => {
+		expect(stripAnsi(renderDiff(diff)).split("\n")).toEqual(expected);
 	});
 
-	it("marks only the words that differ in a changed line", () => {
-		const rendered = renderDiff(
+	it("picks out the words that differ with a deeper band", () => {
+		const [removed, added] = renderDiff(
 			"-83   await commitRecordingChunk({\n+83   const result = await commitRecordingChunk({",
-		);
-		const insertion = theme.fg("toolDiffAdded", "const result = ");
+		).split("\n");
 
-		expect(rendered).toContain(insertion);
-		expect(rendered.indexOf("+83   ")).toBeLessThan(rendered.indexOf(insertion));
-		expect(rendered).not.toContain(theme.fg("toolDiffAdded", "await"));
-		expect(stripAnsi(rendered)).not.toContain("-83   const result");
+		// The added line carries a deeper band behind the words it gained; the removed line lost nothing,
+		// so it is one band all the way across.
+		expect(bands(added)).toHaveLength(2);
+		expect(bands(removed)).toHaveLength(1);
+		expect(stripAnsi(added)).toBe("▌83+ │   const result = await commitRecordingChunk({");
 	});
 
-	it("keeps context dim and marks the context the diff skipped", () => {
+	it("dims context lines and marks the context the diff skipped", () => {
 		const rendered = renderDiff(" 1 alpha\n   ...\n 9 omega");
 		const lines = rendered.split("\n");
 
-		expect(lines[0]).toContain(theme.fg("toolDiffContext", "alpha"));
-		expect(lines[1]).toContain(theme.fg("toolDiffContext", "..."));
-		expect(rows(new DiffComponent(" 1 alpha\n   ...\n 9 omega"), 80)).toEqual([" 1 alpha", "   ...", " 9 omega"]);
+		expect(stripAnsi(lines[0])).toBe(" 1  │ alpha");
+		expect(lines[0]).toContain("\x1b[2m");
+		expect(lines[1]).toBe(theme.fg("toolDiffContext", "..."));
+		expect(stripAnsi(lines[2])).toBe(" 9  │ omega");
 	});
 
 	it("colours the body with the file language on a paired edit", () => {
 		const colored = renderDiff("-1 const x = 1;\n+1 const x = 2;", { filePath: "src/app.ts" });
 
 		expect(colored).toContain(theme.getFgAnsi("syntaxKeyword"));
-		expect(stripAnsi(colored)).toBe("-1 const x = 1;\n+1 const x = 2;");
+		expect(stripAnsi(colored)).toBe("▌1- │ const x = 1;\n▌1+ │ const x = 2;");
 	});
 
-	it("marks changed words in the state colour and keeps the rest of the line highlighted", () => {
+	it("keeps the syntax colours under the deeper band of a changed word", () => {
 		const rendered = renderDiff("-1 export const value = 1;\n+1 export const value = 2;", {
 			filePath: "src/app.ts",
 		});
+		const added = rendered.split("\n")[1];
 
-		expect(rendered).toContain(theme.fg("toolDiffRemoved", "1"));
-		expect(rendered).toContain(theme.fg("toolDiffAdded", "2"));
-		expect(rendered).toContain(`${theme.getFgAnsi("syntaxKeyword")}export`);
-		expect(stripAnsi(rendered)).toBe("-1 export const value = 1;\n+1 export const value = 2;");
+		expect(added).toContain(`${theme.getFgAnsi("syntaxKeyword")}export`);
+		expect(stripAnsi(added)).toBe("▌1+ │ export const value = 2;");
 	});
 
-	it("tints a pure insertion as one line, and a rewrite that does not pair as well", () => {
-		const insertion = renderDiff("+1 const added = 1;", { filePath: "src/app.ts" });
-		expect(insertion).toContain(theme.fg("toolDiffAdded", "const added = 1;"));
+	it("bands a pure insertion as one line, and a rewrite that does not pair as well", () => {
+		const insertion = renderDiff("+1 const added = 1;");
+		expect(bands(insertion)).toHaveLength(1);
+		expect(stripAnsi(insertion)).toBe("▌1+ │ const added = 1;");
 
-		const rewrite = renderDiff("-1 one\n-2 two\n+1 replaced", { filePath: "src/app.ts" });
-		expect(rewrite).toContain(theme.fg("toolDiffRemoved", "one"));
-		expect(rewrite).toContain(theme.fg("toolDiffRemoved", "two"));
-		expect(rewrite).toContain(theme.fg("toolDiffAdded", "replaced"));
+		const rewrite = renderDiff("-1 one\n-2 two\n+1 replaced");
+		for (const line of rewrite.split("\n")) {
+			expect(bands(line)).toHaveLength(1);
+		}
 	});
 
-	it("leaves the body in the state colour when no language is known", () => {
-		expect(renderDiff("+ 1 const x = 1;")).toContain(theme.fg("toolDiffAdded", "const x = 1;"));
+	it("bands a plain-text row in one colour", () => {
+		const rendered = renderDiff("+ 1 const x = 1;");
+
+		expect(bands(rendered)).toHaveLength(1);
+		expect(stripAnsi(rendered)).toBe("▌1+ │ const x = 1;");
+	});
+
+	it("separates hunks it cannot label", () => {
+		expect(stripAnsi(renderDiff("-1 a\n+1 b\n   ...\n 9 z")).split("\n")).toEqual([
+			"▌1- │ a",
+			"▌1+ │ b",
+			"...",
+			" 9  │ z",
+		]);
 	});
 });
 
 describe("DiffComponent", () => {
 	beforeAll(() => initTheme("dark"));
 
-	it("folds long changes and names the key that expands them", () => {
+	it("rules off one hunk and folds long changes, naming the key that expands them", () => {
 		const diff = change(COLLAPSED_DIFF_ROWS + 6);
 		const folded = new DiffComponent(diff, { expandHint: "(ctrl+o to expand)" });
 		const expanded = new DiffComponent(diff, { expanded: true });
 
 		const foldedRows = rows(folded, 80);
-		expect(foldedRows).toHaveLength(COLLAPSED_DIFF_ROWS + 1);
-		expect(foldedRows.at(-1)).toBe("    36 more lines (ctrl+o to expand)");
-		expect(rows(expanded, 80)).toHaveLength((COLLAPSED_DIFF_ROWS + 6) * 2);
+		expect(foldedRows[0]).toBe(RULE.repeat(80));
+		expect(foldedRows[1 + COLLAPSED_DIFF_ROWS]).toBe(RULE.repeat(80));
+		expect(foldedRows.at(-1)).toBe("       36 more diff lines (ctrl+o to expand)");
+		expect(rows(expanded, 80)).toHaveLength((COLLAPSED_DIFF_ROWS + 6) * 2 + 2);
+	});
+
+	it("names each hunk when the tool labels them", () => {
+		const component = new DiffComponent("-6 total = 0\n+6 if not values:\n   ...\n+13 guard", {
+			hunkLabel: (hunk, index, total) => `Edit ${index + 1}/${total} at line ${hunk.line}`,
+		});
+
+		expect(rows(component, 40)[0]).toBe("Edit 1/2 at line 6");
+		expect(rows(component, 40)[5]).toBe("Edit 2/2 at line 13");
 	});
 
 	it("shows one column below the split width and two above it", () => {
 		const diff = change(3);
 
 		expect(rows(new DiffComponent(diff), 100)).toEqual([
-			"-1 line 0",
-			"-2 line 1",
-			"-3 line 2",
-			"+1 line x0",
-			"+2 line x1",
-			"+3 line x2",
+			RULE.repeat(100),
+			"▌1- │ line 0",
+			"▌2- │ line 1",
+			"▌3- │ line 2",
+			"▌1+ │ line x0",
+			"▌2+ │ line x1",
+			"▌3+ │ line x2",
+			RULE.repeat(100),
 		]);
 
 		const split = rows(new DiffComponent(diff), 160);
-		expect(split).toHaveLength(3);
-		expect(split[0]).toContain("\u2502");
-		expect(stripAnsi(split[0]).trimStart()).toMatch(/^-1 line 0\s*\u2502\s*\+1 line x0/);
+		expect(split).toHaveLength(5);
+		expect(stripAnsi(split[1]).trim()).toMatch(/^▌1- │ line 0\s*│\s*▌1\+ │ line x0$/);
 	});
 
 	it("keeps the columns lined up when one side has no line for a row", () => {
 		const split = rows(new DiffComponent("-1 gone\n+5 created\n+6 also"), 160);
 
-		expect(split).toHaveLength(2);
-		expect(split[0].indexOf("\u2502")).toBe(split[1].indexOf("\u2502"));
-		expect(split[1]).toContain("also");
+		// Row one has a divider per side plus the middle one; row two has no left side, so only two.
+		expect(dividerColumns(split[1]).at(-2)).toBe(dividerColumns(split[2])[0]);
+		expect(split[2]).toContain("also");
 	});
 
 	it("falls back to one column when the two sides do not fit", () => {
 		const wide = `-1 ${"x".repeat(90)}\n+1 ${"y".repeat(90)}`;
 		const lines = rows(new DiffComponent(wide), 160);
 
-		expect(lines).toHaveLength(2);
-		expect(lines[0]).not.toContain("\u2502");
+		expect(lines).toHaveLength(4);
+		expect(lines[1].split("\u2502")).toHaveLength(2);
 	});
 
-	it("cuts a row to the terminal width", () => {
-		const long = `+1 ${"z".repeat(200)}`;
+	it("fills a row to the terminal width and cuts what does not fit", () => {
+		const lines = new DiffComponent(`+1 ${"z".repeat(200)}`).render(40);
 
-		expect(rows(new DiffComponent(long), 40)[0]).toHaveLength(40);
+		expect(stripAnsi(lines[1])).toHaveLength(40);
+		expect(bands(lines[1])).toHaveLength(1);
 	});
 });

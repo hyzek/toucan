@@ -275,6 +275,17 @@ export class Theme {
 		return this.resolvedColors.colors;
 	}
 
+	/**
+	 * The surface rows that carry no background token of their own sit on: the terminal's reported
+	 * default, or the colour its appearance implies when it did not report one. Diff tints mix toward
+	 * this, so a change reads the same way on a black, a white and a tinted terminal.
+	 */
+	get terminalBackground(): Color {
+		const reported = terminalColors.background;
+		if (reported) return rgbColor(reported.r, reported.g, reported.b);
+		return GUESSED_DEFAULT_COLORS[this.appearance].background;
+	}
+
 	style(text: string, options: ThemeStyle): string {
 		const { fg, bg } = options;
 		if (typeof fg === "string" && this.dimTokens.has(fg)) options = { ...options, dim: true };

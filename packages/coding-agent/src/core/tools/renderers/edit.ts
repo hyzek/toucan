@@ -7,17 +7,14 @@
  */
 
 import { Box, Container, Spacer, Text } from "@hyzek/toucan-tui";
-import {
-	COLLAPSED_DIFF_ROWS,
-	DiffComponent,
-	type DiffViewOptions,
-	renderDiff,
-} from "../../../modes/interactive/components/diff.ts";
+import { COLLAPSED_DIFF_ROWS, type DiffComponent, renderDiff } from "../../../modes/interactive/components/diff.ts";
+import { ToolBranchBlock } from "../../../modes/interactive/components/tool-branch.ts";
 import type { Theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderContext } from "../../extensions/types.ts";
 import type { EditToolDetails } from "../edit.ts";
 import { computeEditsDiff, type Edit, type EditDiffError, type EditDiffResult } from "../edit-diff.ts";
 import { renderToolPath, str, toolRowCallLine } from "../render-utils.ts";
+import { createChangeBlock } from "./change-block.ts";
 
 type EditPreview = EditDiffResult | EditDiffError;
 export type EditRenderState = {
@@ -87,9 +84,17 @@ function getRenderablePreviewInput(args: RenderableEditArgs | undefined): { path
 
 	return null;
 }
-function formatEditCall(args: RenderableEditArgs | undefined, theme: Theme, cwd: string): string {
+function formatEditCall(
+	args: RenderableEditArgs | undefined,
+	theme: Theme,
+	cwd: string,
+	editCount: number,
+	expanded: boolean,
+): string {
 	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
-	return `${theme.fg("toolTitle", theme.bold("edit"))} ${pathDisplay}`;
+	// The count of separate edits only helps once the row is open and the hunks below it need naming.
+	const count = expanded && editCount > 1 ? ` ${theme.fg("muted", `(${editCount} edits)`)}` : "";
+	return `${theme.fg("toolTitle", theme.bold("Edit"))} ${pathDisplay}${count}`;
 }
 function formatEditResult(
 	args: RenderableEditArgs | undefined,
@@ -129,7 +134,9 @@ function buildEditCallComponent(
 ): EditCallRenderComponent {
 	component.setPaddingX(outputPad);
 	component.clear();
-	component.addChild(new Text(toolRowCallLine(formatEditCall(args, theme, cwd), context, theme), 0, 0));
+	const editCount = getRenderablePreviewInput(args)?.edits.length ?? 0;
+	const header = toolRowCallLine(formatEditCall(args, theme, cwd, editCount, context.expanded), context, theme);
+	component.addChild(new Text(header, 0, 0));
 
 	if (!component.preview) {
 		return component;
@@ -137,24 +144,28 @@ function buildEditCallComponent(
 
 	component.addChild(new Spacer(1));
 	if ("error" in component.preview) {
-		component.addChild(new Text(theme.fg("error", component.preview.error), 0, 0));
+		const block = new ToolBranchBlock();
+		block.addChild(new Text(theme.fg("error", component.preview.error), 0, 0));
+		component.addChild(block);
 		return component;
 	}
 
-	// One view per tool row: it keeps the syntax colours of a diff the model is still streaming.
-	const options: DiffViewOptions = {
-		filePath: str(args?.file_path ?? args?.path) ?? undefined,
-		expanded: context.expanded,
-		maxRows: COLLAPSED_DIFF_ROWS,
-		expandHint: `(${context.keyHint("app.tools.expand", "to expand")})`,
-	};
-	if (component.diffView) {
-		component.diffView.setDiff(component.preview.diff);
-	} else {
-		component.diffView = new DiffComponent(component.preview.diff, options);
-	}
-	component.diffView.setOptions(options);
-	component.addChild(component.diffView);
+	component.addChild(
+		createChangeBlock(
+			component,
+			{
+				diff: component.preview.diff,
+				path: str(args?.file_path ?? args?.path) ?? undefined,
+				edits: editCount,
+				view: {
+					expanded: context.expanded,
+					maxRows: COLLAPSED_DIFF_ROWS,
+					expandHint: `(${context.keyHint("app.tools.expand", "to expand")})`,
+				},
+			},
+			theme,
+		),
+	);
 	return component;
 }
 function setEditPreview(

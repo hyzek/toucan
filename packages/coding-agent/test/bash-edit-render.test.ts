@@ -54,26 +54,55 @@ describe("bash tool rendering of file edits", () => {
 	beforeAll(() => initTheme("dark"));
 
 	it("leads the row with the edit a single-file command makes", () => {
-		expect(callLine("sed -i 's/one/two/' src/app.ts")).toBe("• edit (sed) src/app.ts");
-		expect(callLine("echo hi > notes.txt")).toBe("• edit (echo) notes.txt");
+		expect(callLine("sed -i 's/one/two/' src/app.ts")).toBe("• Edit (sed) src/app.ts");
+		expect(callLine("echo hi > notes.txt")).toBe("• Edit (echo) notes.txt");
 	});
 
 	it("keeps the command line for a command that is not a single-file edit", () => {
 		expect(callLine("ls -1 | grep x")).toBe("• $ ls -1 | grep x");
 	});
 
-	it("renders the diff the command made instead of its output", () => {
+	it("states the change under the row, then the diff, joined by a guide", () => {
 		const lines = resultLines("sed -i 's/one/two/' src/app.ts", "-1 one\n+1 two");
 
-		expect(lines).toEqual(["", "-1 one", "+1 two"]);
+		expect(lines[1]).toBe("  ├ +1 -1 at line 1");
+		expect(lines[2]).toBe("");
+		expect(lines[3]).toBe(`  │ ${"\u2500".repeat(76)}`);
+		expect(lines[4]).toBe("  │ ▌1- │ one");
+		expect(lines[5]).toBe("  │ ▌1+ │ two");
+		expect(lines.at(-1)).toBe(`  └ ${"\u2500".repeat(76)}`);
+	});
+
+	it("says so when the file the command writes did not change", () => {
+		const context = renderContext({ args: { command: "echo hi > notes.txt" } });
+		const component = tool.renderResult(
+			{ content: [{ type: "text", text: "(no output)" }], details: undefined },
+			{ expanded: false, isPartial: false },
+			theme,
+			context,
+		);
+
+		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["", "  └ no change"]);
+	});
+
+	it("keeps the plain output of a command that is not an edit", () => {
+		const context = renderContext({ args: { command: "ls -1" } });
+		const component = tool.renderResult(
+			{ content: [{ type: "text", text: "(no output)" }], details: undefined },
+			{ expanded: false, isPartial: false },
+			theme,
+			context,
+		);
+
+		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["", "(no output)"]);
 	});
 
 	it("folds a long diff and names the expand key", () => {
 		const diff = Array.from({ length: 40 }, (_, i) => `${i % 2 === 0 ? "-" : "+"}${i + 1} line ${i}`).join("\n");
 		const folded = resultLines("sed -i 's/one/two/' src/app.ts", diff);
 
-		expect(folded.filter((line) => /line \d+/.test(line))).toHaveLength(24);
-		expect(folded.at(-1)).toContain("16 more lines (ctrl+o to expand)");
-		expect(resultLines("sed -i 's/one/two/' src/app.ts", diff, true)).toHaveLength(41);
+		expect(folded.filter((line) => line.includes("▌"))).toHaveLength(24);
+		expect(folded.at(-1)).toContain("16 more diff lines (ctrl+o to expand)");
+		expect(resultLines("sed -i 's/one/two/' src/app.ts", diff, true)).toHaveLength(45);
 	});
 });

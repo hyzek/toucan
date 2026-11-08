@@ -1,0 +1,85 @@
+{
+  "date": "2026-11-08",
+  "topic": "Ported pi-claude-code-ui rendering into toucan (CC-UI-PLAN.md) — phases 1-7, phase 7: painted diff blocks, branch guides, turn lines",
+  "plan": "CC-UI-PLAN.md at repo root",
+  "status": "Phase 7 code complete and uncommitted before this commit; user feedback on the edit block pending (see pendingItems)",
+  "commitsBeforeThisChange": [
+    "267ca66c8 feat(coding-agent): marker-led tool rows and one sentence per tool run (phase 3)",
+    "a256f814d (phase 4 thinking durations)",
+    "fe71f6f79 fix(coding-agent): print thinking under a second with one decimal",
+    "9963a0f39 feat(coding-agent): syntax-highlighted diff rows with folding and split layout (phase 5)",
+    "6a84382f5 feat(coding-agent): show shell commands that edit one file as edits"
+  ],
+  "thisCommit": "feat(coding-agent): paint diff blocks with a guide, name their hunks, close turns with a duration line (phase 7 + test fixes)",
+  "objectives": [
+    "Match the pi-claude-code-ui plugin transcript look: tool rows with no panel background, state dots, folded groups, expandable outputs",
+    "Phase 7 (user-approved): full plugin diff block — per-line background tints, deeper tint on changed words, left accent bar, number-then-sign gutters, rules per hunk, hunk labels, summary/footer lines; plus the 'Turn took' line and the vertical branch guide under tool rows"
+  ],
+  "decisions": [
+    "Change blocks paint surfaces; tool rows stay background-free (revises the Phase 3/5 'no backgrounds' rule). Base = Theme.terminalBackground (OSC 11) mixed toward state colour: add 0.24 / del 0.12 lines; word 0.44 / del 0.26; context surface 0.05 toward text; '▌' accent bar; rules/dividers in borderMuted",
+    "Gutter reads number then sign ('12-', '13+'), divider before body; no more '...' separator row between hunks",
+    "Word marks are the deeper band (not state foreground); unpaired or dissimilar pairs get one band, no word ranges",
+    "DiffViewOptions.hunkLabel: 'Edit i/n at line L' when the call made >1 edit, 'Hunk i/n at line L' when one edit spans hunks, none for a single hunk (its position goes on the summary line '+1 -1 at line 8')",
+    "Summary '2 edits +5 -4' above, footer '2 edits +5 -4 · 2 hunks (11 diff lines)' below (only when >1 hunk); shared builders in core/tools/renderers/change-block.ts used by edit + bash-edit renderers",
+    "ToolBranchBlock guide: '├' first row, '│' middle, '└' last, blank rows unguided, glyph 2 cols right of the row marker",
+    "Turn line '✻ Turn took 6s (Total time 6s · 1 turn)': live = prompt->agent_end; replay = session entry timestamps (prompt -> last entry before next prompt); countedTurnMs/countedTurns reset via renderSessionEntries(..., { turnTotals: 'reset' | 'continue' }), 'continue' only for the compaction-split rebuild; liveTurnStartedAt cleared on rebuild",
+    "Title-case row verbs: Read/Edit/Write/Grep/Find/Ls; shell rows keep '$ command'",
+    "Shell edit leaving the file unchanged shows 'no change' row instead of '(no output)'",
+    "Collapsible diff budget counts diff rows only (24); rules, labels, blanks on top"
+  ],
+  "filesAdded": [
+    "packages/coding-agent/src/core/tools/renderers/change-block.ts",
+    "packages/coding-agent/src/modes/interactive/components/tool-branch.ts",
+    "packages/coding-agent/src/modes/interactive/components/turn-duration.ts",
+    "packages/coding-agent/test/edit-render.test.ts",
+    "packages/coding-agent/test/tool-branch.test.ts",
+    "packages/coding-agent/test/turn-duration.test.ts"
+  ],
+  "filesChanged": [
+    "packages/coding-agent/src/core/tools/diff-lines.ts (DiffHunk/DiffStats/diffStats)",
+    "packages/coding-agent/src/core/tools/render-utils.ts (diffCountsText/diffLineText/diffHunkText)",
+    "packages/coding-agent/src/core/tools/renderers/{edit,bash,find,grep,ls,read,write}.ts",
+    "packages/coding-agent/src/modes/interactive/components/diff.ts (rewrite: palette, rules, split layout, fold)",
+    "packages/coding-agent/src/modes/interactive/components/{assistant-message,index}.ts",
+    "packages/coding-agent/src/modes/interactive/interactive-mode.ts (turn lines live + replay)",
+    "packages/coding-agent/src/modes/interactive/theme/theme.ts (terminalBackground getter)",
+    "packages/coding-agent/src/utils/duration.ts (formatFinishedDuration)",
+    "packages/coding-agent/src/index.ts (export DiffComponent, COLLAPSED_DIFF_ROWS, DiffViewOptions, ToolBranchBlock)",
+    "packages/coding-agent/examples/extensions/mock-provider.ts (rmSync scratch files so every run replays the same diffs)",
+    "CC-UI-PLAN.md (Phase 7 section, phase 5 revision note)",
+    "packages/coding-agent/CHANGELOG.md"
+  ],
+  "testsAddedOrUpdated": [
+    "test/diff.test.ts (rewritten for bands/rules/labels/split/fold)",
+    "test/diff-lines.test.ts (diffStats)",
+    "test/edit-render.test.ts, test/bash-edit-render.test.ts, test/tool-branch.test.ts, test/turn-duration.test.ts",
+    "test/tool-execution-component.test.ts, test/tool-group.test.ts, test/read-line-range-display.test.ts (title-case)",
+    "test/tools.test.ts (tightened '4001' assertion to /of 4001|2001-4001/ — path-collision flake)",
+    "test/suite/regressions/4167-thinking-toggle-pending-tool-render.test.ts (fake this now runs real addToolRow/refreshToolGroup/isRunSeparator + toolGroups WeakMap — regression caused by phase 3 commit 267ca66c8)"
+  ],
+  "verification": [
+    "npm run check clean",
+    "Targeted suite: 25 files, 333 tests pass",
+    "tmux mock run: '✻ Turn took 9s (Total time 9s · 1 turn)' live",
+    "Resume (-c): replay renders the same turn line from stored timestamps; second turn shows '✻ Turn took 10s (Total time 19s · 2 turns)'",
+    "Light theme + 172-col split verified via tmux ANSI -> HTML -> headless chromium screenshots"
+  ],
+  "screenshots": "/private/var/folders/vh/z32df2l546l74906110gzrlm0000gn/T/opencode/cc-ui/{final-a,final-b,light}.png (target: /var/folders/.../clipboard-2026-11-06-223513-CFA3B7A6.png)",
+  "remainingCosmeticDeltasVsPlugin": [
+    "marker glyph is '•' (U+2022) vs plugin '●'",
+    "file paths keep toucan's hyperlink styling/colours",
+    "single-hunk edit puts position on the summary line instead of a hunk header"
+  ],
+  "pendingItems": [
+    "User feedback (2026-11-08): one blank line too many between the summary line ('├ +1 at line 8') and the diff — drop the Spacer between summary and diff in change-block.ts",
+    "User feedback: the light-gray context-line background only wraps the text, not the full box — flatRow truncates instead of padding; renderRow should fill rows to the block width (bodyWidth = width - numWidth - GUTTER_EXTRA)",
+    "User feedback: write and read tool rows show no output when expanded — verify against plan/intent; compare with what the plugin does (write: full-added diff? read: collapsed content?)",
+    "User feedback: run final check on the whole thing and re-verify screenshots"
+  ],
+  "howToVerify": {
+    "mock": "./toucan-test.sh --no-extensions -e packages/coding-agent/examples/extensions/mock-provider.ts --no-env, prompt 'go', C-o to expand, PageUp/PageDown",
+    "diffDemo": "./toucan-test.sh --no-extensions -e .artifacts/diff-demo.ts --no-env --use-theme light",
+    "ansiScreen": "node ansi2html.mjs capture.ansi out.html '#12100d' then headless chromium --screenshot",
+    "packageTests": "cd packages/coding-agent && node ../../node_modules/vitest/dist/cli.js --run test/<file>.test.ts"
+  }
+}

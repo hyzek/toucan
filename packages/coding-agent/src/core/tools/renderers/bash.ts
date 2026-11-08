@@ -7,16 +7,13 @@
  */
 
 import { Container, Spacer, Text } from "@hyzek/toucan-tui";
-import {
-	COLLAPSED_DIFF_ROWS,
-	DiffComponent,
-	type DiffViewOptions,
-} from "../../../modes/interactive/components/diff.ts";
+import { COLLAPSED_DIFF_ROWS, type DiffComponent } from "../../../modes/interactive/components/diff.ts";
 import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
+import { ToolBranchBlock } from "../../../modes/interactive/components/tool-branch.ts";
 import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.ts";
 import { theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
-import type { BashToolDetails, ShellFileEditDetails } from "../bash.ts";
+import type { BashToolDetails } from "../bash.ts";
 import { detectShellFileEdit } from "../bash-edit.ts";
 import {
 	getTextOutput,
@@ -29,6 +26,7 @@ import {
 	toolTimerText,
 } from "../render-utils.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
+import { createChangeBlock } from "./change-block.ts";
 
 const BASH_PREVIEW_LINES = 5;
 export const BASH_UPDATE_THROTTLE_MS = 100;
@@ -48,7 +46,7 @@ function formatShellCall(
 	const edit = command ? detectShellFileEdit(command) : undefined;
 	if (edit) {
 		return (
-			theme.fg("toolTitle", theme.bold(`edit (${edit.tool})`)) +
+			theme.fg("toolTitle", theme.bold(`Edit (${edit.tool})`)) +
 			` ${renderToolPath(edit.path, theme, cwd)}` +
 			timeoutSuffix
 		);
@@ -62,6 +60,7 @@ function rebuildBashResultRenderComponent(
 		details?: BashToolDetails;
 	},
 	options: ToolRenderResultOptions,
+	command: string | null,
 	showImages: boolean,
 	timerText: string | undefined,
 	expandHint: string,
@@ -72,6 +71,17 @@ function rebuildBashResultRenderComponent(
 	const fileEdit = result.details?.fileEdit;
 	// A command that edited a file prints nothing to say so; the diff below is its result.
 	if (fileEdit && output === SHELL_EMPTY_OUTPUT) {
+		output = "";
+	}
+	// The row is labelled an edit because the command can only write one file. If that file came out
+	// unchanged there is no diff, and `(no output)` would read as a result that went missing.
+	const noChange =
+		!fileEdit &&
+		!options.isPartial &&
+		output === SHELL_EMPTY_OUTPUT &&
+		command !== null &&
+		detectShellFileEdit(command) !== undefined;
+	if (noChange) {
 		output = "";
 	}
 	const truncation = result.details?.truncation;
@@ -107,15 +117,24 @@ function rebuildBashResultRenderComponent(
 	}
 
 	if (fileEdit) {
-		const viewOptions = diffViewOptions(fileEdit, options, expandHint);
-		if (component.diffView) {
-			component.diffView.setDiff(fileEdit.diff);
-		} else {
-			component.diffView = new DiffComponent(fileEdit.diff, viewOptions);
-		}
-		component.diffView.setOptions(viewOptions);
 		component.addChild(new Spacer(1));
-		component.addChild(component.diffView);
+		component.addChild(
+			createChangeBlock(
+				component,
+				{
+					diff: fileEdit.diff,
+					path: fileEdit.path,
+					edits: 1,
+					view: { expanded: options.expanded, maxRows: COLLAPSED_DIFF_ROWS, expandHint },
+				},
+				theme,
+			),
+		);
+	} else if (noChange) {
+		const block = new ToolBranchBlock();
+		block.addChild(new Text(theme.fg("muted", "no change"), 0, 0));
+		component.addChild(new Spacer(1));
+		component.addChild(block);
 	}
 
 	if (truncation?.truncated || fullOutputPath) {
@@ -136,15 +155,6 @@ function rebuildBashResultRenderComponent(
 	}
 
 	if (timerText) component.addChild(new Text(`\n${theme.fg("muted", timerText)}`, 0, 0));
-}
-
-/** The diff of a shell edit gets the same folding and language handling as an edit tool's own diff. */
-function diffViewOptions(
-	edit: ShellFileEditDetails,
-	options: ToolRenderResultOptions,
-	expandHint: string,
-): DiffViewOptions {
-	return { filePath: edit.path, expanded: options.expanded, maxRows: COLLAPSED_DIFF_ROWS, expandHint };
 }
 
 /** Shell renderers are shared by bash and powershell, which differ only in the prompt they display. */
@@ -168,6 +178,7 @@ export function createShellRenderers(prompt: string): Pick<ToolDefinition<any, a
 				component,
 				result as any,
 				options,
+				str((context.args as { command?: string } | undefined)?.command),
 				context.showImages,
 				timerText,
 				`(${context.keyHint("app.tools.expand", "to expand")})`,

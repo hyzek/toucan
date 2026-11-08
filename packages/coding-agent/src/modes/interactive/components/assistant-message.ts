@@ -1,7 +1,7 @@
 import type { AssistantMessage } from "@hyzek/toucan-ai";
 import { type Component, Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@hyzek/toucan-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
-import { formatElapsedSeconds } from "../../../utils/duration.ts";
+import { formatFinishedDuration } from "../../../utils/duration.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 
@@ -26,16 +26,7 @@ interface MarkdownSlot {
 function thoughtLabel(hiddenLabel: string, durationMs: number | undefined): string {
 	if (!hiddenLabel.trim()) return "";
 	if (durationMs === undefined) return "Thought";
-	return `Thought for ${formatThoughtDuration(durationMs)}`;
-}
-
-/**
- * Whole seconds, except under a second, where `0s` would read as a broken timer. The running tool
- * group keeps its `0s` tail because that number counts up.
- */
-function formatThoughtDuration(durationMs: number): string {
-	if (durationMs < 1000) return `${(durationMs / 1000).toFixed(1)}s`;
-	return formatElapsedSeconds(durationMs);
+	return `Thought for ${formatFinishedDuration(durationMs)}`;
 }
 
 /**

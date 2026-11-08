@@ -1,10 +1,11 @@
 import type { AgentMessage } from "@hyzek/toucan-agent-core";
 import type { AssistantMessage, ToolResultMessage, Usage } from "@hyzek/toucan-ai";
-import { Container, Text, type TUI } from "@hyzek/toucan-tui";
+import { type Component, Container, Text, type TUI } from "@hyzek/toucan-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { AgentSessionEvent } from "../../../src/core/agent-session.ts";
 import type { SessionEntry } from "../../../src/core/session-manager.ts";
 import type { ToolExecutionComponent } from "../../../src/modes/interactive/components/tool-execution.ts";
+import type { ToolGroupComponent } from "../../../src/modes/interactive/components/tool-group.ts";
 import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
@@ -35,6 +36,7 @@ type RenderSessionItems = (
 
 type RenderSessionContextThis = {
 	pendingTools: Map<string, ToolExecutionComponent>;
+	toolGroups: WeakMap<ToolExecutionComponent, ToolGroupComponent>;
 	chatContainer: Container;
 	footer: { invalidate(): void };
 	programStatus: { handleEvent(): void };
@@ -52,6 +54,9 @@ type RenderSessionContextThis = {
 	getRegisteredToolDefinition(toolName: string): undefined;
 	maybeShowAssistantDiagnostics(message: AssistantMessage): void;
 	addMessageToChat(message: AgentMessage, options?: { populateHistory?: boolean }): void;
+	addToolRow(component: ToolExecutionComponent): void;
+	refreshToolGroup(component: ToolExecutionComponent): void;
+	isRunSeparator(child: Component): boolean;
 	renderSessionItems: RenderSessionItems;
 };
 
@@ -67,6 +72,7 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 	const chatContainer = new Container();
 	return {
 		pendingTools: new Map<string, ToolExecutionComponent>(),
+		toolGroups: new WeakMap<ToolExecutionComponent, ToolGroupComponent>(),
 		chatContainer,
 		footer: { invalidate: vi.fn() },
 		programStatus: { handleEvent: vi.fn() },
@@ -83,6 +89,15 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 		updateEditorBorderColor: vi.fn(),
 		getRegisteredToolDefinition: (_toolName: string) => undefined,
 		maybeShowAssistantDiagnostics: vi.fn(),
+		// The real transcript groups consecutive rows through addToolRow/refreshToolGroup; the fake
+		// runs the same prototype methods so a replayed tool row is added the way live rows are.
+		addToolRow: (InteractiveMode.prototype as unknown as { addToolRow: (component: ToolExecutionComponent) => void })
+			.addToolRow,
+		refreshToolGroup: (
+			InteractiveMode.prototype as unknown as { refreshToolGroup: (component: ToolExecutionComponent) => void }
+		).refreshToolGroup,
+		isRunSeparator: (InteractiveMode.prototype as unknown as { isRunSeparator: (child: Component) => boolean })
+			.isRunSeparator,
 		renderSessionItems: (InteractiveMode.prototype as unknown as { renderSessionItems: RenderSessionItems })
 			.renderSessionItems,
 		addMessageToChat(message: AgentMessage) {
