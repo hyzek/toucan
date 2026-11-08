@@ -1,14 +1,15 @@
 /**
  * Diff display in the transcript.
  *
- * A change sits on a surface of its own: each line carries the terminal background mixed toward its
- * state colour, so an added line is a green band and a removed line a red one, and the words that
- * differ inside a line that was edited rather than replaced sit on a deeper band. A `▌` in the state
- * colour marks the left edge of a changed line, the gutter reads number then sign (`12-`, `13+`), and
- * a rule opens and closes each hunk, with the tool's own label above it (`Edit 1/2 at line 6`). Context
- * lines keep the file's syntax colours and are dimmed: they give position, not reading. A change that
- * replaces several lines at once becomes two columns when the terminal is wide enough for both sides,
- * and a change longer than the row budget folds to a notice naming the key that expands it.
+ * Changed lines carry their own surface and nothing else does: an added line sits on the terminal
+ * background mixed toward green and a removed line on one mixed toward red, with the words that differ
+ * inside a line that was edited rather than replaced on a deeper mix. Everything else — context lines,
+ * rules, dividers — keeps the terminal's default background. A `▌` in the state colour marks the left
+ * edge of a changed line, the gutter reads number then sign (`12-`, `13+`), and a rule opens and closes
+ * each hunk, with the tool's own label above it (`Edit 1/2 at line 6`). Context lines keep the file's
+ * syntax colours and are dimmed: they give position, not reading. A change that replaces several lines
+ * at once becomes two columns when the terminal is wide enough for both sides, and a change longer than
+ * the row budget folds to a notice naming the key that expands it.
  */
 
 import {
@@ -42,8 +43,6 @@ const MAX_HIGHLIGHT_CHARS = 32_000;
 /** How far the surface moves toward the state colour, for a whole line and for a changed word. */
 const LINE_TINT: Record<"added" | "removed", number> = { added: 0.24, removed: 0.12 };
 const WORD_TINT: Record<"added" | "removed", number> = { added: 0.44, removed: 0.26 };
-/** How far the surface moves toward the text colour to make the block's own surface. */
-const SURFACE_TINT = 0.05;
 /** Columns one side's gutter takes besides the line number: accent bar, sign, two spaces, divider. */
 const GUTTER_EXTRA = 5;
 const ACCENT_BAR = "▌";
@@ -105,15 +104,14 @@ interface PreparedDiff {
 
 /** The surfaces and lines a diff block is painted with, derived from the theme once per render. */
 interface DiffPalette {
-	surface: string;
 	band: Record<"added" | "removed", string>;
 	word: Record<"added" | "removed", string>;
 	rule: string;
 }
 
 /**
- * Render a diff string: banded lines, a state-coloured gutter, syntax colours inside.
- * - Context lines: dim, on the block's surface
+ * Render a diff string: banded changed lines, state-coloured gutters, syntax colours inside.
+ * - Context lines: dim, on the terminal's own background
  * - Removed lines: red band and gutter, a deeper red behind the words that changed
  * - Added lines: the same in green
  *
@@ -133,7 +131,7 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 }
 
 /**
- * A diff as a component, so it can choose a layout from the width it renders into, paint its surfaces to
+ * A diff as a component, so it can choose a layout from the width it renders into, pad its rows to
  * that width, name and rule off each hunk, and fold long changes. One instance per tool row: it keeps a
  * highlighter, and the highlighter keeps the last block it coloured.
  */
@@ -363,35 +361,27 @@ function diffPalette(): DiffPalette {
 	const tint = (color: ThemeColor, amount: number) =>
 		backgroundAnsi(mixColors(base, theme.colors[color], amount, "srgb"), mode);
 	return {
-		surface: backgroundAnsi(mixColors(base, theme.colors.text, SURFACE_TINT, "srgb"), mode),
 		band: { added: tint("toolDiffAdded", LINE_TINT.added), removed: tint("toolDiffRemoved", LINE_TINT.removed) },
 		word: { added: tint("toolDiffAdded", WORD_TINT.added), removed: tint("toolDiffRemoved", WORD_TINT.removed) },
 		rule: theme.getFgAnsi("borderMuted"),
 	};
 }
 
-function bandOf(palette: DiffPalette, kind: DiffLine["kind"]): string {
-	return kind === "added" ? palette.band.added : kind === "removed" ? palette.band.removed : palette.surface;
-}
-
-function wordBandOf(palette: DiffPalette, kind: DiffLine["kind"]): string {
-	return kind === "added" ? palette.word.added : kind === "removed" ? palette.word.removed : palette.surface;
-}
-
-/** A rule the length of the block, in the colour of the lines that divide it. */
+/** A rule the length of the block, in the colour of the lines that divide it, on the default background. */
 function rule(width: number, palette: DiffPalette): string {
-	return `${palette.surface}${palette.rule}${RULE_CHAR.repeat(width)}\x1b[39m\x1b[49m`;
+	return `${palette.rule}${RULE_CHAR.repeat(width)}\x1b[39m`;
 }
 
 /**
- * `▌ 12- │ body` in the block's colours. With a `bodyWidth` the body is cut and padded to it, which is
- * what keeps the two columns of the split view lined up; without one the row is only as long as its
- * text, because the caller has no width to fill.
+ * `▌ 12- │ body` in the block's colours. A changed line paints its band to the row's full width; a
+ * context line keeps the terminal's background. With a `bodyWidth` the body is cut and padded to it,
+ * which is what keeps the two columns of the split view lined up; without one the row is only as long
+ * as its text, because the caller has no width to fill.
  */
 function renderRow(cell: DiffCell, prepared: PreparedDiff, palette: DiffPalette, bodyWidth?: number): string {
 	const changed = cell.kind === "added" || cell.kind === "removed";
-	const band = bandOf(palette, cell.kind);
 	const state = stateColor(cell.kind);
+	const band = changed ? (cell.kind === "added" ? palette.band.added : palette.band.removed) : "";
 	const number =
 		cell.number === undefined ? " ".repeat(prepared.numWidth) : String(cell.number).padStart(prepared.numWidth);
 	const sign = cell.kind === "added" ? "+" : cell.kind === "removed" ? "-" : " ";
@@ -399,10 +389,12 @@ function renderRow(cell: DiffCell, prepared: PreparedDiff, palette: DiffPalette,
 	const gutter = paint(band, `${theme.getFgAnsi(state)}${theme.bold(`${number}${sign}`)}\x1b[39m`, band);
 	const divider = `${palette.rule}${DIVIDER_CHAR}\x1b[39m`;
 	const body = changed
-		? paintBody(cell.body, cell.marks, band, wordBandOf(palette, cell.kind))
-		: paint(`${band}${DIM}`, cell.body, `${band}${DIM}`);
+		? paintBody(cell.body, cell.marks, band, cell.kind === "added" ? palette.word.added : palette.word.removed)
+		: `${DIM}${cell.body}${UNDIM}`;
 	const filled = bodyWidth === undefined ? body : truncateToWidth(body, bodyWidth, "", true);
-	return `${band}${accent}${gutter} ${divider} ${filled}${UNDIM}\x1b[49m`;
+	return changed
+		? `${band}${accent}${gutter} ${divider} ${filled}${UNDIM}\x1b[49m`
+		: `${accent}${gutter} ${divider} ${filled}`;
 }
 
 /** The body of a changed line: the line band under all of it, the deeper band behind the words that differ. */

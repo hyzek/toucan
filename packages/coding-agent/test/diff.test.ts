@@ -98,11 +98,15 @@ describe("renderDiff", () => {
 		}
 	});
 
-	it("bands a plain-text row in one colour", () => {
-		const rendered = renderDiff("+ 1 const x = 1;");
+	it("keeps context lines and rules on the terminal's own background", () => {
+		const component = new DiffComponent("-1 old\n+1 new\n 2 context");
+		const lines = component.render(40);
 
-		expect(bands(rendered)).toHaveLength(1);
-		expect(stripAnsi(rendered)).toBe("▌1+ │ const x = 1;");
+		expect(lines[0]).not.toMatch(/\x1b\[48;/); // the opening rule
+		const context = lines.find((line) => stripAnsi(line).includes("context"))!;
+		expect(context).not.toMatch(/\x1b\[48;/);
+		expect(stripAnsi(context)).toContain("context");
+		expect(bands(lines[1])).toHaveLength(1); // the removed row keeps its band
 	});
 
 	it("separates hunks it cannot label", () => {
