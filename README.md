@@ -28,8 +28,10 @@ This repository is the monorepo for the whole stack, from the model API up to th
 Toucan requires Node.js 22.19 or newer. Install the CLI:
 
 ```bash
-curl -fsSL https://pi.dev/install.sh | sh
+npm install -g --ignore-scripts @hyzek/toucan-coding-agent
 ```
+
+On macOS and Linux, Nix users can install the latest release with `nix profile add github:hyzek/toucan/stable`.
 
 Start it in the directory you want it to work in, run `/login` to connect a provider, and give it a task:
 
