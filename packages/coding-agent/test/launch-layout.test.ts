@@ -1,9 +1,9 @@
-import { Editor, stripTerminalSequences, TuiMainScreen } from "@hyzek/toucan-tui";
+import { Container, Editor, Spacer, stripTerminalSequences, Text, TuiMainScreen } from "@hyzek/toucan-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
-import { SessionManager } from "../src/core/session-manager.ts";
+import { ChatNotice, hasChatTranscript } from "../src/modes/interactive/components/chat-notice.ts";
 import { inputBandOptions } from "../src/modes/interactive/components/custom-editor.ts";
 import { FooterComponent } from "../src/modes/interactive/components/footer.ts";
 import { HotkeyHints } from "../src/modes/interactive/components/hotkey-hints.ts";
@@ -76,27 +76,29 @@ describe("launch bottom layout", () => {
 		expect(lines[0]!.startsWith(" ")).toBe(true);
 	});
 
-	it("hides the session tip once the session has started", () => {
-		let hasConversation = false;
-		const tip = new SessionTip(() => hasConversation);
+	it("hides the session tip once the chat has content", () => {
+		let hasTranscript = false;
+		const tip = new SessionTip(() => hasTranscript);
 		expect(tip.render(WIDTH)).toHaveLength(1);
-		hasConversation = true;
+		hasTranscript = true;
 		expect(tip.render(WIDTH)).toHaveLength(0);
-		hasConversation = false; // /new resets the session
+		hasTranscript = false; // /new clears the transcript
 		expect(tip.render(WIDTH)).toHaveLength(1);
 	});
 
-	it("shows the tip on a fresh launch whose session only holds setup entries", () => {
-		// Startup appends model and thinking-level entries before any prompt, so the tip must not
-		// be gated on the entry count. Regression: the launch tip never showed.
-		const sessionManager = SessionManager.inMemory("/tmp/project");
-		sessionManager.appendModelChange("mock", "mock-coder");
-		sessionManager.appendThinkingLevelChange("medium");
-		const tip = new SessionTip(() => sessionManager.hasConversation());
-		expect(sessionManager.getEntryCount()).toBe(2);
+	it("hides the tip on any chat history, keeps it above notices", () => {
+		// Interactive mode passes hasChatTranscript: prompts, model replies, `!` bash rows and
+		// built-in command output hide the tip; startup banners and the /new confirmation do not.
+		const chat = new Container();
+		const tip = new SessionTip(() => hasChatTranscript(chat.children));
+		chat.addChild(new ChatNotice());
 		expect(tip.render(WIDTH)).toHaveLength(1);
-		sessionManager.appendMessage({ role: "user", content: [{ type: "text", text: "hi" }], timestamp: 0 });
+		chat.addChild(new Spacer(1));
+		chat.addChild(new Text("Session Info", 1, 0)); // e.g. /session output
 		expect(tip.render(WIDTH)).toHaveLength(0);
+		chat.clear(); // /new clears the transcript
+		chat.addChild(new ChatNotice());
+		expect(tip.render(WIDTH)).toHaveLength(1);
 	});
 
 	it("renders a 3-row borderless band with the text row vertically centered", () => {

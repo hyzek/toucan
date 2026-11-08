@@ -34,22 +34,22 @@ export class TipLine implements Component {
 }
 
 /**
- * The launch tip: visible only while the session has no user or assistant message. Typing does not
- * hide it; it goes away when the session starts and returns after /new, because the new session
- * begins blank. A fresh launch already holds model and thinking-level entries, so entry count is
- * not the test.
+ * The launch tip: visible only while the chat shows no conversation. The caller's predicate decides
+ * what counts; interactive mode passes `hasChatTranscript`, so prompts, model replies, `!` bash
+ * rows and built-in command output all hide it, while startup notices and the `/new` confirmation
+ * do not. Typing does not hide it. It returns after `/new`, because the transcript is cleared.
  */
 export class SessionTip implements Component {
 	private readonly tip = new TipLine(pickLaunchTip());
-	private readonly hasConversation: () => boolean;
+	private readonly hasTranscript: () => boolean;
 
-	constructor(hasConversation: () => boolean) {
-		this.hasConversation = hasConversation;
+	constructor(hasTranscript: () => boolean) {
+		this.hasTranscript = hasTranscript;
 	}
 
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		return this.hasConversation() ? [] : this.tip.render(width);
+		return this.hasTranscript() ? [] : this.tip.render(width);
 	}
 }

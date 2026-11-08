@@ -141,6 +141,7 @@ import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
 import { BranchSummaryMessageComponent } from "./components/branch-summary-message.ts";
+import { ChatNotice, hasChatTranscript } from "./components/chat-notice.ts";
 import { CompactionSummaryMessageComponent } from "./components/compaction-summary-message.ts";
 import { CustomEditor, inputBandOptions } from "./components/custom-editor.ts";
 import { CustomEntryComponent } from "./components/custom-entry.ts";
@@ -672,7 +673,9 @@ export class InteractiveMode {
 		this.tipContainer = new Container();
 		this.tipContainer.addChild(
 			// The tip yields to the `/` menu: both sit above the input and would stack.
-			new SessionTip(() => this.sessionManager.hasConversation() || this.editor.isShowingAutocomplete?.() === true),
+			new SessionTip(
+				() => hasChatTranscript(this.chatContainer.children) || this.editor.isShowingAutocomplete?.() === true,
+			),
 		);
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
@@ -872,43 +875,44 @@ export class InteractiveMode {
 			return;
 		}
 
+		// One notice block, so the launch tip can tell it apart from conversation (see chat-notice.ts).
+		const notice = new ChatNotice();
 		if (this.chatContainer.children.length > 0) {
-			this.chatContainer.addChild(new Spacer(1));
+			notice.addChild(new Spacer(1));
 		}
-		this.chatContainer.addChild(new DynamicBorder());
+		notice.addChild(new DynamicBorder());
 		if (this.changelogMarkdown) {
 			if (this.settingsManager.getCollapseChangelog()) {
 				const versionMatch = this.changelogMarkdown.match(/##\s+\[?(\d+\.\d+\.\d+)\]?/);
 				const latestVersion = versionMatch ? versionMatch[1] : this.version;
 				const condensedText = `Updated to v${latestVersion}. Use ${theme.bold("/changelog")} to view full changelog.`;
-				this.chatContainer.addChild(new Text(condensedText, 1, 0));
+				notice.addChild(new Text(condensedText, 1, 0));
 			} else {
-				this.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "What's New")), 1, 0));
-				this.chatContainer.addChild(new Spacer(1));
-				this.chatContainer.addChild(this.createChangelogMarkdown(this.changelogMarkdown.trim(), 1, 0));
-				this.chatContainer.addChild(new Spacer(1));
+				notice.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "What's New")), 1, 0));
+				notice.addChild(new Spacer(1));
+				notice.addChild(this.createChangelogMarkdown(this.changelogMarkdown.trim(), 1, 0));
+				notice.addChild(new Spacer(1));
 			}
 		}
 		if (this.extensionChangelogUpdates.length > 0) {
 			if (this.changelogMarkdown) {
-				this.chatContainer.addChild(new Spacer(1));
+				notice.addChild(new Spacer(1));
 			}
 			if (this.settingsManager.getCollapseChangelog()) {
 				const condensedText = this.extensionChangelogUpdates
 					.map((update) => `Updated ${update.name} to v${update.version}.`)
 					.join("\n");
-				this.chatContainer.addChild(new Text(condensedText, 1, 0));
+				notice.addChild(new Text(condensedText, 1, 0));
 			} else {
-				this.chatContainer.addChild(
-					new ThemedText(() => theme.bold(theme.fg("accent", "Extension Updates")), 1, 0),
-				);
-				this.chatContainer.addChild(new Spacer(1));
+				notice.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "Extension Updates")), 1, 0));
+				notice.addChild(new Spacer(1));
 				const markdown = this.extensionChangelogUpdates.map((update) => update.markdown).join("\n\n");
-				this.chatContainer.addChild(this.createChangelogMarkdown(markdown, 1, 0));
-				this.chatContainer.addChild(new Spacer(1));
+				notice.addChild(this.createChangelogMarkdown(markdown, 1, 0));
+				notice.addChild(new Spacer(1));
 			}
 		}
-		this.chatContainer.addChild(new DynamicBorder());
+		notice.addChild(new DynamicBorder());
+		this.chatContainer.addChild(notice);
 	}
 
 	private mountInteractiveTui(tui: TuiMainScreen | TuiAltScreen, components: readonly Component[]): void {
@@ -3642,7 +3646,10 @@ export class InteractiveMode {
 		}
 		const message = status.type === "warning" ? `Warning: ${status.message}` : status.message;
 		const color = status.type === "warning" ? "warning" : "dim";
-		this.chatContainer.addChild(new ThemedText(() => theme.fg(color, message), 1, 0));
+		// A notice: setup output at launch, not conversation, so the launch tip stays visible.
+		const notice = new ChatNotice();
+		notice.addChild(new ThemedText(() => theme.fg(color, message), 1, 0));
+		this.chatContainer.addChild(notice);
 		this.lastStatusSpacer = undefined;
 		this.lastStatusText = undefined;
 		this.ui.requestRender();
@@ -4198,10 +4205,12 @@ export class InteractiveMode {
 			return;
 		}
 
+		// A notice, not conversation: the launch tip stays visible above it.
+		const notice = new ChatNotice();
 		if (this.chatContainer.children.length > 0) {
-			this.chatContainer.addChild(new Spacer(1));
+			notice.addChild(new Spacer(1));
 		}
-		this.chatContainer.addChild(
+		notice.addChild(
 			new ThemedText(
 				() =>
 					theme.fg(
@@ -4212,6 +4221,7 @@ export class InteractiveMode {
 				0,
 			),
 		);
+		this.chatContainer.addChild(notice);
 	}
 
 	async getUserInput(): Promise<string> {
@@ -4639,20 +4649,21 @@ export class InteractiveMode {
 		};
 		const note = release.note?.trim();
 
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
-		this.chatContainer.addChild(
+		// A notice, not conversation: the launch tip stays visible above it.
+		const notice = new ChatNotice();
+		notice.addChild(new Spacer(1));
+		notice.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		notice.addChild(
 			new ThemedText(() => `${theme.bold(theme.fg("warning", "Update Available"))}\n${updateInstruction()}`, 1, 0),
 		);
 		if (note) {
-			this.chatContainer.addChild(new Spacer(1));
-			this.chatContainer.addChild(
-				this.createChangelogMarkdown(note, 1, 0, { color: (text) => theme.fg("muted", text) }),
-			);
-			this.chatContainer.addChild(new Spacer(1));
+			notice.addChild(new Spacer(1));
+			notice.addChild(this.createChangelogMarkdown(note, 1, 0, { color: (text) => theme.fg("muted", text) }));
+			notice.addChild(new Spacer(1));
 		}
-		this.chatContainer.addChild(new ThemedText(changelogLine, 1, 0));
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		notice.addChild(new ThemedText(changelogLine, 1, 0));
+		notice.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		this.chatContainer.addChild(notice);
 		this.ui.requestRender();
 	}
 
@@ -4662,9 +4673,11 @@ export class InteractiveMode {
 			theme.fg("accent", `${APP_NAME} update --extensions`);
 		const packageLines = packages.map((pkg) => `- ${pkg}`).join("\n");
 
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
-		this.chatContainer.addChild(
+		// A notice, not conversation: the launch tip stays visible above it.
+		const notice = new ChatNotice();
+		notice.addChild(new Spacer(1));
+		notice.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		notice.addChild(
 			new ThemedText(
 				() =>
 					`${theme.bold(theme.fg("warning", "Package Updates Available"))}\n${updateInstruction()}\n${theme.fg("muted", "Packages:")}\n${packageLines}`,
@@ -4672,7 +4685,8 @@ export class InteractiveMode {
 				0,
 			),
 		);
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		notice.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		this.chatContainer.addChild(notice);
 		this.ui.requestRender();
 	}
 
@@ -6919,8 +6933,11 @@ export class InteractiveMode {
 			if (result.cancelled) {
 				return;
 			}
-			this.chatContainer.addChild(new Spacer(1));
-			this.chatContainer.addChild(new ThemedText(() => theme.fg("accent", "✓ New session started"), 1, 1));
+			// A notice, not conversation: /new starts blank, so the launch tip returns under it.
+			const notice = new ChatNotice();
+			notice.addChild(new Spacer(1));
+			notice.addChild(new ThemedText(() => theme.fg("accent", "✓ New session started"), 1, 1));
+			this.chatContainer.addChild(notice);
 			this.ui.requestRender();
 		} catch (error: unknown) {
 			await this.handleFatalRuntimeError("Failed to create session", error);

@@ -39,6 +39,7 @@
 
 ### Fixed
 
+- The launch tip now hides when any chat history appears, not only on prompts and model replies: `!` bash rows and built-in command output such as `/session` left it visible. Startup notices, update banners and the `/new` confirmation still keep it visible
 - A shell command that can only write one file (`printf 'x' > notes.txt`) no longer shows `(no output)` under its `Edit (printf)` row when the file came out unchanged; the row says `no change` instead
 - Fixed the bash tool reporting only `Command timed out` when the command had already exited but a background process it started kept writing to its output until the timeout. The error now also reports the shell's exit code and when it exited ([#11613](https://github.com/earendil-works/pi/issues/11613))
 - Images in steering and follow-up messages, including `prompt()` while streaming, are now resized like images in idle prompts instead of being sent and saved at full size ([#11738](https://github.com/earendil-works/pi/issues/11738))
