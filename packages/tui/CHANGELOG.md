@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Fixed `Editor` dropping the blank band rows once the input grew past `minLines`; a configured band now always keeps one empty row above and one below the text
 - Fixed Markdown rendering HTML comments (`<!-- ... -->`) as visible text ([#11710](https://github.com/earendil-works/pi/issues/11710))
 
 ## [1.5.0] - 2026-11-02

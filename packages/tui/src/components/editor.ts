@@ -754,9 +754,11 @@ export class Editor implements Component, Focusable {
 		const rightPadding = leftPadding;
 
 		// Empty band rows are split above and below the text so short content sits in the
-		// middle of the minLines block. Stored for click-to-cursor mapping.
-		const padTotal = Math.max(0, this.minLines - layoutLines.length);
-		this.renderedTopPad = Math.floor(padTotal / 2);
+		// middle of the minLines block, the odd row going above. A configured band always
+		// keeps one row above and one below, even when the content outgrows minLines.
+		// Stored for click-to-cursor mapping.
+		const padTotal = Math.max(this.minLines - layoutLines.length, this.minLines > 0 ? 2 : 0);
+		this.renderedTopPad = Math.ceil(padTotal / 2);
 		const bandRowCount = padTotal + visibleLines.length;
 		const bandRow = `${leftPadding}${" ".repeat(promptWidth)}${" ".repeat(contentWidth)}${rightPadding}`;
 

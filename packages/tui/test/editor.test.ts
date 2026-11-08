@@ -4366,6 +4366,22 @@ describe("Editor band options", () => {
 		assert.ok(stripTerminalSequences(lines[1]!).startsWith("❯ "), "text row sits in the middle");
 		assert.strictEqual(stripTerminalSequences(lines[2]!).trim(), "");
 	});
+
+	it("keeps one blank band row above and below the text when content outgrows minLines", () => {
+		const editor = new Editor(createTestTUI(), defaultEditorTheme, {
+			borders: false,
+			prompt: "❯ ",
+			minLines: 3,
+		});
+		editor.setText("one\ntwo\nthree\nfour");
+		const lines = editor.render(30);
+		const plain = lines.map((line) => stripTerminalSequences(line).trimEnd());
+		assert.strictEqual(lines.length, 6);
+		assert.strictEqual(plain[0]!.trim(), "", "one blank band row above the text");
+		assert.ok(plain[1]!.startsWith("❯ one"));
+		assert.ok(plain[4]!.startsWith("  four"));
+		assert.strictEqual(plain[5]!.trim(), "", "one blank band row below the text");
+	});
 });
 
 describe("Editor band shine (one-shot)", () => {
