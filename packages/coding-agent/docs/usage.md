@@ -15,7 +15,6 @@ Type a request and press `Enter` to send it. Use `Shift+Enter` to add a line, or
 To include files or images:
 
 - Type `@` to search for a file and add it to your prompt.
-- Press `Tab` to complete a path.
 - Paste an image or drag it into a compatible terminal.
 
 ## Follow Toucan's work

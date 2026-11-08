@@ -465,7 +465,7 @@ editor.getPaddingX();  // Get current padding
 - Click-to-position cursor and clickable autocomplete rows in alternate-screen mode
 - Multi-line editing with word wrap
 - Slash command autocomplete (type `/`)
-- File path autocomplete (press `Tab`)
+- File path autocomplete (type `@`)
 - Large paste handling (>10 lines creates `[paste #1 +50 lines]` marker)
 - Horizontal lines above/below editor
 - Fake cursor rendering (hidden real cursor)
@@ -473,7 +473,7 @@ editor.getPaddingX();  // Get current padding
 **Key Bindings:**
 - `Enter` - Submit
 - `Shift+Enter`, `Ctrl+Enter`, or `Alt+Enter` - New line (terminal-dependent, Alt+Enter most reliable)
-- `Tab` - Autocomplete
+- `Tab` - Accept the highlighted completion, or open the `/` command menu
 - `Ctrl+K` - Delete to end of line
 - `Ctrl+U` - Delete to start of line
 - `Ctrl+W` or `Alt+Backspace` - Delete word backwards
@@ -712,7 +712,7 @@ editor.setAutocompleteProvider(provider);
 
 **Features:**
 - Type `/` to see slash commands
-- Press `Tab` for file path completion
+- Type `@` for file path completion (`~/`, `./`, `../`, and `@` prefixes work)
 - Works with `~/`, `./`, `../`, and `@` prefix
 - Filters to attachable files for `@` prefix
 

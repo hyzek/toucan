@@ -195,6 +195,7 @@ import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getDistinctModelName, getModelSearchText } from "./model-search.ts";
 import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
 import { shareSession } from "./session-share.ts";
+import { createInputShine, type InputShine, shouldPlayMaxShine } from "./theme/input-shine.ts";
 import {
 	getAvailableThemes,
 	getAvailableThemesWithPaths,
@@ -470,6 +471,8 @@ export class InteractiveMode {
 	private readonly idleStatus = new IdleStatus();
 	private workingMessage: string | undefined = undefined;
 	private workingStatusEngine: WorkingStatusEngine | undefined = undefined;
+	/** Input band glint color factories; the editor holds them by reference. */
+	private readonly inputShine: InputShine = createInputShine();
 	private workingVisible = true;
 	private workingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working";
@@ -658,6 +661,10 @@ export class InteractiveMode {
 			autocompleteMaxVisible,
 			embedWorkingStatus: true,
 			...inputBandOptions(),
+			// Idle byte-identical to inputBandOptions()'s placeholderStyle; adds the shine brightening
+			// only while a glint is running.
+			placeholderStyle: this.inputShine.placeholderStyle,
+			bandShine: { background: this.inputShine.background },
 		});
 		this.editor = this.defaultEditor;
 		this.editorContainer = new Container();
@@ -1027,6 +1034,8 @@ export class InteractiveMode {
 
 		// Start the UI before initializing extensions so session_start handlers can use interactive dialogs
 		this.ui.start();
+		// One-shot glint across the input band, armed only after the first frame is on screen.
+		this.defaultEditor.startBandShine();
 		this.isInitialized = true;
 		this.programStatus.report();
 		this.ensurePngTranscoder();
@@ -4487,6 +4496,7 @@ export class InteractiveMode {
 	}
 
 	private cycleThinkingLevel(): void {
+		const previousLevel = this.session.thinkingLevel;
 		const newLevel = this.session.cycleThinkingLevel();
 		if (newLevel === undefined) {
 			this.showStatus("Current model does not support thinking");
@@ -4494,7 +4504,26 @@ export class InteractiveMode {
 			this.footer.invalidate();
 			this.updateEditorBorderColor();
 			this.showStatus(`Thinking level: ${newLevel}`);
+			this.playMaxEffortShine(previousLevel, newLevel);
 		}
+	}
+
+	/**
+	 * Replay the input band glint in the effort color when reasoning effort transitions to
+	 * "max". Any other level resets the variant once the previous glint has settled.
+	 */
+	private playMaxEffortShine(previous: ThinkingLevel | undefined, next: ThinkingLevel | undefined): void {
+		if (!shouldPlayMaxShine(previous, next)) {
+			if (!this.defaultEditor.isBandShining()) this.inputShine.setVariant("default");
+			return;
+		}
+		// A custom editor replacing the default one has no bandShine; don't tick on it.
+		if (this.editor !== this.defaultEditor) return;
+		this.inputShine.setVariant("max");
+		// startBandShine no-ops while one is already running, so cancel an in-flight launch glint
+		// first: cycling onto max during the first second would otherwise drop the tinted glint.
+		this.defaultEditor.stopBandShine();
+		this.defaultEditor.startBandShine();
 	}
 
 	private async cycleModel(direction: "forward" | "backward"): Promise<void> {
@@ -5122,11 +5151,15 @@ export class InteractiveMode {
 	}
 
 	private selectThinkingLevel(level: ThinkingLevel, persist: boolean): void {
+		const previousLevel = this.session.thinkingLevel;
 		try {
 			this.session.setThinkingLevel(level, { persist });
 			this.footer.invalidate();
 			this.updateEditorBorderColor();
 			this.showStatus(persist ? `Default thinking level: ${level}` : `Thinking level: ${level}`);
+			// session.setThinkingLevel clamps to model capabilities, so the glint only sees the
+			// effective level: picking "max" on a model without it stays silent.
+			this.playMaxEffortShine(previousLevel, this.session.thinkingLevel);
 		} catch (error) {
 			this.showError(error instanceof Error ? error.message : String(error));
 		}

@@ -1,11 +1,8 @@
 import assert from "node:assert";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { type AutocompleteProvider, CombinedAutocompleteProvider } from "../src/autocomplete.ts";
-import { Editor, wordWrapLine } from "../src/components/editor.ts";
+import { Editor, type EditorOptions, wordWrapLine } from "../src/components/editor.ts";
 import { FAKE_CURSOR_END, FAKE_CURSOR_START, renderFakeCursor, type TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
 import { stripTerminalSequences, visibleWidth } from "../src/utils.ts";
@@ -2093,7 +2090,8 @@ describe("Editor component", () => {
 			assert.strictEqual(editor.getText(), "hello");
 		});
 
-		it("undoes autocomplete", async () => {
+		it("undoes autocomplete", async (t) => {
+			t.mock.timers.enable({ apis: ["setTimeout"] });
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
 
 			// Create a mock autocomplete provider
@@ -2101,10 +2099,10 @@ describe("Editor component", () => {
 				getSuggestions: async (lines, _cursorLine, cursorCol) => {
 					const text = lines[0] || "";
 					const prefix = text.slice(0, cursorCol);
-					if (prefix === "di") {
+					if (prefix === "@di") {
 						return {
-							items: [{ value: "dist/", label: "dist/" }],
-							prefix: "di",
+							items: [{ value: "@dist/", label: "dist/" }],
+							prefix: "@di",
 						};
 					}
 					return null;
@@ -2114,20 +2112,22 @@ describe("Editor component", () => {
 
 			editor.setAutocompleteProvider(mockProvider);
 
-			// Type "di"
+			// Type "@di" and let the trigger menu open
+			editor.handleInput("@");
 			editor.handleInput("d");
 			editor.handleInput("i");
-			assert.strictEqual(editor.getText(), "di");
-
-			// Press Tab to trigger autocomplete
-			editor.handleInput("\t");
+			t.mock.timers.tick(20);
 			await flushAutocomplete();
-			assert.strictEqual(editor.getText(), "dist/");
+			assert.strictEqual(editor.isShowingAutocomplete(), true);
+
+			// Accept the highlighted completion with Tab
+			editor.handleInput("\t");
+			assert.strictEqual(editor.getText(), "@dist/");
 			assert.strictEqual(editor.isShowingAutocomplete(), false);
 
-			// Undo should restore to "di"
+			// Undo should restore to "@di"
 			editor.handleInput("\x1b[45;5u"); // Ctrl+- (undo)
-			assert.strictEqual(editor.getText(), "di");
+			assert.strictEqual(editor.getText(), "@di");
 		});
 	});
 
@@ -2288,13 +2288,13 @@ describe("Editor component", () => {
 			}
 		});
 
-		it("requests path completion after CJK punctuation only on Tab", async (t) => {
+		it("does not request path completion after CJK punctuation, not even on Tab", async (t) => {
 			t.mock.timers.enable({ apis: ["setTimeout"] });
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
-			const requests: Array<{ text: string; force: boolean | undefined }> = [];
+			const requests: string[] = [];
 			editor.setAutocompleteProvider({
-				getSuggestions: async (lines, cursorLine, cursorCol, options) => {
-					requests.push({ text: lines[cursorLine]!.slice(0, cursorCol), force: options.force });
+				getSuggestions: async (lines, cursorLine, cursorCol) => {
+					requests.push(lines[cursorLine]!.slice(0, cursorCol));
 					return null;
 				},
 				applyCompletion,
@@ -2303,32 +2303,9 @@ describe("Editor component", () => {
 			for (const char of text) editor.handleInput(char);
 			t.mock.timers.tick(20);
 			await flushAutocomplete();
-			assert.deepStrictEqual(requests, []);
 			editor.handleInput("\t");
 			await flushAutocomplete();
-			assert.deepStrictEqual(requests, [{ text, force: true }]);
-		});
-
-		it("completes Chinese path prefixes after whitespace or CJK punctuation with Tab", async (t) => {
-			const baseDir = mkdtempSync(join(tmpdir(), "toucan-editor-autocomplete-"));
-			t.after(() => rmSync(baseDir, { recursive: true, force: true }));
-			mkdirSync(join(baseDir, "文档"));
-			writeFileSync(join(baseDir, "文档", "说明.md"), "text");
-			const editor = new Editor(createTestTUI(), defaultEditorTheme);
-			editor.setAutocompleteProvider(new CombinedAutocompleteProvider([], baseDir));
-			for (const separator of [" ", "\t", "\u3000", "\u00a0", "，", "。"]) {
-				editor.setText(`查看${separator}`);
-				const before = editor.getText();
-				editor.handleInput("文");
-				editor.handleInput("\t");
-				await flushAutocomplete();
-				assert.strictEqual(editor.getText(), `${before}文档/`);
-				editor.handleInput("说");
-				editor.handleInput("\t");
-				await flushAutocomplete();
-				assert.strictEqual(editor.getText(), `${before}文档/说明.md`);
-				assert.deepStrictEqual(editor.getCursor(), { line: 0, col: editor.getText().length });
-			}
+			assert.deepStrictEqual(requests, []);
 		});
 
 		it("ends unquoted trigger and debounce contexts at whitespace or CJK punctuation", async (t) => {
@@ -2385,9 +2362,12 @@ describe("Editor component", () => {
 					},
 					applyCompletion: (...args) => provider.applyCompletion(...args),
 				});
-				editor.setText(`查看：${initial}`);
-				editor.handleInput("\t");
+				editor.setText("查看：");
+				for (const char of initial) editor.handleInput(char);
+				t.mock.timers.tick(20);
 				await flushAutocomplete();
+				assert.strictEqual(editor.isShowingAutocomplete(), true);
+				editor.handleInput("\t"); // accept the directory from the trigger menu
 				assert.strictEqual(editor.getText(), `查看：${directoryValue}`);
 				assert.strictEqual(editor.isShowingAutocomplete(), false);
 
@@ -2414,140 +2394,23 @@ describe("Editor component", () => {
 			}
 		});
 
-		it("auto-applies single force-file suggestion without showing menu", async () => {
+		it("does not open a forced file menu on Tab", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
-
-			const mockProvider: AutocompleteProvider = {
-				getSuggestions: async (lines, _cursorLine, cursorCol, options) => {
-					if (!options.force) {
-						return null;
-					}
-					const text = lines[0] || "";
-					const prefix = text.slice(0, cursorCol);
-					if (prefix === "Work") {
-						return {
-							items: [{ value: "Workspace/", label: "Workspace/" }],
-							prefix: "Work",
-						};
-					}
-					return null;
+			const requests: string[] = [];
+			editor.setAutocompleteProvider({
+				getSuggestions: async (lines, _cursorLine, cursorCol) => {
+					requests.push(lines[0]!.slice(0, cursorCol));
+					return { items: [{ value: "src/", label: "src/" }], prefix: lines[0]!.slice(0, cursorCol) };
 				},
 				applyCompletion,
-			};
+			});
 
-			editor.setAutocompleteProvider(mockProvider);
-
-			// Type "Work"
-			editor.handleInput("W");
-			editor.handleInput("o");
-			editor.handleInput("r");
-			editor.handleInput("k");
-			assert.strictEqual(editor.getText(), "Work");
-
-			// Press Tab - should auto-apply without showing menu
+			for (const char of "src") editor.handleInput(char);
 			editor.handleInput("\t");
 			await flushAutocomplete();
-			assert.strictEqual(editor.getText(), "Workspace/");
-			assert.strictEqual(editor.isShowingAutocomplete(), false);
 
-			// Undo should restore to "Work"
-			editor.handleInput("\x1b[45;5u"); // Ctrl+- (undo)
-			assert.strictEqual(editor.getText(), "Work");
-		});
-
-		it("shows menu when force-file has multiple suggestions", async () => {
-			const editor = new Editor(createTestTUI(), defaultEditorTheme);
-
-			const mockProvider: AutocompleteProvider = {
-				getSuggestions: async (lines, _cursorLine, cursorCol, options) => {
-					if (!options.force) {
-						return null;
-					}
-					const text = lines[0] || "";
-					const prefix = text.slice(0, cursorCol);
-					if (prefix === "src") {
-						return {
-							items: [
-								{ value: "src/", label: "src/" },
-								{ value: "src.txt", label: "src.txt" },
-							],
-							prefix: "src",
-						};
-					}
-					return null;
-				},
-				applyCompletion,
-			};
-
-			editor.setAutocompleteProvider(mockProvider);
-
-			// Type "src"
-			editor.handleInput("s");
-			editor.handleInput("r");
-			editor.handleInput("c");
+			assert.deepStrictEqual(requests, []);
 			assert.strictEqual(editor.getText(), "src");
-
-			// Press Tab - should show menu because there are multiple suggestions
-			editor.handleInput("\t");
-			await flushAutocomplete();
-			assert.strictEqual(editor.getText(), "src");
-			assert.strictEqual(editor.isShowingAutocomplete(), true);
-
-			// Press Tab again to accept first suggestion
-			editor.handleInput("\t");
-			assert.strictEqual(editor.getText(), "src/");
-			assert.strictEqual(editor.isShowingAutocomplete(), false);
-		});
-
-		it("keeps suggestions open when typing in force mode (Tab-triggered)", async () => {
-			const editor = new Editor(createTestTUI(), defaultEditorTheme);
-
-			const allFiles = [
-				{ value: "readme.md", label: "readme.md" },
-				{ value: "package.json", label: "package.json" },
-				{ value: "src/", label: "src/" },
-				{ value: "dist/", label: "dist/" },
-			];
-
-			const mockProvider: AutocompleteProvider = {
-				getSuggestions: async (lines, _cursorLine, cursorCol, options) => {
-					const text = lines[0] || "";
-					const prefix = text.slice(0, cursorCol);
-					const shouldMatch = options.force || prefix.includes("/") || prefix.startsWith(".");
-					if (!shouldMatch) {
-						return null;
-					}
-					const filtered = allFiles.filter((f) => f.value.toLowerCase().startsWith(prefix.toLowerCase()));
-					if (filtered.length > 0) {
-						return { items: filtered, prefix };
-					}
-					return null;
-				},
-				applyCompletion,
-			};
-
-			editor.setAutocompleteProvider(mockProvider);
-
-			// Press Tab on empty prompt - should show all files (force mode)
-			editor.handleInput("\t");
-			await flushAutocomplete();
-			assert.strictEqual(editor.isShowingAutocomplete(), true);
-
-			// Type "r" - should narrow to "readme.md" (force mode keeps suggestions open)
-			editor.handleInput("r");
-			await flushAutocomplete();
-			assert.strictEqual(editor.getText(), "r");
-			assert.strictEqual(editor.isShowingAutocomplete(), true);
-
-			// Type "e" - should still show "readme.md"
-			editor.handleInput("e");
-			await flushAutocomplete();
-			assert.strictEqual(editor.getText(), "re");
-			assert.strictEqual(editor.isShowingAutocomplete(), true);
-
-			// Accept with Tab
-			editor.handleInput("\t");
-			assert.strictEqual(editor.getText(), "readme.md");
 			assert.strictEqual(editor.isShowingAutocomplete(), false);
 		});
 
@@ -4502,5 +4365,126 @@ describe("Editor band options", () => {
 		assert.strictEqual(stripTerminalSequences(lines[0]!).trim(), "");
 		assert.ok(stripTerminalSequences(lines[1]!).startsWith("❯ "), "text row sits in the middle");
 		assert.strictEqual(stripTerminalSequences(lines[2]!).trim(), "");
+	});
+});
+
+describe("Editor band shine (one-shot)", () => {
+	const RESTING = "\x1b[48;5;236m";
+	const LIT = "\x1b[48;5;240m";
+	const bandFill = (text: string) => `${RESTING}${text}\x1b[49m`;
+
+	function bandEditor(cols: number, options: EditorOptions = {}): Editor {
+		return new Editor(createTestTUI(cols, 24), defaultEditorTheme, {
+			borders: false,
+			prompt: "› ",
+			minLines: 3,
+			lineBackground: bandFill,
+			...options,
+		});
+	}
+
+	it("sweeps the band once and settles back to the resting fill", () => {
+		mock.timers.enable({ apis: ["setInterval"] });
+		try {
+			const levels: number[] = [];
+			const editor = bandEditor(40, {
+				bandShine: {
+					frames: 4,
+					intervalMs: 40,
+					background: (level) => {
+						levels.push(level);
+						return level === 0 ? RESTING : LIT;
+					},
+				},
+			});
+			const restingRow = `${RESTING}${" ".repeat(40)}\x1b[49m`; // the empty band row above the input
+
+			assert.equal(editor.render(40)[0], restingRow); // nothing before start
+			assert.equal(editor.isBandShining(), false);
+
+			editor.startBandShine();
+			assert.equal(editor.isBandShining(), true);
+			mock.timers.tick(40);
+
+			const litRow = editor.render(40)[0]!;
+			assert.ok(litRow.includes(LIT)); // the band is painted
+			assert.ok(levels.some((level) => level > 0));
+
+			mock.timers.tick(40 * 4); // run well past the last frame
+			assert.equal(editor.isBandShining(), false);
+			assert.equal(editor.render(40)[0], restingRow); // settled
+
+			const callsAtEnd = levels.length;
+			mock.timers.tick(40 * 10);
+			assert.equal(levels.length, callsAtEnd); // the timer really stopped
+			assert.equal(editor.getText(), ""); // the shine is display-only
+		} finally {
+			mock.timers.reset();
+		}
+	});
+
+	it("does nothing without both lineBackground and bandShine", () => {
+		const unfilled = new Editor(createTestTUI(40, 24), defaultEditorTheme, {
+			borders: false,
+			bandShine: { background: () => LIT },
+		});
+		unfilled.startBandShine();
+		assert.equal(unfilled.isBandShining(), false);
+
+		const unconfigured = bandEditor(40);
+		unconfigured.startBandShine();
+		assert.equal(unconfigured.isBandShining(), false);
+	});
+
+	it("stops the sweep on the first keystroke", () => {
+		mock.timers.enable({ apis: ["setInterval"] });
+		try {
+			const editor = bandEditor(40, {
+				bandShine: { frames: 24, intervalMs: 40, background: (level) => (level === 0 ? RESTING : LIT) },
+			});
+			editor.startBandShine();
+			assert.equal(editor.isBandShining(), true);
+
+			editor.handleInput("h");
+
+			assert.equal(editor.isBandShining(), false);
+			assert.equal(editor.getText(), "h");
+		} finally {
+			mock.timers.reset();
+		}
+	});
+
+	it("passes per-grapheme shine intensity to placeholderStyle while sweeping", () => {
+		mock.timers.enable({ apis: ["setInterval"] });
+		try {
+			const seen: Array<number | undefined> = [];
+			const editor = bandEditor(60, {
+				placeholder: "give toucan a task",
+				placeholderStyle: (text, shine) => {
+					seen.push(shine);
+					return text;
+				},
+				bandShine: { frames: 24, intervalMs: 40, background: (level) => (level === 0 ? RESTING : LIT) },
+			});
+
+			editor.render(60);
+			const idle = seen.slice();
+			assert.ok(idle.length > 0);
+			assert.ok(
+				idle.every((shine) => shine === undefined), // idle: the original single call, no intensity
+			);
+
+			seen.length = 0;
+			editor.startBandShine();
+			mock.timers.tick(40 * 5); // the band is over the placeholder by now
+			editor.render(60);
+
+			const defined = seen.filter((shine): shine is number => shine !== undefined);
+			assert.ok(defined.length > 1, "expected one call per grapheme");
+			assert.ok(defined.some((shine) => shine > 0));
+			assert.ok(new Set(defined).size > 1, "intensity should vary across the row");
+		} finally {
+			mock.timers.reset();
+		}
 	});
 });

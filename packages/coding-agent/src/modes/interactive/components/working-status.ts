@@ -7,8 +7,8 @@ import { formatTokens } from "./footer.ts";
 export type WorkingActivity = "thinking" | "working";
 
 /**
- * One render of the working line. The engine stays unstyled: the component that owns it colors
- * `label` with the theme accent and brackets `status` in the muted color.
+ * One render of the working line. The engine stays unstyled: the component that owns it sweeps
+ * `label` with the shine curve and brackets `status` in the muted color.
  */
 export interface WorkingStatusLine {
 	/** `Thinking` while a thinking block streams, `Working` while tool calls are written or run. */

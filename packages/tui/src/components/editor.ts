@@ -2,6 +2,7 @@ import type { AutocompleteProvider, AutocompleteSuggestions } from "../autocompl
 import { getKeybindings } from "../keybindings.ts";
 import { decodePrintableKey, matchesKey } from "../keys.ts";
 import { KillRing } from "../kill-ring.ts";
+import { clamp01, quantizeShine, shineFalloffCols, shineIntensityAt, shinePhase } from "../shine.ts";
 import {
 	type Component,
 	CURSOR_MARKER,
@@ -16,6 +17,7 @@ import {
 	autocompleteBoundaryRegex,
 	autocompleteSeparatorRegex,
 	cjkBreakRegex,
+	extractAnsiCode,
 	getGraphemeSegmenter,
 	getWordSegmenter,
 	isWhitespaceChar,
@@ -240,15 +242,41 @@ export interface EditorTheme {
 	selectList: SelectListTheme;
 }
 
+/**
+ * One-shot shine swept across the input band. Requires `lineBackground`: the app supplies only
+ * the color for a shine intensity, while the editor owns the geometry, the per-column insertion
+ * and the timer. Used for the input band's startup glint; see `Editor.startBandShine`.
+ */
+export interface BandShineOptions {
+	/** Animation steps. The last step is fully faded. Default 24. */
+	frames?: number;
+	/** Milliseconds between steps. Default 40 (24 x 40 = 960ms). */
+	intervalMs?: number;
+	/** Shine half-width as a fraction of the row width. Default SHINE_FALLOFF_FRACTION. */
+	falloffFraction?: number;
+	/** Extra phase per row below the first, in 0..1 sweep units — gives a diagonal band. Default 0. */
+	rowOffset?: number;
+	/**
+	 * ANSI background prefix for a shine intensity in [0,1]. Intensity 0 must return the band's
+	 * resting background: it is re-emitted whenever the band leaves a run of columns.
+	 */
+	background: (intensity: number) => string;
+}
+
 export interface EditorOptions {
 	paddingX?: number;
 	autocompleteMaxVisible?: number;
 	/** Shown on the empty input line, after the cursor. */
 	placeholder?: string;
-	/** Styling for the placeholder; defaults to ANSI dim. */
-	placeholderStyle?: (text: string) => string;
+	/**
+	 * Styling for the placeholder; defaults to ANSI dim. While a band shine runs it is called
+	 * once per grapheme with that grapheme's shine intensity, so the text can brighten with the band.
+	 */
+	placeholderStyle?: (text: string, shine?: number) => string;
 	/** Decorator applied to every line the editor renders (borders and content), e.g. a background band. */
 	lineBackground?: (line: string) => string;
+	/** One-shot shine swept across the whole filled input band. Requires `lineBackground`. */
+	bandShine?: BandShineOptions;
 	/** Draw the top and bottom horizontal rules. Default true; false renders a borderless band. */
 	borders?: boolean;
 	/** Prompt prefix rendered before the first visual input line, e.g. "❯ ". */
@@ -274,6 +302,16 @@ const DEFAULT_AUTOCOMPLETE_TRIGGER_CHARACTERS = ["@", "#"];
 const unquotedAutocompleteSuffixRegex = new RegExp(`(?:(?!${autocompleteSeparatorRegex.source}).)*`, "u");
 // Trigger tokens may be wrapped in prose, e.g. "(@src/foo" or "`@src/foo".
 const autocompleteTokenStartSource = `${autocompleteBoundaryRegex.source}[([{<\`]*`;
+/** Default one-shot band shine: same cadence as the working indicator (24 frames x 40ms). */
+const DEFAULT_BAND_SHINE_FRAMES = 24;
+const DEFAULT_BAND_SHINE_INTERVAL_MS = 40;
+
+/** Resolved shine phase for one band row. */
+interface ShineRow {
+	position: number;
+	envelope: number;
+	falloffCols: number;
+}
 
 function escapeCharacterClass(value: string): string {
 	return value.replace(/[\\^$.*+?()[\]{}|-]/g, "\\$&");
@@ -331,8 +369,12 @@ export class Editor implements Component, Focusable {
 	private theme: EditorTheme;
 	private paddingX: number = 0;
 	private readonly placeholder: string | undefined;
-	private readonly placeholderStyle: (text: string) => string = (text) => `\x1b[2m${text}\x1b[22m`;
+	private readonly placeholderStyle: (text: string, shine?: number) => string = (text) => `\x1b[2m${text}\x1b[22m`;
 	private readonly lineBackground: ((line: string) => string) | undefined;
+	private readonly bandShine?: BandShineOptions;
+	/** Current shine frame, or -1 when no shine is running. Counter-driven, never wall-clock. */
+	private shineFrame: number = -1;
+	private shineTimer: ReturnType<typeof setInterval> | undefined;
 	protected readonly borders: boolean = true;
 	private readonly prompt: string = "";
 	private readonly promptStyle: (text: string) => string = (text) => text;
@@ -357,7 +399,7 @@ export class Editor implements Component, Focusable {
 	private autocompleteTriggerPattern = buildTriggerPattern(this.autocompleteTriggerCharacters);
 	private autocompleteDebouncePattern = buildDebouncePattern(this.autocompleteTriggerCharacters);
 	private autocompleteList?: SelectList;
-	private autocompleteState: "regular" | "force" | null = null;
+	private autocompleteState: "regular" | null = null;
 	private autocompletePrefix: string = "";
 	private autocompleteMaxVisible: number = 5;
 	private autocompleteAbort?: AbortController;
@@ -412,6 +454,7 @@ export class Editor implements Component, Focusable {
 		this.placeholder = options.placeholder;
 		this.placeholderStyle = options.placeholderStyle ?? ((text) => `\x1b[2m${text}\x1b[22m`);
 		this.lineBackground = options.lineBackground;
+		this.bandShine = options.bandShine;
 		this.borders = options.borders ?? true;
 		this.prompt = options.prompt ?? "";
 		this.promptStyle = options.promptStyle ?? ((text) => text);
@@ -547,6 +590,100 @@ export class Editor implements Component, Focusable {
 		// No cached state to invalidate currently
 	}
 
+	/** True while the one-shot band shine is running. */
+	isBandShining(): boolean {
+		return this.shineFrame >= 0;
+	}
+
+	/**
+	 * Play the band shine once. No-op unless both `lineBackground` and `bandShine` are configured,
+	 * and while a shine is already running.
+	 */
+	startBandShine(): void {
+		const shine = this.bandShine;
+		if (!shine || !this.lineBackground || this.shineFrame >= 0) return;
+		const frames = this.shineFrameCount();
+		const intervalMs = Math.max(1, Math.floor(shine.intervalMs ?? DEFAULT_BAND_SHINE_INTERVAL_MS));
+		this.shineFrame = 0;
+		this.shineTimer = setInterval(() => {
+			this.shineFrame++;
+			if (this.shineFrame >= frames) {
+				this.stopBandShine();
+				this.tui.requestRender();
+				return;
+			}
+			this.tui.requestRender();
+		}, intervalMs);
+	}
+
+	/** Cancel a running shine. The next render draws the resting band. */
+	stopBandShine(): void {
+		if (this.shineTimer !== undefined) {
+			clearInterval(this.shineTimer);
+			this.shineTimer = undefined;
+		}
+		this.shineFrame = -1;
+	}
+
+	private shineFrameCount(): number {
+		return Math.max(2, Math.floor(this.bandShine?.frames ?? DEFAULT_BAND_SHINE_FRAMES));
+	}
+
+	/** Shine phase for one band row, or undefined when nothing is animating. */
+	private rowShine(rowIndex: number, rowCount: number, width: number): ShineRow | undefined {
+		const shine = this.bandShine;
+		if (this.shineFrame < 0 || !shine || width <= 1) return undefined;
+		const offset = Math.max(0, shine.rowOffset ?? 0);
+		// span > 1 so the last row still finishes its sweep when rows are staggered.
+		const span = 1 + offset * Math.max(0, rowCount - 1);
+		const u = clamp01((this.shineFrame / (this.shineFrameCount() - 1)) * span - offset * rowIndex);
+		const { position, envelope } = shinePhase(u);
+		return { position, envelope, falloffCols: shineFalloffCols(width, shine.falloffFraction) };
+	}
+
+	/** Shine intensity at a column, quantized to the emitted levels, or undefined when idle. */
+	private shineAtCol(shine: ShineRow | undefined, col: number, width: number): number | undefined {
+		if (!shine) return undefined;
+		return quantizeShine(shineIntensityAt(col, width, shine.position, shine.envelope, shine.falloffCols));
+	}
+
+	/**
+	 * Insert the shine's per-column background into an already-filled row. No-op when inactive,
+	 * so the resting band is byte-identical to a plain `lineBackground`.
+	 */
+	private applyBandShine(line: string, shine: ShineRow | undefined): string {
+		const background = this.bandShine?.background;
+		if (!shine || background === undefined) return line;
+		const width = visibleWidth(line);
+		let out = "";
+		let col = 0;
+		// Level 0 is the resting fill that lineBackground already emitted, so nothing is written for it
+		// until the band raises the level and later drops back.
+		let level = 0;
+		let i = 0;
+		while (i < line.length) {
+			const ansi = extractAnsiCode(line, i);
+			if (ansi) {
+				out += ansi.code;
+				i += ansi.length;
+				continue;
+			}
+			let textEnd = i;
+			while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
+			for (const { segment } of graphemeSegmenter.segment(line.slice(i, textEnd))) {
+				const next = this.shineAtCol(shine, col, width) ?? 0;
+				if (next !== level) {
+					out += background(next);
+					level = next;
+				}
+				out += segment;
+				col += visibleWidth(segment);
+			}
+			i = textEnd;
+		}
+		return out;
+	}
+
 	protected renderTopBorder(width: number, hiddenLineCount: number): string {
 		if (!this.borders) return "";
 		const border = hiddenLineCount > 0 ? createScrollBorder("↑", hiddenLineCount, width) : "─".repeat(width);
@@ -620,6 +757,7 @@ export class Editor implements Component, Focusable {
 		// middle of the minLines block. Stored for click-to-cursor mapping.
 		const padTotal = Math.max(0, this.minLines - layoutLines.length);
 		this.renderedTopPad = Math.floor(padTotal / 2);
+		const bandRowCount = padTotal + visibleLines.length;
 		const bandRow = `${leftPadding}${" ".repeat(promptWidth)}${" ".repeat(contentWidth)}${rightPadding}`;
 
 		// The autocomplete menu sits above the input band, at the band's own indent.
@@ -643,7 +781,7 @@ export class Editor implements Component, Focusable {
 		// Empty band rows split above and below the text so short content sits in the middle
 		// of the minLines block. Stored for click-to-cursor mapping.
 		for (let padIndex = 0; padIndex < this.renderedTopPad; padIndex++) {
-			result.push(this.decorateLine(bandRow));
+			result.push(this.applyBandShine(this.decorateLine(bandRow), this.rowShine(padIndex, bandRowCount, width)));
 		}
 
 		// Render each visible layout line
@@ -654,6 +792,7 @@ export class Editor implements Component, Focusable {
 
 		for (let visibleIndex = 0; visibleIndex < visibleLines.length; visibleIndex++) {
 			const layoutLine = visibleLines[visibleIndex]!;
+			const rowShine = this.rowShine(this.renderedTopPad + visibleIndex, bandRowCount, width);
 			let displayText = layoutLine.text;
 			let lineVisibleWidth = visibleWidth(layoutLine.text);
 			let cursorInPadding = false;
@@ -703,7 +842,20 @@ export class Editor implements Component, Focusable {
 			if (showPlaceholder) {
 				const underCursor = layoutLine.hasCursor && layoutLine.cursorPos !== undefined;
 				const shown = underCursor ? this.placeholder!.slice(placeholderOverlay.length) : this.placeholder!;
-				displayText += this.placeholderStyle(shown);
+				if (rowShine) {
+					// Per-grapheme intensity so the placeholder brightens inside the band; the
+					// placeholder starts after the left padding and the prompt cell.
+					let placeholderCol = paddingX + promptWidth + lineVisibleWidth;
+					for (const grapheme of this.segment(shown, "grapheme")) {
+						displayText += this.placeholderStyle(
+							grapheme.segment,
+							this.shineAtCol(rowShine, placeholderCol, width) ?? 0,
+						);
+						placeholderCol += visibleWidth(grapheme.segment);
+					}
+				} else {
+					displayText += this.placeholderStyle(shown);
+				}
 				lineVisibleWidth += visibleWidth(shown);
 			}
 
@@ -712,12 +864,17 @@ export class Editor implements Component, Focusable {
 			const lineRightPadding = cursorInPadding ? rightPadding.slice(1) : rightPadding;
 
 			// Render the line (no side borders, just horizontal lines above and below)
-			result.push(this.decorateLine(`${leftPadding}${promptCell}${displayText}${padding}${lineRightPadding}`));
+			result.push(
+				this.applyBandShine(
+					this.decorateLine(`${leftPadding}${promptCell}${displayText}${padding}${lineRightPadding}`),
+					rowShine,
+				),
+			);
 		}
 
 		// Remaining empty band rows below the text (the rows above were emitted first).
 		for (let padIndex = this.renderedTopPad; padIndex < padTotal; padIndex++) {
-			result.push(this.decorateLine(bandRow));
+			result.push(this.applyBandShine(this.decorateLine(bandRow), this.rowShine(padIndex, bandRowCount, width)));
 		}
 
 		// Render bottom border (with scroll indicator if more content below)
@@ -798,6 +955,13 @@ export class Editor implements Component, Focusable {
 
 	handleInput(data: string): void {
 		const kb = getKeybindings();
+
+		// The startup glint ends as soon as the user starts typing; typed text is not
+		// placeholder-styled, so it would otherwise sit unstyled under the band.
+		if (this.shineFrame >= 0) {
+			this.stopBandShine();
+			this.tui.requestRender();
+		}
 
 		// Handle character jump mode (awaiting next character to jump to)
 		if (this.jumpMode !== null) {
@@ -2367,8 +2531,8 @@ export class Editor implements Component, Focusable {
 		return list;
 	}
 
-	private tryTriggerAutocomplete(explicitTab: boolean = false): void {
-		this.requestAutocomplete({ force: false, explicitTab });
+	private tryTriggerAutocomplete(): void {
+		this.requestAutocomplete(false);
 	}
 
 	private handleTabCompletion(): void {
@@ -2377,56 +2541,36 @@ export class Editor implements Component, Focusable {
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
 		const beforeCursor = currentLine.slice(0, this.state.cursorCol);
 
+		// Tab only opens the slash-command menu. File paths complete through their `@`/`#`
+		// triggers; Tab never forces a file listing.
 		if (this.isInSlashCommandContext(beforeCursor) && !beforeCursor.trimStart().includes(" ")) {
 			this.handleSlashCommandCompletion();
-		} else {
-			this.forceFileAutocomplete(true);
 		}
 	}
 
 	private handleSlashCommandCompletion(): void {
-		this.requestAutocomplete({ force: false, explicitTab: true });
+		this.requestAutocomplete(true);
 	}
 
-	private forceFileAutocomplete(explicitTab: boolean = false): void {
-		this.requestAutocomplete({ force: true, explicitTab });
-	}
-
-	private requestAutocomplete(options: { force: boolean; explicitTab: boolean }): void {
+	private requestAutocomplete(explicitTab: boolean): void {
 		if (!this.autocompleteProvider) return;
-
-		if (options.force) {
-			const shouldTrigger =
-				!this.autocompleteProvider.shouldTriggerFileCompletion ||
-				this.autocompleteProvider.shouldTriggerFileCompletion(
-					this.state.lines,
-					this.state.cursorLine,
-					this.state.cursorCol,
-				);
-			if (!shouldTrigger) {
-				return;
-			}
-		}
 
 		this.cancelAutocompleteRequest();
 		const startToken = ++this.autocompleteStartToken;
 
-		const debounceMs = this.getAutocompleteDebounceMs(options);
+		const debounceMs = this.getAutocompleteDebounceMs(explicitTab);
 		if (debounceMs > 0) {
 			this.autocompleteDebounceTimer = setTimeout(() => {
 				this.autocompleteDebounceTimer = undefined;
-				void this.startAutocompleteRequest(startToken, options);
+				void this.startAutocompleteRequest(startToken);
 			}, debounceMs);
 			return;
 		}
 
-		void this.startAutocompleteRequest(startToken, options);
+		void this.startAutocompleteRequest(startToken);
 	}
 
-	private async startAutocompleteRequest(
-		startToken: number,
-		options: { force: boolean; explicitTab: boolean },
-	): Promise<void> {
+	private async startAutocompleteRequest(startToken: number): Promise<void> {
 		const previousTask = this.autocompleteRequestTask;
 		this.autocompleteRequestTask = (async () => {
 			await previousTask;
@@ -2441,7 +2585,7 @@ export class Editor implements Component, Focusable {
 			const snapshotLine = this.state.cursorLine;
 			const snapshotCol = this.state.cursorCol;
 
-			await this.runAutocompleteRequest(requestId, controller, snapshotText, snapshotLine, snapshotCol, options);
+			await this.runAutocompleteRequest(requestId, controller, snapshotText, snapshotLine, snapshotCol);
 		})();
 		await this.autocompleteRequestTask;
 	}
@@ -2459,8 +2603,8 @@ export class Editor implements Component, Focusable {
 		this.autocompleteDebouncePattern = buildDebouncePattern(next);
 	}
 
-	private getAutocompleteDebounceMs(options: { force: boolean; explicitTab: boolean }): number {
-		if (options.explicitTab || options.force) {
+	private getAutocompleteDebounceMs(explicitTab: boolean): number {
+		if (explicitTab) {
 			return 0;
 		}
 
@@ -2475,7 +2619,6 @@ export class Editor implements Component, Focusable {
 		snapshotText: string,
 		snapshotLine: number,
 		snapshotCol: number,
-		options: { force: boolean; explicitTab: boolean },
 	): Promise<void> {
 		if (!this.autocompleteProvider) return;
 
@@ -2483,7 +2626,7 @@ export class Editor implements Component, Focusable {
 			this.state.lines,
 			this.state.cursorLine,
 			this.state.cursorCol,
-			{ signal: controller.signal, force: options.force },
+			{ signal: controller.signal },
 		);
 
 		if (!this.isAutocompleteRequestCurrent(requestId, controller, snapshotText, snapshotLine, snapshotCol)) {
@@ -2498,26 +2641,7 @@ export class Editor implements Component, Focusable {
 			return;
 		}
 
-		if (options.force && options.explicitTab && suggestions.items.length === 1) {
-			const item = suggestions.items[0]!;
-			this.pushUndoSnapshot();
-			this.lastAction = null;
-			const result = this.autocompleteProvider.applyCompletion(
-				this.state.lines,
-				this.state.cursorLine,
-				this.state.cursorCol,
-				item,
-				suggestions.prefix,
-			);
-			this.state.lines = result.lines;
-			this.state.cursorLine = result.cursorLine;
-			this.setCursorCol(result.cursorCol);
-			if (this.onChange) this.onChange(this.getText());
-			this.tui.requestRender();
-			return;
-		}
-
-		this.applyAutocompleteSuggestions(suggestions, options.force ? "force" : "regular");
+		this.applyAutocompleteSuggestions(suggestions);
 		this.tui.requestRender();
 	}
 
@@ -2537,7 +2661,7 @@ export class Editor implements Component, Focusable {
 		);
 	}
 
-	private applyAutocompleteSuggestions(suggestions: AutocompleteSuggestions, state: "regular" | "force"): void {
+	private applyAutocompleteSuggestions(suggestions: AutocompleteSuggestions): void {
 		this.autocompletePrefix = suggestions.prefix;
 		this.autocompleteList = this.createAutocompleteList(suggestions.prefix, suggestions.items);
 
@@ -2546,7 +2670,7 @@ export class Editor implements Component, Focusable {
 			this.autocompleteList.setSelectedIndex(bestMatchIndex);
 		}
 
-		this.autocompleteState = state;
+		this.autocompleteState = "regular";
 	}
 
 	private cancelAutocompleteRequest(): void {
@@ -2576,6 +2700,6 @@ export class Editor implements Component, Focusable {
 
 	private updateAutocomplete(): void {
 		if (!this.autocompleteState || !this.autocompleteProvider) return;
-		this.requestAutocomplete({ force: this.autocompleteState === "force", explicitTab: false });
+		this.requestAutocomplete(false);
 	}
 }

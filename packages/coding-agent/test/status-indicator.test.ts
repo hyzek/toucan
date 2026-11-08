@@ -37,8 +37,9 @@ describe("status indicators", () => {
 
 		expect(stripAnsi(editor.render(20)[0]!)).toBe("─".repeat(20));
 		const standaloneLine = indicator.render(20)[1]!;
-		expect(standaloneLine).toContain(theme.getFgAnsi("accent"));
-		expect(standaloneLine).toContain(theme.getFgAnsi("muted"));
+		// The default working indicator is the fading dot, rendered verbatim in grayscale.
+		expect(stripAnsi(standaloneLine)).toContain("•");
+		expect(standaloneLine).toContain("\x1b[38;5;");
 		indicator.dispose();
 	});
 
@@ -57,23 +58,23 @@ describe("status indicators", () => {
 		editor.setWorkingStatusIndicator(indicator);
 
 		const topBorder = editor.render(20)[0]!;
-		expect(stripAnsi(topBorder)).toBe("── ⠋ Working ───────");
+		expect(stripAnsi(topBorder)).toBe("── • Working ───────");
 		expect(visibleWidth(topBorder)).toBe(20);
-		// The spinner keeps the band's border color; the label is muted, not border-colored.
+		// The border rule keeps the band's border color; the dot and label are grayscale.
 		expect(topBorder).toContain(theme.getFgAnsi("thinkingHigh"));
-		expect(topBorder).toContain(theme.getFgAnsi("muted"));
 		indicator.dispose();
 	});
 
-	it("renders an engine line with an accent label and a bracketed muted tail", () => {
+	it("renders an engine line with a swept label and a bracketed muted tail", () => {
 		initTheme("dark");
 		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
 		const indicator = new WorkingStatusIndicator(tui, "Working");
 		indicator.setLine({ label: "Thinking", status: "1.2k tokens · 4s" });
 
 		const line = indicator.render(120)[1]!;
-		expect(stripAnsi(line).trim()).toBe("⠋ Thinking (1.2k tokens · 4s)");
-		expect(line).toContain(theme.getFgAnsi("accent"));
+		expect(stripAnsi(line).trim()).toBe("• Thinking (1.2k tokens · 4s)");
+		// The label rides the shine curve (256-color gray ramp), the tail stays muted.
+		expect(line).toContain("\x1b[38;5;");
 		expect(line).toContain(theme.getFgAnsi("muted"));
 		indicator.dispose();
 	});
@@ -90,7 +91,7 @@ describe("status indicators", () => {
 		editor.setWorkingStatusIndicator(indicator);
 
 		const lines = editor.render(40);
-		expect(stripAnsi(lines[0]!).trim()).toBe("⠋ Working (177 tokens · 3s)");
+		expect(stripAnsi(lines[0]!).trim()).toBe("• Working (177 tokens · 3s)");
 		expect(lines[0]!).not.toContain(theme.getBgAnsi("editorBg"));
 		expect(lines[1]!.trim()).toBe(""); // the gap that keeps the status row off the band
 		expect(lines[1]!).not.toContain(theme.getBgAnsi("editorBg"));
@@ -142,5 +143,35 @@ describe("status indicators", () => {
 		vi.advanceTimersByTime(2000);
 
 		expect(requestRender).toHaveBeenCalledTimes(callsBeforeDispose);
+	});
+
+	it("cycles 24 grayscale fade-dot frames every 40ms", () => {
+		initTheme("dark");
+		vi.useFakeTimers();
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicator = new WorkingStatusIndicator(tui, "Working");
+		try {
+			const shades = new Set<string>();
+			for (let i = 0; i < 24; i++) {
+				shades.add(indicator.render(120)[1]!.match(/\x1b\[38;5;(\d+)m/)![1]!);
+				vi.advanceTimersByTime(40);
+			}
+			// The pulse ramps up and back down within one 24-frame cycle.
+			expect(shades.size).toBeGreaterThan(6);
+			for (const shade of shades) expect(Number(shade)).toBeGreaterThanOrEqual(244);
+		} finally {
+			indicator.dispose();
+		}
+	});
+
+	it("stops sweeping after setLabel hands the line to the caller", () => {
+		initTheme("dark");
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicator = new WorkingStatusIndicator(tui, "Working");
+		indicator.setLabel("Compacting");
+		const line = indicator.render(120)[1]!;
+		expect(stripAnsi(line).trim()).toBe("• Compacting");
+		expect(line).toContain(theme.getFgAnsi("muted")); // styled by setLabel, not swept
+		indicator.dispose();
 	});
 });

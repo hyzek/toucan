@@ -192,7 +192,7 @@ class ShineBlock implements Component {
 			const char = text[col] ?? " ";
 			if (col >= PROMPT.length && col < text.length) {
 				// placeholder glyph: fg fades muted → text color with the band
-				out += blendAnsi(38, MUTED, TEXT, next * INPUT_SHINE_FG_PEAK) + char + `\x1b[39m`;
+				out += `${blendAnsi(38, MUTED, TEXT, next * INPUT_SHINE_FG_PEAK) + char}\x1b[39m`;
 			} else if (col < PROMPT.length) {
 				out += `\x1b[38;2;231;231;234m${char}\x1b[39m`;
 			} else {

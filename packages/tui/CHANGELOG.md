@@ -4,7 +4,12 @@
 
 ### Added
 
+- The shine curve (`shinePhase()`, `shineIntensityAt()`, `shineFalloffCols()`, `quantizeShine()`, `smoothstep()`, `clamp01()`) is exported for light-sweep animations on any surface. `EditorOptions.bandShine` with `Editor.startBandShine()`, `stopBandShine()`, and `isBandShining()` sweeps a one-shot shine band across the editor's `lineBackground` fill; the first keystroke cancels it. While a sweep runs, `placeholderStyle` is called once per grapheme with that grapheme's shine intensity. `Loader` renders its message through an overridable `renderMessage(message, frameIndex)` so subclasses can animate the text
 - `SelectListLayoutOptions` gained `selectionMarker` (the glyph leading the selected row), `solidSelection` (paint the selected row as a bar across the menu width, styled by the new optional `SelectListTheme.selectedRow`), `keepSelectionInView` (scroll the window the least needed instead of centering it on the selection), and `hideScrollInfo` (drop the `(1/35)` count row)
+
+### Changed
+
+- `Editor` no longer opens a forced file-path listing on `Tab`. `Tab` now only opens the `/` command menu while typing a command, or accepts the highlighted item in an already-open completion menu; file paths complete through their `@` trigger. `AutocompleteProvider.getSuggestions` is no longer called with `force: true` and single forced suggestions are no longer auto-applied; the `force` and `shouldTriggerFileCompletion` hooks stay in the provider interface for extensions
 
 ### Fixed
 

@@ -15,14 +15,14 @@ const DEFAULT_INTERVAL_MS = 80;
  * Loader component that updates with an optional spinning animation.
  */
 export class Loader extends Text {
-	private frames = [...DEFAULT_FRAMES];
+	protected frames = [...DEFAULT_FRAMES];
 	private intervalMs = DEFAULT_INTERVAL_MS;
-	private currentFrame = 0;
+	protected currentFrame = 0;
 	private intervalId: NodeJS.Timeout | null = null;
 	private ui: TUI | null = null;
 	private renderIndicatorVerbatim = false;
 	private spinnerColorFn: (str: string) => string;
-	private messageColorFn: (str: string) => string;
+	protected messageColorFn: (str: string) => string;
 	private message: string = "Loading...";
 
 	constructor(
@@ -90,10 +90,19 @@ export class Loader extends Text {
 		return this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);
 	}
 
-	private updateDisplay(): void {
+	/** The animated indicator prefix (defaults to the spinner frame, double-spaced). */
+	protected getIndicatorText(): string {
 		const renderedFrame = this.getRenderedIndicator();
-		const indicator = renderedFrame.length > 0 ? `${renderedFrame} ` : "";
-		this.setText(`${indicator}${this.messageColorFn(this.message)}`);
+		return renderedFrame.length > 0 ? `${renderedFrame} ` : "";
+	}
+
+	/** Render the message. Subclasses override this for animated text effects (e.g. a sweep). */
+	protected renderMessage(message: string, _frameIndex: number): string {
+		return this.messageColorFn(message);
+	}
+
+	protected updateDisplay(): void {
+		this.setText(`${this.getIndicatorText()}${this.renderMessage(this.message, this.currentFrame)}`);
 		if (this.ui) {
 			this.ui.requestRender();
 		}

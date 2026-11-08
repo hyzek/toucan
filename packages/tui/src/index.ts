@@ -39,7 +39,7 @@ export {
 // Components
 export { Box } from "./components/box.ts";
 export { CancellableLoader } from "./components/cancellable-loader.ts";
-export { Editor, type EditorOptions, type EditorTheme } from "./components/editor.ts";
+export { type BandShineOptions, Editor, type EditorOptions, type EditorTheme } from "./components/editor.ts";
 export { HStack } from "./components/h-stack.ts";
 export {
 	Image,
@@ -114,6 +114,19 @@ export { getNativeClipboard, type NativeClipboard } from "./native-platform.ts";
 export { oklabToOkhslLightness } from "./oklab.ts";
 // Program status reporting (OSC 7501)
 export { formatProgramStatus, type ProgramStatus } from "./program-status.ts";
+// Shine sweep math shared by animated surfaces (working indicator, input band)
+export {
+	clamp01,
+	quantizeShine,
+	SHINE_FALLOFF_FRACTION,
+	SHINE_FALLOFF_MAX_COLS,
+	SHINE_FALLOFF_MIN_COLS,
+	SHINE_LEVELS,
+	shineFalloffCols,
+	shineIntensityAt,
+	shinePhase,
+	smoothstep,
+} from "./shine.ts";
 // Input buffering for batch splitting
 export { StdinBuffer, type StdinBufferEventMap, type StdinBufferOptions } from "./stdin-buffer.ts";
 // Terminal interface and implementations
