@@ -2,5 +2,5 @@
                                                                                           
 › give toucan a task                                                                      
                                                                                           
-  gpt-6.1-sol • high (main) • layout test  ·  /tmp/project
+  gpt-6.1-sol · high · layout test  ·  /tmp/project
   ← for agents · ? for shortcuts

@@ -120,6 +120,7 @@ import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import { withBuiltInRenderers } from "../../core/tools/renderers/index.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
+import { collectUsageReport, recentDayKeys } from "../../core/usage-stats.ts";
 import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
 import { addMcpServerConfig } from "../../extensions/mcp/config.ts";
 import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.ts";
@@ -150,7 +151,7 @@ import { playArmin3d, playToucanLogo3d } from "./components/easter-egg-3d.lazy.t
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
-import { FooterComponent, formatTokens } from "./components/footer.ts";
+import { FooterComponent, formatCwdForFooter, formatTokens } from "./components/footer.ts";
 import { HotkeyHints } from "./components/hotkey-hints.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LaunchPanel } from "./components/launch-panel.ts";
@@ -169,6 +170,7 @@ import { ScopedModelsSelectorComponent } from "./components/scoped-models-select
 import { SessionSelectorComponent } from "./components/session-selector.ts";
 import { SettingsSelectorComponent } from "./components/settings-selector.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
+import { StatsSelectorComponent } from "./components/stats-selector.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
@@ -218,6 +220,7 @@ interface Expandable {
 
 interface ActiveEditor extends EditorComponent {
 	getCursor?(): { line: number; col: number };
+	isShowingAutocomplete?(): boolean;
 }
 
 interface WorkingStatusEditor extends EditorComponent {
@@ -660,7 +663,10 @@ export class InteractiveMode {
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor as Component);
 		this.tipContainer = new Container();
-		this.tipContainer.addChild(new SessionTip(() => this.sessionManager.hasConversation()));
+		this.tipContainer.addChild(
+			// The tip yields to the `/` menu: both sit above the input and would stack.
+			new SessionTip(() => this.sessionManager.hasConversation() || this.editor.isShowingAutocomplete?.() === true),
+		);
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
 		this.footerContainer = new Container();
@@ -765,7 +771,7 @@ export class InteractiveMode {
 			};
 		}
 
-		const thinkingCommand = slashCommands.find((command) => command.name === "thinking");
+		const thinkingCommand = slashCommands.find((command) => command.name === "effort");
 		if (thinkingCommand) {
 			thinkingCommand.getArgumentCompletions = (prefix: string): AutocompleteItem[] | null => {
 				return createFuzzyAutocompleteItems(
@@ -3003,8 +3009,8 @@ export class InteractiveMode {
 				await this.handleModelCommand(searchTerm);
 				return;
 			}
-			if (text === "/thinking" || text.startsWith("/thinking ")) {
-				const searchTerm = text.startsWith("/thinking ") ? text.slice(10).trim() : undefined;
+			if (text === "/effort" || text.startsWith("/effort ")) {
+				const searchTerm = text.startsWith("/effort ") ? text.slice(8).trim() : undefined;
 				this.editor.setText("");
 				this.handleThinkingCommand(searchTerm);
 				return;
@@ -3043,6 +3049,11 @@ export class InteractiveMode {
 			if (text === "/session") {
 				this.handleSessionCommand();
 				this.editor.setText("");
+				return;
+			}
+			if (text === "/stats") {
+				this.editor.setText("");
+				this.showStatsSelector();
 				return;
 			}
 			if (text === "/changelog") {
@@ -6687,6 +6698,33 @@ export class InteractiveMode {
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new ThemedText(renderInfo, 1, 0));
 		this.ui.requestRender();
+	}
+
+	/** Opens the `/stats` overlay; the report computes in the background and repaints when ready. */
+	private showStatsSelector(): void {
+		this.showSelector((done) => {
+			const selector = new StatsSelectorComponent(() => {
+				done();
+				this.ui.requestRender();
+			});
+			const cwd = this.sessionManager.getCwd();
+			const days = recentDayKeys(7);
+			void SessionManager.listAll()
+				.then((sessions) => {
+					const allFiles = sessions.map((session) => session.path);
+					const projectFiles = sessions.filter((session) => session.cwd === cwd).map((session) => session.path);
+					return Promise.all([collectUsageReport(allFiles, days), collectUsageReport(projectFiles, days)]);
+				})
+				.then(([global, project]) => {
+					selector.setReport({ global, project, projectDir: formatCwdForFooter(cwd, os.homedir()) });
+					this.ui.requestRender();
+				})
+				.catch((error: unknown) => {
+					selector.setError(error instanceof Error ? error.message : String(error));
+					this.ui.requestRender();
+				});
+			return { component: selector, focus: selector };
+		});
 	}
 
 	private handleChangelogCommand(): void {

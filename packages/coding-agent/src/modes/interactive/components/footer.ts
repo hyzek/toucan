@@ -45,8 +45,8 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 }
 
 /**
- * Footer bar showing model and thinking level, git branch, session name, and the working
- * directory. Git branch and extension statuses come from the provider.
+ * Footer bar showing model and thinking level, session name, and the working directory.
+ * Extension statuses come from the provider.
  */
 export class FooterComponent implements Component {
 	private session: AgentSession;
@@ -80,30 +80,26 @@ export class FooterComponent implements Component {
 	render(width: number): string[] {
 		const state = this.session.state;
 
-		// Git branch and session name are optional parts of the bar.
-		const branch = this.footerData.getGitBranch();
+		// The session name is an optional part of the bar.
 		const sessionName = this.session.sessionManager.getSessionName();
 		const directory = formatCwdForFooter(this.session.sessionManager.getCwd(), homedir());
 
 		// One bar like the reference design: model and thinking level lead the bar, indented by
-		// one cell to line up under the input caret, then branch, session name, and directory.
+		// one cell to line up under the input caret, then the session name, and the directory.
 		const modelName = state.model?.id || "no-model";
 		let left = modelName;
 		if (state.model?.reasoning) {
 			const thinkingLevel = state.thinkingLevel || "off";
-			left = thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
+			left = thinkingLevel === "off" ? `${modelName} · thinking off` : `${modelName} · ${thinkingLevel}`;
 		}
 		// A virtual model routes each request; show where the latest response went.
 		const routed = this.session.routedModel;
 		if (routed) {
-			const level = routed.thinkingLevel ? ` • ${routed.thinkingLevel}` : "";
+			const level = routed.thinkingLevel ? ` · ${routed.thinkingLevel}` : "";
 			left += ` → ${routed.model.id}${level}`;
 		}
-		if (branch) {
-			left = `${left} (${branch})`;
-		}
 		if (sessionName) {
-			left = `${left} • ${sessionName}`;
+			left = `${left} · ${sessionName}`;
 		}
 		// Indent to the caret column of the input band above (the prompt cell width).
 		const indent = " ".repeat(visibleWidth(INPUT_PROMPT));

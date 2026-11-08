@@ -100,13 +100,13 @@ describe("FooterComponent width handling", () => {
 			routedModel: { model: { id: "gpt-5.6-luna" }, thinkingLevel: "medium" },
 		});
 
-		expect(renderFooter(session, 120)).toContain("auto \u2022 high \u2192 gpt-5.6-luna \u2022 medium");
+		expect(renderFooter(session, 120)).toContain("auto \u00b7 high \u2192 gpt-5.6-luna \u00b7 medium");
 	});
 
 	it("ends the bar with the working directory", () => {
 		const session = createSession({ sessionName: "", reasoning: true, thinkingLevel: "high" });
 
-		expect(renderFooter(session, 120)).toBe("  test-model \u2022 high (main)  \u00b7  /tmp/project");
+		expect(renderFooter(session, 120)).toBe("  test-model \u00b7 high  \u00b7  /tmp/project");
 	});
 
 	it("shows no token, cost, or context stats in the bar", () => {

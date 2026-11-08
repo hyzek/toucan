@@ -1097,6 +1097,12 @@ export function getSelectListTheme(): SelectListTheme {
 	return {
 		selectedPrefix: (text: string) => theme.fg("accent", text),
 		selectedText: (text: string) => theme.fg("accent", text),
+		// A menu that asks for a solid selection: the row's background mixed toward the accent, deep
+		// enough to read as a selector in every theme (`selectedBg` alone can mean "terminal default").
+		selectedRow: (text: string) => {
+			const color = mixColors(theme.terminalBackground, theme.colors.accent, 0.45, "srgb");
+			return `${backgroundAnsi(color, theme.getColorMode())}${text}\x1b[49m`;
+		},
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),

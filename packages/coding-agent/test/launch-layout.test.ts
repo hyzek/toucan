@@ -117,7 +117,7 @@ describe("launch bottom layout", () => {
 		const footer = lines.slice(4, 5);
 		expect(footer).toHaveLength(1);
 		expect(footer[0]!.startsWith("  ")).toBe(true);
-		expect(footer[0]!.trimStart().startsWith("gpt-6.1-sol • high")).toBe(true);
+		expect(footer[0]!.trimStart().startsWith("gpt-6.1-sol · high")).toBe(true);
 		expect(footer[0]!.trimEnd().endsWith("/tmp/project")).toBe(true);
 	});
 

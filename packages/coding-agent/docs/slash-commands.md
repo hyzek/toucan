@@ -10,7 +10,7 @@ Extensions, prompt templates, and skills can add commands. The command menu in T
 |---|---|
 | `/settings` | Open settings |
 | `/model [provider/model]` | Select a model |
-| `/thinking [level]` | Set the thinking level |
+| `/effort [level]` | Select the reasoning effort |
 | `/scoped-models` | Configure the models used by interactive cycling |
 | `/login [provider]` | Add provider authentication |
 | `/logout` | Remove provider authentication |
@@ -24,6 +24,7 @@ Extensions, prompt templates, and skills can add commands. The command menu in T
 | `/resume` | Resume another session |
 | `/name [name]` | Set the session display name, or show the current name when omitted |
 | `/session` | Show current session information and statistics |
+| `/stats` | Show token usage across all sessions and for this project |
 | `/tree` | Navigate the session tree |
 | `/fork` | Create a new session from an earlier user message |
 | `/clone` | Duplicate the current session at its current position |
