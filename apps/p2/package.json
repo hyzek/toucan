@@ -1,6 +1,6 @@
 {
 	"name": "p2",
-	"version": "23.0.0",
+	"version": "24.0.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -18,13 +18,13 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@hyzek/chord": "23.0.0",
-		"@hyzek/toucan-ai": "23.0.0",
-		"@hyzek/toucan-codemode": "23.0.0",
-		"@hyzek/toucan-durable": "23.0.0",
-		"@hyzek/toucan-env": "23.0.0",
-		"@hyzek/toucan-mcp": "23.0.0",
-		"@hyzek/toucan-schema": "23.0.0",
+		"@hyzek/chord": "24.0.0",
+		"@hyzek/toucan-ai": "24.0.0",
+		"@hyzek/toucan-codemode": "24.0.0",
+		"@hyzek/toucan-durable": "24.0.0",
+		"@hyzek/toucan-env": "24.0.0",
+		"@hyzek/toucan-mcp": "24.0.0",
+		"@hyzek/toucan-schema": "24.0.0",
 		"diff": "8.0.4",
 		"esbuild": "0.28.2",
 		"grok-mermaid": "0.2.3",
@@ -36,7 +36,7 @@
 		"undici": "8.12.3",
 		"ws": "8.21.0",
 		"yaml": "2.9.1",
-		"@hyzek/toucan-tui": "23.0.0"
+		"@hyzek/toucan-tui": "24.0.0"
 	},
 	"devDependencies": {
 		"@types/node": "22.19.19",

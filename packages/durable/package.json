@@ -1,6 +1,6 @@
 {
 	"name": "@hyzek/toucan-durable",
-	"version": "23.0.0",
+	"version": "24.0.0",
 	"description": "Durable conversation, task, and document runtime for Toucan",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -158,11 +158,11 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@hyzek/chord": "23.0.0",
-		"@hyzek/toucan-ai": "23.0.0",
-		"@hyzek/toucan-codemode": "23.0.0",
-		"@hyzek/toucan-schema": "23.0.0",
-		"@hyzek/toucan-telemetry": "23.0.0",
+		"@hyzek/chord": "24.0.0",
+		"@hyzek/toucan-ai": "24.0.0",
+		"@hyzek/toucan-codemode": "24.0.0",
+		"@hyzek/toucan-schema": "24.0.0",
+		"@hyzek/toucan-telemetry": "24.0.0",
 		"@silvia-odwyer/photon": "0.3.3",
 		"diff": "8.0.4"
 	},

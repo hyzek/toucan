@@ -1,6 +1,6 @@
 {
 	"name": "@hyzek/toucan-telemetry",
-	"version": "23.0.0",
+	"version": "24.0.0",
 	"description": "Vendor-neutral telemetry contracts and typed schema utilities for toucan",
 	"type": "module",
 	"main": "./dist/index.js",
