@@ -831,7 +831,7 @@ Each command has:
   - `origin`: `"top-level"` for a directly loaded resource or `"package"` for a package resource
   - `baseDir`: Package base directory, when applicable
 
-**Note**: Built-in TUI commands (`/settings`, `/hotkeys`, etc.) are not included. They are handled only in interactive mode and would not execute if sent via `prompt`.
+**Note**: Built-in TUI commands (`/settings`, `/shortcuts`, etc.) are not included. They are handled only in interactive mode and would not execute if sent via `prompt`.
 
 ## Model object
 

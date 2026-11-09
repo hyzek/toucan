@@ -7,6 +7,7 @@
  */
 
 import type { ToolRenderers } from "../../extensions/types.ts";
+import { subagentRenderers } from "../../subagents/renderers.ts";
 import type { ToolName } from "../index.ts";
 import { createShellRenderers } from "./bash.ts";
 import { editRenderers } from "./edit.ts";
@@ -39,6 +40,7 @@ export function createAllToolRenderers(): Record<ToolName, ToolRenderers> {
 		grep: grepRenderers,
 		find: findRenderers,
 		ls: lsRenderers,
+		subagent: subagentRenderers,
 	};
 }
 

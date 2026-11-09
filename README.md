@@ -4,7 +4,7 @@
   <img alt="A toco toucan (Ramphastos toco)" src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/Toco_toucan_%28Ramphastos_toco%29_close-up.jpg/1280px-Toco_toucan_%28Ramphastos_toco%29_close-up.jpg" width="100%">
 </p>
 
-Toucan is a minimal, extensible agent harness and the set of packages it is built from. The centerpiece is [Toucan Coding Agent](packages/coding-agent/README.md): a terminal coding agent you make your own with extensions, skills, prompt templates, and themes, shared as packages over npm or git. It ships with powerful defaults but skips features like sub-agents and plan mode; you adapt Toucan to your workflows, not the other way around.
+Toucan is a minimal, extensible agent harness and the set of packages it is built from. The centerpiece is [Toucan Coding Agent](packages/coding-agent/README.md): a terminal coding agent you make your own with extensions, skills, prompt templates, and themes, shared as packages over npm or git. It ships with powerful defaults including built-in subagents but skips features like plan mode; you adapt Toucan to your workflows, not the other way around.
 
 This repository is the monorepo for the whole stack, from the model API up to the terminal UI:
 

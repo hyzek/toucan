@@ -140,6 +140,7 @@ import {
 } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo, isSyntheticPath, type SourceInfo } from "./source-info.ts";
+import { SubagentManager } from "./subagents/subagent-manager.ts";
 import {
 	buildSystemPrompt,
 	buildSystemPromptSections,
@@ -469,6 +470,7 @@ export class AgentSession {
 	private _resourceLoader: ResourceLoader;
 	private _customTools: ToolDefinition[];
 	private _baseToolDefinitions: Map<string, ToolDefinition> = new Map();
+	private _subagentManager: SubagentManager | undefined;
 	private _cwd: string;
 	private _extensionRunnerRef?: { current?: ExtensionRunner };
 	private _initialActiveToolNames?: string[];
@@ -560,6 +562,28 @@ export class AgentSession {
 
 	get modelRuntime(): ModelRuntime {
 		return this._modelRuntime;
+	}
+
+	/** The subagent manager for this session, created on first use. */
+	get subagentManager(): SubagentManager {
+		if (!this._subagentManager) {
+			this._subagentManager = new SubagentManager({
+				runtime: () => ({
+					cwd: this._cwd,
+					modelRuntime: this._modelRuntime,
+					settingsManager: this.settingsManager,
+					sessionManager: this.sessionManager,
+					model: this.model,
+					thinkingLevel: this.thinkingLevel,
+				}),
+				maxConcurrent: () => this.settingsManager.getSubagentsMaxConcurrent(),
+				notifyParent: (text) => this.sendUserMessage(text, { deliverAs: "followUp", expandPromptTemplates: false }),
+			});
+			// Watch turn boundaries so completion notes stranded by a turn that ended
+			// before draining the follow-up queue are re-offered at the next boundary.
+			this.agent.subscribe((event) => this._subagentManager?.noteParentActivity(event));
+		}
+		return this._subagentManager;
 	}
 
 	private async _getRequiredRequestAuth(
@@ -1451,6 +1475,7 @@ export class AgentSession {
 	 */
 	dispose(): void {
 		try {
+			this._subagentManager?.stopAll();
 			this.abortRetry();
 			this.abortCompaction();
 			this.abortBranchSummary();
@@ -3751,6 +3776,9 @@ export class AgentSession {
 			: createAllToolDefinitions(this._cwd, {
 					read: { autoResizeImages },
 					bash: { commandPrefix: shellCommandPrefix, shellPath },
+					subagent: {
+						manager: () => this.subagentManager,
+					},
 				});
 
 		this._baseToolDefinitions = new Map(
@@ -3779,7 +3807,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write"];
+			: ["read", "bash", "edit", "write", "subagent"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,

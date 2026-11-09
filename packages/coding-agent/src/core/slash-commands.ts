@@ -31,7 +31,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "session", description: "Show session info and stats" },
 	{ name: "stats", description: "Show token usage overall and for this project" },
 	{ name: "changelog", description: "Show changelog entries" },
-	{ name: "hotkeys", description: "Show all keyboard shortcuts" },
+	{ name: "shortcuts", description: "Show all keyboard shortcuts" },
 	{ name: "fork", description: "Create a new fork from a previous user message" },
 	{ name: "clone", description: "Duplicate the current session at the current position" },
 	{ name: "trust", description: "Save project trust decision for future sessions" },
@@ -40,6 +40,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "new", description: "Start a new session" },
 	{ name: "compact", description: "Manually compact the session context" },
 	{ name: "resume", description: "Resume another session" },
+	{ name: "agents", description: "Open the agent command center (subagents, status, transcripts)" },
 	{ name: "reload", description: "Reload keybindings, extensions, skills, prompts, themes, and context files" },
 	{ name: "quit", description: `Quit ${APP_NAME}` },
 ];

@@ -170,6 +170,24 @@ export class CustomEditor extends Editor {
 			// Fall through to editor handling for delete-char-forward when not empty
 		}
 
+		// Agents command center - Left only when the editor is empty; with text, Left stays cursor movement.
+		if (this.keybindings.matches(data, "app.agents.open") && this.getText().length === 0) {
+			const handler = this.actionHandlers.get("app.agents.open");
+			if (handler) {
+				handler();
+				return;
+			}
+		}
+
+		// Shortcuts list - ? only when the editor is empty; with text, ? types normally.
+		if (this.keybindings.matches(data, "app.shortcuts.open") && this.getText().length === 0) {
+			const handler = this.actionHandlers.get("app.shortcuts.open");
+			if (handler) {
+				handler();
+				return;
+			}
+		}
+
 		// Explicit history bindings take precedence over app actions while the editor is focused.
 		// This lets users bind Ctrl+P even though it cycles models by default.
 		if (
@@ -182,7 +200,13 @@ export class CustomEditor extends Editor {
 
 		// Check all other app actions
 		for (const [action, handler] of this.actionHandlers) {
-			if (action !== "app.interrupt" && action !== "app.exit" && this.keybindings.matches(data, action)) {
+			if (
+				action !== "app.interrupt" &&
+				action !== "app.exit" &&
+				action !== "app.agents.open" &&
+				action !== "app.shortcuts.open" &&
+				this.keybindings.matches(data, action)
+			) {
 				handler();
 				return;
 			}

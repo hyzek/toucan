@@ -139,6 +139,7 @@ import { getToucanUserAgent } from "../../utils/toucan-user-agent.ts";
 import { checkForNewToucanVersion, type LatestToucanRelease } from "../../utils/version-check.ts";
 import { reportBug } from "./bug-report.ts";
 import { createChatViewport } from "./chat-viewport.ts";
+import { AgentsCommandCenterComponent } from "./components/agents-command-center.ts";
 import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
@@ -182,6 +183,7 @@ import {
 	type StatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
+import { isSubagentResultsMessage, SubagentResultsNoticeComponent } from "./components/subagent-results-message.ts";
 import { ThemedText } from "./components/themed-text.ts";
 import { ThinkingSelectorComponent } from "./components/thinking-selector.ts";
 import { SessionTip } from "./components/tip-line.ts";
@@ -462,6 +464,9 @@ export class InteractiveMode {
 	private footer: FooterComponent;
 	private footerContainer: Container;
 	private hintsContainer: Container;
+	/** Every top-level screen, kept so the agents command center can take the screen over and give it back. */
+	private standardScreens: Component[] = [];
+	private agentsScreenComponent: Component | undefined;
 	private footerDataProvider: FooterDataProvider;
 	// Stored so the same manager can be injected into custom editors, selectors, and extension UI.
 	private keybindings: KeybindingsManager;
@@ -1023,7 +1028,7 @@ export class InteractiveMode {
 		});
 		this.transcriptScrollView = viewport.transcript;
 		this.fullscreenLayoutRoot = viewport.root;
-		this.mountInteractiveTui(this.renderer, [
+		this.standardScreens = [
 			this.documentContainer,
 			this.pendingMessagesContainer,
 			this.statusContainer,
@@ -1033,7 +1038,8 @@ export class InteractiveMode {
 			this.widgetContainerBelow,
 			this.footerContainer,
 			this.hintsContainer,
-		]);
+		];
+		this.mountInteractiveTui(this.renderer, this.standardScreens);
 		// Accept text while startup completes, but only enable interrupt, exit, and submission feedback.
 		this.defaultEditor.onAction("app.clear", () => this.handleCtrlC());
 		this.defaultEditor.onCtrlD = () => this.handleCtrlD();
@@ -2927,6 +2933,8 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
 		this.defaultEditor.onAction("app.session.fork", () => this.showUserMessageSelector());
 		this.defaultEditor.onAction("app.session.resume", () => this.showSessionSelector());
+		this.defaultEditor.onAction("app.agents.open", () => this.openAgentsScreen());
+		this.defaultEditor.onAction("app.shortcuts.open", () => this.handleHotkeysCommand());
 
 		this.defaultEditor.onChange = (text: string) => {
 			const wasBashMode = this.isBashMode;
@@ -3078,7 +3086,7 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/hotkeys") {
+			if (text === "/shortcuts") {
 				this.handleHotkeysCommand();
 				this.editor.setText("");
 				return;
@@ -3147,6 +3155,11 @@ export class InteractiveMode {
 			}
 			if (text === "/resume") {
 				this.showSessionSelector();
+				this.editor.setText("");
+				return;
+			}
+			if (text === "/agents") {
+				this.openAgentsScreen();
 				this.editor.setText("");
 				return;
 			}
@@ -3838,6 +3851,12 @@ export class InteractiveMode {
 				if (textContent) {
 					if (this.chatContainer.children.length > 0) {
 						this.chatContainer.addChild(new Spacer(1));
+					}
+					if (isSubagentResultsMessage(textContent)) {
+						const notice = new SubagentResultsNoticeComponent(textContent);
+						notice.setExpanded(this.toolOutputExpanded);
+						this.chatContainer.addChild(notice);
+						break;
 					}
 					const skillBlock = parseSkillBlock(textContent);
 					if (skillBlock) {
@@ -5716,6 +5735,40 @@ export class InteractiveMode {
 			};
 			return { component: selector, focus: selector };
 		});
+	}
+
+	/** Open the agent command center as a full-screen takeover of this session's subagents. */
+	openAgentsScreen(): void {
+		if (this.agentsScreenComponent) return;
+		const screen = new AgentsCommandCenterComponent(this.session, {
+			ui: this.ui,
+			onClose: () => this.closeAgentsScreen(),
+			requestRender: () => this.ui.requestRender(),
+		});
+		this.agentsScreenComponent = screen;
+		for (const component of this.standardScreens) this.renderer.removeChild(component);
+		this.renderer.addChild(screen);
+		// Viewport renderers draw their layout root, not children: swap it so the
+		// center replaces the chat viewport. closeAgentsScreen restores it by
+		// re-mounting the standard screens, which re-sets the layout root.
+		if (TuiLayouts.isViewportTUI(this.renderer)) this.renderer.setLayoutRoot(screen);
+		this.renderer.invalidate();
+		this.renderer.setFocus(screen);
+		this.ui.requestRender(true);
+	}
+
+	/** Close the agent command center and restore the normal screen stack. */
+	closeAgentsScreen(): void {
+		const screen = this.agentsScreenComponent;
+		if (!screen) return;
+		this.agentsScreenComponent = undefined;
+		const dispose = (screen as unknown as { dispose?: () => void }).dispose;
+		if (typeof dispose === "function") dispose.call(screen);
+		this.renderer.removeChild(screen);
+		this.mountInteractiveTui(this.renderer, this.standardScreens);
+		this.renderer.invalidate();
+		this.renderer.setFocus(this.editor);
+		this.ui.requestRender(true);
 	}
 
 	private showSessionSelector(): void {

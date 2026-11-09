@@ -2,7 +2,7 @@
 
 Toucan exposes named actions, such as `app.session.new`, that can be assigned keybindings. You can change default assignments or bind unassigned actions in Toucan's [user configuration](configuration.md#agent-directory).
 
-Run `/hotkeys` to see the active shortcuts for the main editor and application.
+Run `/shortcuts` to see the active shortcuts for the main editor and application.
 
 ## Assign keybindings
 

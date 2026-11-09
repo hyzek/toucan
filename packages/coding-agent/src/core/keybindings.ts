@@ -80,6 +80,14 @@ const APP_KEYBINDINGS = {
 	"app.session.tree": { defaultKeys: [], description: "Open session tree" },
 	"app.session.fork": { defaultKeys: [], description: "Fork current session" },
 	"app.session.resume": { defaultKeys: [], description: "Resume a session" },
+	"app.agents.open": {
+		defaultKeys: "left",
+		description: "Open the agents command center (only while the prompt is empty)",
+	},
+	"app.shortcuts.open": {
+		defaultKeys: "?",
+		description: "Show all keyboard shortcuts (only while the prompt is empty)",
+	},
 	"app.tree.foldOrUp": {
 		defaultKeys: process.platform === "darwin" ? ["alt+left", "ctrl+left"] : ["ctrl+left", "alt+left"],
 		description: "Fold tree branch or move up",

@@ -16,7 +16,7 @@ Toucan uses extended-key protocols so terminals can distinguish combinations suc
 | An IME candidate window appears in the wrong place | [WezTerm](#wezterm) or [IntelliJ IDEA](#intellij-idea-integrated-terminal) |
 | Modified keys fail only inside tmux | [Run Toucan in tmux](tmux.md) |
 
-Use `/hotkeys` to inspect Toucan's active shortcuts. See [Keybindings](keybindings.md) to change them.
+Use `/shortcuts` to inspect Toucan's active shortcuts. See [Keybindings](keybindings.md) to change them.
 
 ## Kitty
 

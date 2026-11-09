@@ -20,6 +20,7 @@ import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-sessi
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import type { ExtensionRunner, ExtensionUIContext } from "../../src/core/extensions/index.ts";
 import { convertToLlm } from "../../src/core/messages.ts";
+import type { ModelRuntime } from "../../src/core/model-runtime.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -129,6 +130,7 @@ export interface Harness {
 	sessionManager: SessionManager;
 	settingsManager: SettingsManager;
 	authStorage: AuthStorage;
+	modelRuntime: ModelRuntime;
 	faux: FauxProviderRegistration;
 	models: [Model<string>, ...Model<string>[]];
 	getModel(): Model<string>;
@@ -192,6 +194,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		});
 	}
 
+	const modelRuntime = getModelRuntime(modelRegistry);
 	const agent = new Agent({
 		getApiKey: () => (withConfiguredAuth ? "faux-key" : undefined),
 		streamFn: streamSimple,
@@ -236,7 +239,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		sessionManager,
 		settingsManager,
 		cwd: tempDir,
-		modelRuntime: getModelRuntime(modelRegistry),
+		modelRuntime,
 		resourceLoader,
 		baseToolsOverride: toolMap,
 		initialActiveToolNames: options.initialActiveToolNames,
@@ -256,6 +259,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		sessionManager,
 		settingsManager,
 		authStorage,
+		modelRuntime,
 		faux: fauxProvider,
 		models: fauxProvider.models,
 		getModel: fauxProvider.getModel,

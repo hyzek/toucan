@@ -1,4 +1,10 @@
 export {
+	createSubagentToolDefinition,
+	type SubagentToolDetails,
+	type SubagentToolInput,
+	type SubagentToolOptions,
+} from "../subagents/subagent-tool.ts";
+export {
 	type BashOperations,
 	type BashSpawnContext,
 	type BashSpawnHook,
@@ -82,6 +88,7 @@ export {
 
 import type { AgentTool } from "@hyzek/toucan-agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
+import { createSubagentToolDefinition, type SubagentToolOptions } from "../subagents/subagent-tool.ts";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
@@ -89,11 +96,12 @@ import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.ts";
 import { createPowerShellTool, createPowerShellToolDefinition, type PowerShellToolOptions } from "./powershell.ts";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.ts";
+import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.ts";
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName = "read" | "bash" | "powershell" | "edit" | "write" | "grep" | "find" | "ls";
+export type ToolName = "read" | "bash" | "powershell" | "edit" | "write" | "grep" | "find" | "ls" | "subagent";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
@@ -103,6 +111,7 @@ export const allToolNames: Set<ToolName> = new Set([
 	"grep",
 	"find",
 	"ls",
+	"subagent",
 ]);
 
 export interface ToolsOptions {
@@ -114,6 +123,8 @@ export interface ToolsOptions {
 	grep?: GrepToolOptions;
 	find?: FindToolOptions;
 	ls?: LsToolOptions;
+	/** Runtime services for the `subagent` tool. Without them the tool is not registered. */
+	subagent?: SubagentToolOptions;
 }
 
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
@@ -134,6 +145,9 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createFindToolDefinition(cwd, options?.find);
 		case "ls":
 			return createLsToolDefinition(cwd, options?.ls);
+		case "subagent":
+			if (!options?.subagent) throw new Error("The subagent tool requires runtime options (ToolsOptions.subagent).");
+			return createSubagentToolDefinition(cwd, options.subagent);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -157,10 +171,18 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createFindTool(cwd, options?.find);
 		case "ls":
 			return createLsTool(cwd, options?.ls);
+		case "subagent":
+			if (!options?.subagent) throw new Error("The subagent tool requires runtime options (ToolsOptions.subagent).");
+			return wrapToolDefinition(createSubagentToolDefinition(cwd, options.subagent));
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
 }
+
+/** Built-in tools that are always registered; `subagent` only with runtime options. */
+type CoreToolName = Exclude<ToolName, "subagent">;
+type ToolDefRegistry = Record<CoreToolName, ToolDef> & { subagent?: ToolDef };
+type ToolRegistry = Record<CoreToolName, Tool> & { subagent?: Tool };
 
 export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions): ToolDef[] {
 	return [
@@ -180,7 +202,7 @@ export function createReadOnlyToolDefinitions(cwd: string, options?: ToolsOption
 	];
 }
 
-export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): Record<ToolName, ToolDef> {
+export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): ToolDefRegistry {
 	return {
 		read: createReadToolDefinition(cwd, options?.read),
 		bash: createBashToolDefinition(cwd, options?.bash),
@@ -190,6 +212,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		grep: createGrepToolDefinition(cwd, options?.grep),
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
+		...(options?.subagent ? { subagent: createSubagentToolDefinition(cwd, options.subagent) } : {}),
 	};
 }
 
@@ -211,7 +234,7 @@ export function createReadOnlyTools(cwd: string, options?: ToolsOptions): Tool[]
 	];
 }
 
-export function createAllTools(cwd: string, options?: ToolsOptions): Record<ToolName, Tool> {
+export function createAllTools(cwd: string, options?: ToolsOptions): ToolRegistry {
 	return {
 		read: createReadTool(cwd, options?.read),
 		bash: createBashTool(cwd, options?.bash),
@@ -221,5 +244,8 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		grep: createGrepTool(cwd, options?.grep),
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
+		...(options?.subagent
+			? { subagent: wrapToolDefinition(createSubagentToolDefinition(cwd, options.subagent)) }
+			: {}),
 	};
 }
