@@ -86,7 +86,7 @@ Malformed `SKILL.md` files and declared skills without descriptions are not load
 
 ## Validate and share a skill
 
-Run Toucan from a location where the skill is discoverable, then inspect the startup diagnostics and `/skill:name` command. Run `/reload` after editing a skill during an active session.
+Run Toucan from a location where the skill is discoverable, then inspect the startup diagnostics and `/skill:name` command. `/skills` lists every loaded skill with the source directory it came from. Run `/reload` after editing a skill during an active session.
 
 Use a [Toucan package](packages.md) to distribute one or more skills through npm or git. Keep environment setup inside the skill and declare any required runtime dependencies in the package.
 

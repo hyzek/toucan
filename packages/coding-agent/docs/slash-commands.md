@@ -52,6 +52,8 @@ Review a session before exporting or sharing it. Sessions can contain prompts, t
 | `/curator [on\|off\|summary-review\|auto-summary]` | Toggle or configure the search curator workflow |
 | `/search` | Browse stored search and fetch results |
 | `/google-account` | Show the active Google account for Gemini Web |
+| `/skills` | Show loaded skills and where they come from |
+| `/context` | Show loaded AGENTS.md context files and where they come from |
 | `/reload` | Reload keybindings, extensions, skills, templates, themes, and context files |
 | `/shortcuts` | Show active keyboard shortcuts |
 | `/changelog` | Show changelog entries |

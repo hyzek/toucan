@@ -199,6 +199,7 @@ import { editInExternalEditor } from "./external-editor.ts";
 import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getDistinctModelName, getModelSearchText } from "./model-search.ts";
 import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
+import { formatContextTree, formatSkillsTree } from "./resource-tree.ts";
 import { shareSession } from "./session-share.ts";
 import { createInputShine, type InputShine, shouldPlayMaxShine } from "./theme/input-shine.ts";
 import {
@@ -3160,6 +3161,16 @@ export class InteractiveMode {
 			}
 			if (text === "/agents") {
 				this.openAgentsScreen();
+				this.editor.setText("");
+				return;
+			}
+			if (text === "/skills") {
+				this.handleSkillsCommand();
+				this.editor.setText("");
+				return;
+			}
+			if (text === "/context") {
+				this.handleContextCommand();
 				this.editor.setText("");
 				return;
 			}
@@ -6720,6 +6731,21 @@ export class InteractiveMode {
 		this.chatContainer.addChild(new Spacer(1));
 		const displayName = sessionName ?? name;
 		this.chatContainer.addChild(new ThemedText(() => theme.fg("dim", `Session name set: ${displayName}`), 1, 0));
+		this.ui.requestRender();
+	}
+
+	private handleSkillsCommand(): void {
+		const skills = this.session.resourceLoader.getSkills().skills;
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(new ThemedText(() => formatSkillsTree(skills), 1, 0));
+		this.ui.requestRender();
+	}
+
+	private handleContextCommand(): void {
+		const files = this.session.resourceLoader.getAgentsFiles().agentsFiles;
+		const cwd = this.sessionManager.getCwd();
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(new ThemedText(() => formatContextTree(files, cwd), 1, 0));
 		this.ui.requestRender();
 	}
 
