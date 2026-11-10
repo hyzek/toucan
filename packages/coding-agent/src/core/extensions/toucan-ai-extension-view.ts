@@ -10,6 +10,8 @@ import { type TUnsafe, Type } from "typebox";
 export * from "@hyzek/toucan-ai/compat";
 export type { Static, TSchema } from "typebox";
 export { Type };
+// Pi 1.0 extensions import this from `pi-ai`'s root; Toucan keeps it in the model catalog.
+export { clampThinkingLevel } from "@hyzek/toucan-ai/models";
 
 /**
  * Creates a string enum schema compatible with Google's API and other providers that don't support anyOf/const

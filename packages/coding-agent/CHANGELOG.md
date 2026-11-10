@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Web access is built in through `pi-web-access`: the `web-access` extension registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/websearch`, `/curator`, `/search`, and `/google-account`. It maps the package's Pi module names to Toucan and reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:web-access`
+
 ## [24.0.0] - 2026-11-09
 
 ### Breaking Changes

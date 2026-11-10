@@ -120,6 +120,12 @@ function getAliases(): Record<string, string> {
 		"@mariozechner/toucan-ai/models": toucanAiModelsEntry,
 		"@mariozechner/toucan-ai/oauth": toucanAiOauthEntry,
 		"@mariozechner/toucan-ai": toucanAiCompatEntry,
+		// Pi 1.0 packages use these peer names. Map them to Toucan so the built-in
+		// web-access extension can load pi-web-access without separate peer installs.
+		"@earendil-works/pi-coding-agent": toucanCodingAgentEntry,
+		"@earendil-works/pi-tui": toucanTuiEntry,
+		"@earendil-works/pi-ai": toucanAiCompatEntry,
+		"@earendil-works/pi-ai/compat": toucanAiCompatEntry,
 		typebox: typeboxEntry,
 		"typebox/compile": typeboxCompileEntry,
 		"typebox/value": typeboxValueEntry,
@@ -599,6 +605,11 @@ async function loadExtensionModule(extensionPath: string, cacheToken?: Extension
 		extensionCache.set(extensionPath, factory);
 	}
 	return factory;
+}
+
+/** Load an installed extension entry point with the same module aliases extensions get. */
+export async function loadExternalExtensionFactory(extensionPath: string): Promise<ExtensionFactory | undefined> {
+	return loadExtensionModule(canonicalizePath(extensionPath));
 }
 
 /**
