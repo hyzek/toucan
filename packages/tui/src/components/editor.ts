@@ -386,6 +386,7 @@ export class Editor implements Component, Focusable {
 	private lastWidth: number = 80;
 	private renderedVisibleLineCount = 1;
 	private renderedAutocompleteHeight = 0;
+	private renderedAutocompleteStartRow = 0;
 
 	// Vertical scrolling support
 	private scrollOffset: number = 0;
@@ -699,6 +700,11 @@ export class Editor implements Component, Focusable {
 		return topBorder === "" ? [] : [this.decorateLine(topBorder)];
 	}
 
+	/** Keep the header (such as a working status row) above an open autocomplete menu. */
+	protected renderAutocompleteBelowHeader(): boolean {
+		return false;
+	}
+
 	protected renderBottomBorder(width: number, hiddenLineCount: number): string {
 		if (!this.borders) return hiddenLineCount > 0 ? `  ↓ ${hiddenLineCount} more` : "";
 		const border = hiddenLineCount > 0 ? createScrollBorder("↓", hiddenLineCount, width) : "─".repeat(width);
@@ -763,6 +769,7 @@ export class Editor implements Component, Focusable {
 		const bandRow = `${leftPadding}${" ".repeat(promptWidth)}${" ".repeat(contentWidth)}${rightPadding}`;
 
 		// The autocomplete menu sits above the input band, at the band's own indent.
+		const autocompleteLines: string[] = [];
 		this.renderedAutocompleteHeight = 0;
 		if (this.autocompleteState && this.autocompleteList) {
 			const autocompleteResult = this.autocompleteList.render(contentWidth);
@@ -770,7 +777,7 @@ export class Editor implements Component, Focusable {
 			for (const line of autocompleteResult) {
 				const lineWidth = visibleWidth(line);
 				const linePadding = " ".repeat(Math.max(0, contentWidth - lineWidth));
-				result.push(`${leftPadding}${line}${linePadding}${rightPadding}`);
+				autocompleteLines.push(`${leftPadding}${line}${linePadding}${rightPadding}`);
 			}
 		}
 
@@ -778,7 +785,15 @@ export class Editor implements Component, Focusable {
 		// mapping knows where the input rows start.
 		const headerLines = this.renderHeaderLines(width, this.scrollOffset);
 		this.renderedHeaderLines = headerLines.length;
-		result.push(...headerLines);
+		if (this.renderAutocompleteBelowHeader()) {
+			result.push(...headerLines);
+			this.renderedAutocompleteStartRow = headerLines.length;
+			result.push(...autocompleteLines);
+		} else {
+			this.renderedAutocompleteStartRow = 0;
+			result.push(...autocompleteLines);
+			result.push(...headerLines);
+		}
 
 		// Empty band rows split above and below the text so short content sits in the middle
 		// of the minLines block. Stored for click-to-cursor mapping.
@@ -888,7 +903,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-		const autocompleteStartRow = 0;
+		const autocompleteStartRow = this.renderedAutocompleteStartRow;
 		if (
 			this.autocompleteState &&
 			this.autocompleteList &&

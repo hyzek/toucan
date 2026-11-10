@@ -69,6 +69,11 @@ export class CustomEditor extends Editor {
 		return super.renderHeaderLines(width, hiddenLineCount);
 	}
 
+	/** The working status row keeps its place above an open slash-command menu. */
+	protected override renderAutocompleteBelowHeader(): boolean {
+		return this.embedWorkingStatus && !this.borders && this.workingStatusIndicator !== undefined;
+	}
+
 	protected override renderTopBorder(width: number, hiddenLineCount: number): string {
 		if (!this.embedWorkingStatus || !this.workingStatusIndicator || width <= 0) {
 			return super.renderTopBorder(width, hiddenLineCount);

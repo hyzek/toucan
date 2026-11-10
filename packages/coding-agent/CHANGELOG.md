@@ -10,6 +10,7 @@
 ### Changed
 
 - The working line shows the full token count with dot grouping (`1.000 tokens`, `500.000 tokens`) instead of abbreviating it, and its runtime switches to minutes and hours (`1m 5s`, `1h 1m 10s`) instead of counting seconds indefinitely
+- While the agent is working, the working status row stays above the open `/` command menu instead of being pushed below it
 
 ## [24.0.0] - 2026-11-09
 

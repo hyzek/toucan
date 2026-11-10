@@ -1,4 +1,4 @@
-import { type TUI, visibleWidth } from "@hyzek/toucan-tui";
+import { CombinedAutocompleteProvider, type TUI, visibleWidth } from "@hyzek/toucan-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor, inputBandOptions } from "../src/modes/interactive/components/custom-editor.ts";
@@ -11,6 +11,11 @@ import {
 } from "../src/modes/interactive/components/status-indicator.ts";
 import { getEditorTheme, initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
+
+async function flushAutocomplete(): Promise<void> {
+	await Promise.resolve();
+	await new Promise((resolve) => setImmediate(resolve));
+}
 
 describe("status indicators", () => {
 	afterEach(() => {
@@ -69,13 +74,40 @@ describe("status indicators", () => {
 		initTheme("dark");
 		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
 		const indicator = new WorkingStatusIndicator(tui, "Working");
-		indicator.setLine({ label: "Thinking", status: "1.2k tokens · 4s" });
+		indicator.setLine({ label: "Thinking", status: "1.000 tokens · 4s" });
 
 		const line = indicator.render(120)[1]!;
-		expect(stripAnsi(line).trim()).toBe("• Thinking (1.2k tokens · 4s)");
+		expect(stripAnsi(line).trim()).toBe("• Thinking (1.000 tokens · 4s)");
 		// The label rides the shine curve (256-color gray ramp), the tail stays muted.
 		expect(line).toContain("\x1b[38;5;");
 		expect(line).toContain(theme.getFgAnsi("muted"));
+		indicator.dispose();
+	});
+
+	it("keeps the working status above an open slash menu", async () => {
+		initTheme("dark");
+		const tui = { requestRender: vi.fn(), terminal: { rows: 20 } } as unknown as TUI;
+		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create(), {
+			...inputBandOptions(),
+			embedWorkingStatus: true,
+		});
+		editor.setAutocompleteProvider(
+			new CombinedAutocompleteProvider([{ name: "model", description: "choose what model" }], process.cwd(), null),
+		);
+		const indicator = new WorkingStatusIndicator(tui, "Working");
+		indicator.setLine({ label: "Working", status: "1.000 tokens · 4s" });
+		editor.setWorkingStatusIndicator(indicator);
+
+		editor.handleInput("/");
+		await flushAutocomplete();
+		const lines = editor.render(60).map(stripAnsi);
+		const statusRow = lines.findIndex((line) => line.includes("Working (1.000 tokens"));
+		const menuRow = lines.findIndex((line) => line.includes("choose what model"));
+		const bandRow = lines.findIndex((line) => line.includes("› /") && !line.includes("/model"));
+
+		expect(statusRow).toBe(0);
+		expect(menuRow).toBeGreaterThan(statusRow);
+		expect(bandRow).toBeGreaterThan(menuRow);
 		indicator.dispose();
 	});
 
