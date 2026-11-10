@@ -1,7 +1,6 @@
 /** The working line: `Thinking` or `Working`, with the token count and elapsed time in brackets. */
 
 import type { AssistantMessage } from "@hyzek/toucan-ai";
-import { formatTokens } from "./footer.ts";
 
 /** What the agent is doing, which decides the line's label. */
 export type WorkingActivity = "thinking" | "working";
@@ -13,7 +12,7 @@ export type WorkingActivity = "thinking" | "working";
 export interface WorkingStatusLine {
 	/** `Thinking` while a thinking block streams, `Working` while tool calls are written or run. */
 	label: string;
-	/** Tail such as `1.2k tokens · 4s`; empty when there is nothing to report. */
+	/** Tail such as `1.000 tokens · 4s`; empty when there is nothing to report. */
 	status: string;
 }
 
@@ -36,6 +35,28 @@ const CHARS_PER_TOKEN = 4;
 const EASE_MS = 150;
 
 const LABELS: Record<WorkingActivity, string> = { thinking: "Thinking", working: "Working" };
+
+/** The live token count keeps every digit, grouped with dots instead of the footer's abbreviations. */
+function formatLiveTokens(count: number): string {
+	return String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/** Keep the runtime timer short: seconds, then minutes, then hours. */
+function formatElapsed(seconds: number): string {
+	if (seconds < 60) return `${seconds}s`;
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) {
+		const remainder = seconds % 60;
+		return remainder > 0 ? `${minutes}m ${remainder}s` : `${minutes}m`;
+	}
+	const hours = Math.floor(minutes / 60);
+	const remainingMinutes = minutes % 60;
+	const remainingSeconds = seconds % 60;
+	const parts = [`${hours}h`];
+	if (remainingMinutes > 0) parts.push(`${remainingMinutes}m`);
+	if (remainingSeconds > 0) parts.push(`${remainingSeconds}s`);
+	return parts.join(" ");
+}
 
 /**
  * Characters the model has produced in a streamed message: text, thinking, and tool-call
@@ -139,9 +160,9 @@ export class WorkingStatusEngine {
 		this.easeTokens(now);
 		const statusParts: string[] = [];
 		if (this.shownTokens > 0)
-			statusParts.push(`${formatTokens(this.shownTokens)} token${this.shownTokens === 1 ? "" : "s"}`);
+			statusParts.push(`${formatLiveTokens(this.shownTokens)} token${this.shownTokens === 1 ? "" : "s"}`);
 		const elapsedSeconds = Math.floor((now - this.startedAt) / 1000);
-		if (elapsedSeconds >= 1) statusParts.push(`${elapsedSeconds}s`);
+		if (elapsedSeconds >= 1) statusParts.push(formatElapsed(elapsedSeconds));
 		return { label: LABELS[this.activity], status: statusParts.join(" · ") };
 	}
 

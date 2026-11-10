@@ -7,6 +7,10 @@
 - Web access is built in through `pi-web-access`: the `web-access` extension registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/websearch`, `/curator`, `/search`, and `/google-account`. It maps the package's Pi module names to Toucan and reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:web-access`
 - `/skills` lists every loaded skill and `/context` lists every loaded AGENTS.md context file, each as a tree grouped by where it loads from (user, project, or installed package)
 
+### Changed
+
+- The working line shows the full token count with dot grouping (`1.000 tokens`, `500.000 tokens`) instead of abbreviating it, and its runtime switches to minutes and hours (`1m 5s`, `1h 1m 10s`) instead of counting seconds indefinitely
+
 ## [24.0.0] - 2026-11-09
 
 ### Breaking Changes

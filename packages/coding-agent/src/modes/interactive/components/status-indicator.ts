@@ -108,7 +108,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 
 	/**
 	 * The engine's line: the label swept gray→white by the shine curve, then the token and
-	 * elapsed tail in brackets, e.g. `Thinking (1.2k tokens · 4s)`.
+	 * elapsed tail in brackets, e.g. `Thinking (1.000 tokens · 4s)`.
 	 */
 	setLine(line: WorkingStatusLine): void {
 		this.labelText = line.label;

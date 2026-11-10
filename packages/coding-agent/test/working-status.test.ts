@@ -90,6 +90,38 @@ describe("WorkingStatusEngine", () => {
 		engine.end();
 	});
 
+	it("keeps every token digit, grouped with dots", () => {
+		vi.useFakeTimers({ now: 0 });
+		const { engine } = createEngine();
+		engine.begin();
+		engine.settleMessage(1_000);
+		vi.setSystemTime(5_000);
+		expect(engine.line().status).toBe("1.000 tokens · 5s");
+
+		engine.settleMessage(499_000);
+		vi.setSystemTime(10_000);
+		expect(engine.line().status).toBe("500.000 tokens · 10s");
+
+		engine.end();
+	});
+
+	it("abbreviates the runtime timer to minutes and hours", () => {
+		vi.useFakeTimers({ now: 0 });
+		const { engine } = createEngine();
+		engine.begin();
+
+		vi.setSystemTime(60_000);
+		expect(engine.line().status).toBe("1m");
+		vi.setSystemTime(65_000);
+		expect(engine.line().status).toBe("1m 5s");
+		vi.setSystemTime(1_000_000);
+		expect(engine.line().status).toBe("16m 40s");
+		vi.setSystemTime(3_670_000);
+		expect(engine.line().status).toBe("1h 1m 10s");
+
+		engine.end();
+	});
+
 	it("swaps the streamed estimate for the provider's count without losing the total", () => {
 		vi.useFakeTimers();
 		const { engine, lines } = createEngine();
