@@ -120,8 +120,8 @@ function getAliases(): Record<string, string> {
 		"@mariozechner/toucan-ai/models": toucanAiModelsEntry,
 		"@mariozechner/toucan-ai/oauth": toucanAiOauthEntry,
 		"@mariozechner/toucan-ai": toucanAiCompatEntry,
-		// Pi 1.0 packages use these peer names. Map them to Toucan so the built-in
-		// web-access extension can load pi-web-access without separate peer installs.
+		// Pi 1.0 packages use these peer names. Map them to Toucan so built-in features can load
+		// Pi-based packages without separate peer installs.
 		"@earendil-works/pi-coding-agent": toucanCodingAgentEntry,
 		"@earendil-works/pi-tui": toucanTuiEntry,
 		"@earendil-works/pi-ai": toucanAiCompatEntry,

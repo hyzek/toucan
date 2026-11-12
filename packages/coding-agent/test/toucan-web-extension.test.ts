@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../src/core/extensions/index.ts";
 import type { ToolRenderContext } from "../src/core/extensions/types.ts";
-import webAccessExtension from "../src/extensions/web-access/index.ts";
+import toucanWebExtension from "../src/extensions/toucan-web/index.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
@@ -94,15 +94,15 @@ function render(
 	return stripAnsi(component.render(100).join("\n"));
 }
 
-describe("built-in web access", () => {
-	it("loads pi-web-access through Toucan's module aliases", async () => {
-		const agentDir = mkdtempSync(join(tmpdir(), "toucan-web-access-"));
+describe("built-in Toucan Web", () => {
+	it("loads the upstream web package through Toucan's module aliases", async () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "toucan-web-"));
 		temporaryDirs.push(agentDir);
 		vi.stubEnv("TOUCAN_CODING_AGENT_DIR", agentDir);
 		vi.stubEnv("PI_CODING_AGENT_DIR", undefined);
 		const { api, tools, commands, shortcuts, handlers, activeTools } = createApi();
 
-		await webAccessExtension(api);
+		await toucanWebExtension(api);
 
 		expect([...tools.keys()]).toEqual(
 			expect.arrayContaining(["web_search", "fetch_content", "get_search_content", "source_check"]),
@@ -111,6 +111,11 @@ describe("built-in web access", () => {
 		expect(commands).not.toContain("websearch");
 		expect(commands).not.toContain("curator");
 		expect(shortcuts).not.toContain("ctrl+shift+s");
+
+		const enable = tools.get("web_enable");
+		expect(enable?.label).toBe("Enable Toucan Web");
+		expect(enable?.description).toContain("Toucan Web tools");
+		expect(enable?.description).not.toContain("pi-web-access");
 
 		const sessionStart = handlers.get("session_start") ?? [];
 		expect(sessionStart.length).toBeGreaterThan(0);
@@ -128,20 +133,24 @@ describe("built-in web access", () => {
 		);
 	});
 
-	it("replaces the package renderers with Toucan rows and no progress bar", async () => {
+	it("replaces the upstream renderers with Toucan rows and no progress bar", async () => {
 		initTheme("dark");
-		const agentDir = mkdtempSync(join(tmpdir(), "toucan-web-access-"));
+		const agentDir = mkdtempSync(join(tmpdir(), "toucan-web-"));
 		temporaryDirs.push(agentDir);
 		vi.stubEnv("TOUCAN_CODING_AGENT_DIR", agentDir);
 		vi.stubEnv("PI_CODING_AGENT_DIR", undefined);
 		const { api, tools } = createApi();
 
-		await webAccessExtension(api);
+		await toucanWebExtension(api);
 
 		for (const name of ["web_search", "fetch_content", "get_search_content", "source_check"]) {
 			expect(tools.get(name)?.renderCall).toBeDefined();
 			expect(tools.get(name)?.renderResult).toBeDefined();
 		}
+
+		const enable = tools.get("web_enable");
+		expect(enable).toBeDefined();
+		expect(render(enable!, "call", {})).toContain("• Toucan Web");
 
 		const fetch = tools.get("fetch_content");
 		expect(fetch).toBeDefined();

@@ -117,7 +117,7 @@ import {
 } from "../../core/session-manager.ts";
 import type { FullscreenExitOutput, TuiMode } from "../../core/settings-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
-import { getSourcePackageKey, type SourceInfo } from "../../core/source-info.ts";
+import { BUILTIN_PATH_PREFIX, getSourcePackageKey, type SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import { withBuiltInRenderers } from "../../core/tools/renderers/index.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
@@ -6966,6 +6966,19 @@ export class InteractiveMode {
 		const dequeue = this.getAppKeyDisplay("app.message.dequeue");
 		const pasteImage = this.getAppKeyDisplay("app.clipboard.pasteImage");
 
+		// Shortcuts from built-in extensions are app shortcuts, so they list under Other; only
+		// third-party extensions get their own section.
+		const shortcuts = this.session.extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
+		const builtinShortcutRows: string[] = [];
+		const extensionShortcutRows: string[] = [];
+		for (const [key, shortcut] of shortcuts) {
+			const row = `| \`${formatKeyText(key, { capitalize: true })}\` | ${shortcut.description ?? shortcut.extensionPath} |`;
+			const rows = shortcut.extensionPath.startsWith(BUILTIN_PATH_PREFIX)
+				? builtinShortcutRows
+				: extensionShortcutRows;
+			rows.push(row);
+		}
+
 		let hotkeys = `
 **Navigation**
 | Key | Action |
@@ -7009,25 +7022,19 @@ export class InteractiveMode {
 | \`${followUp}\` | Queue follow-up message |
 | \`${dequeue}\` | Restore queued messages |
 | \`${pasteImage}\` | Paste files on macOS, images, or text from clipboard |
-| \`/\` | Slash commands |
+${builtinShortcutRows.length > 0 ? `${builtinShortcutRows.join("\n")}\n` : ""}| \`/\` | Slash commands |
 | \`!\` | Run bash command |
 | \`!!\` | Run bash command (excluded from context) |
 `;
 
-		// Add extension-registered shortcuts
-		const extensionRunner = this.session.extensionRunner;
-		const shortcuts = extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
-		if (shortcuts.size > 0) {
+		// Add third-party extension shortcuts
+		if (extensionShortcutRows.length > 0) {
 			hotkeys += `
 **Extensions**
 | Key | Action |
 |-----|--------|
+${extensionShortcutRows.join("\n")}
 `;
-			for (const [key, shortcut] of shortcuts) {
-				const description = shortcut.description ?? shortcut.extensionPath;
-				const keyDisplay = formatKeyText(key, { capitalize: true });
-				hotkeys += `| \`${keyDisplay}\` | ${description} |\n`;
-			}
 		}
 
 		this.chatContainer.addChild(new Spacer(1));

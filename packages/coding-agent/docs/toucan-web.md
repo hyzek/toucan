@@ -1,6 +1,8 @@
-# Web access
+# Toucan Web
 
-Toucan ships [pi-web-access](https://github.com/nicobailon/pi-web-access) as the built-in `web-access` extension. It adds web search, page fetching, source checks, GitHub and PDF handling, YouTube and local video analysis, and stored-result retrieval. No API key is required for the default Exa MCP search; provider keys enable the other search and fetch providers.
+Toucan Web adds web search, page fetching, source checks, GitHub and PDF handling, YouTube and local video analysis, and stored-result retrieval. No API key is required for the default Exa MCP search; provider keys enable the other search and fetch providers.
+
+It is implemented on the open-source [pi-web-access](https://github.com/nicobailon/pi-web-access) package; its `web-search.json` schema applies. Place that file at `<agent-dir>/web-search.json`, for example `~/.toucan/agent/web-search.json`. Provider keys, routing, proxies, fetch modes, and video settings are documented in the [upstream README](https://github.com/nicobailon/pi-web-access#readme).
 
 ## Tools
 
@@ -14,8 +16,6 @@ Toucan ships [pi-web-access](https://github.com/nicobailon/pi-web-access) as the
 
 Tool rows use Toucan's marker and guide language. A request in flight says `Searching…` or `Fetching…`; it does not draw a progress bar. The call row carries the elapsed time, and the result row reports the search count, fetched URLs, content size, or citations like the built-in tools.
 
-The package's `web-search.json` schema applies. Place it at `<agent-dir>/web-search.json`, for example `~/.toucan/agent/web-search.json`. Provider keys, routing, proxies, fetch modes, and video settings are documented in the [pi-web-access README](https://github.com/nicobailon/pi-web-access#readme).
-
 ## Commands
 
 | Command | Description |
@@ -27,4 +27,4 @@ The curator browser UI is disabled. `/websearch`, `/curator`, and their shortcut
 
 ## Disable it
 
-Disable `web-access` under Built-in in `toucan config`, or add `-builtin:web-access` to the `extensions` setting. `--no-extensions` disables it for one run.
+Disable Toucan Web under Built-in in `toucan config`, or add `-builtin:toucan-web` to the `extensions` setting. `--no-extensions` disables it for one run.

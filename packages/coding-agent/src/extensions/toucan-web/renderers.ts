@@ -1,11 +1,11 @@
 /**
- * Toucan-style rows for the tools pi-web-access registers.
+ * Toucan-style rows for the tools Toucan Web registers.
  *
- * The package ships Pi renderers that paint a block-character progress bar while a request runs.
- * Toucan rows are marker-led and use the same guide as the built-in tools; a request in flight says
- * `Searching…` or `Fetching…` and never draws a bar. The call line carries the duration.
+ * The upstream package ships renderers that paint a block-character progress bar while a request
+ * runs. Toucan rows are marker-led and use the same guide as the built-in tools; a request in
+ * flight says `Searching…` or `Fetching…` and never draws a bar. The call line carries the duration.
  *
- * The detail shapes below belong to the external package, so they are read structurally and only the
+ * The detail shapes below belong to the upstream package, so they are read structurally and only the
  * fields these rows display are named.
  */
 
@@ -23,9 +23,9 @@ import { ToolCallLine } from "../../modes/interactive/components/tool-call-line.
 import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 
-export type WebToolKind = "search" | "fetch" | "content" | "source-check" | "enable";
+export type ToucanWebToolKind = "search" | "fetch" | "content" | "source-check" | "enable";
 
-interface WebArgs {
+interface ToucanWebArgs {
 	query?: string;
 	queries?: string[];
 	url?: string;
@@ -49,7 +49,7 @@ interface WebArgs {
 	provider?: string;
 }
 
-interface WebDetails {
+interface ToucanWebDetails {
 	error?: string;
 	phase?: string;
 	currentQuery?: string;
@@ -80,7 +80,7 @@ interface WebDetails {
 	unavailable?: string[];
 }
 
-const WEB_PREVIEW_LINES = 5;
+const TOUCAN_WEB_PREVIEW_LINES = 5;
 
 function strings(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
@@ -91,7 +91,7 @@ function strings(value: unknown): string[] {
 }
 
 /** The search's queries, including the JSON-array form the package accepts in `query`. */
-function queryList(args: WebArgs): string[] {
+function queryList(args: ToucanWebArgs): string[] {
 	const listed = strings(args.queries);
 	if (listed.length > 0) return listed;
 	const query = typeof args.query === "string" ? args.query.trim() : "";
@@ -108,7 +108,7 @@ function queryList(args: WebArgs): string[] {
 	return [query];
 }
 
-function urlList(args: WebArgs): string[] {
+function urlList(args: ToucanWebArgs): string[] {
 	const listed = strings(args.urls);
 	if (listed.length > 0) return listed;
 	const url = typeof args.url === "string" ? args.url.trim() : "";
@@ -124,7 +124,7 @@ function invalid(theme: Theme): string {
 }
 
 /** The call line and the optional details shown under it while expanded. */
-function callParts(kind: WebToolKind, args: WebArgs, theme: Theme): { main: string; details: string[] } {
+function callParts(kind: ToucanWebToolKind, args: ToucanWebArgs, theme: Theme): { main: string; details: string[] } {
 	switch (kind) {
 		case "search": {
 			const queries = queryList(args);
@@ -198,11 +198,11 @@ function callParts(kind: WebToolKind, args: WebArgs, theme: Theme): { main: stri
 			return { main, details };
 		}
 		case "enable":
-			return { main: title(theme, "Web Access"), details: [] };
+			return { main: title(theme, "Toucan Web"), details: [] };
 	}
 }
 
-function phaseLabel(details: WebDetails): string {
+function phaseLabel(details: ToucanWebDetails): string {
 	switch (details.phase) {
 		case "search":
 		case "searching":
@@ -225,8 +225,8 @@ function phaseLabel(details: WebDetails): string {
 
 /** The status line under the call, without any progress bar. */
 function statusText(
-	kind: WebToolKind,
-	details: WebDetails,
+	kind: ToucanWebToolKind,
+	details: ToucanWebDetails,
 	options: ToolRenderResultOptions,
 	theme: Theme,
 	context: ToolRenderContext,
@@ -308,10 +308,10 @@ function firstLine(text: string): string {
 	return newline === -1 ? text : text.slice(0, newline);
 }
 
-function renderWebCall(kind: WebToolKind): NonNullable<ToolDefinition<any, any>["renderCall"]> {
+function renderToucanWebCall(kind: ToucanWebToolKind): NonNullable<ToolDefinition<any, any>["renderCall"]> {
 	return (args, theme, context) => {
 		startToolTimer(context);
-		const { main, details } = callParts(kind, args as WebArgs, theme);
+		const { main, details } = callParts(kind, args as ToucanWebArgs, theme);
 		const duration = toolDurationText(context, context.isPartial);
 		const component = new Container();
 		component.addChild(
@@ -329,9 +329,9 @@ function renderWebCall(kind: WebToolKind): NonNullable<ToolDefinition<any, any>[
 	};
 }
 
-function renderWebResult(kind: WebToolKind): NonNullable<ToolDefinition<any, any>["renderResult"]> {
+function renderToucanWebResult(kind: ToucanWebToolKind): NonNullable<ToolDefinition<any, any>["renderResult"]> {
 	return (result, options, theme, context) => {
-		const details = (result.details ?? {}) as WebDetails;
+		const details = (result.details ?? {}) as ToucanWebDetails;
 		const text = getTextOutput(
 			result as { content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> },
 			context.showImages,
@@ -362,7 +362,7 @@ function renderWebResult(kind: WebToolKind): NonNullable<ToolDefinition<any, any
 							.split("\n")
 							.map((line) => theme.fg("toolOutput", line))
 							.join("\n"),
-						maxVisualLines: WEB_PREVIEW_LINES,
+						maxVisualLines: TOUCAN_WEB_PREVIEW_LINES,
 						keep: "start",
 						formatHint: (hidden) => theme.fg("muted", `... (${hidden} more lines)`),
 					}),
@@ -373,23 +373,26 @@ function renderWebResult(kind: WebToolKind): NonNullable<ToolDefinition<any, any
 	};
 }
 
-const RENDERER_BY_KIND: Record<WebToolKind, Pick<ToolDefinition<any, any>, "renderCall" | "renderResult">> = {
-	search: { renderCall: renderWebCall("search"), renderResult: renderWebResult("search") },
-	fetch: { renderCall: renderWebCall("fetch"), renderResult: renderWebResult("fetch") },
-	content: { renderCall: renderWebCall("content"), renderResult: renderWebResult("content") },
-	"source-check": { renderCall: renderWebCall("source-check"), renderResult: renderWebResult("source-check") },
-	enable: { renderCall: renderWebCall("enable"), renderResult: renderWebResult("enable") },
+const RENDERER_BY_KIND: Record<ToucanWebToolKind, Pick<ToolDefinition<any, any>, "renderCall" | "renderResult">> = {
+	search: { renderCall: renderToucanWebCall("search"), renderResult: renderToucanWebResult("search") },
+	fetch: { renderCall: renderToucanWebCall("fetch"), renderResult: renderToucanWebResult("fetch") },
+	content: { renderCall: renderToucanWebCall("content"), renderResult: renderToucanWebResult("content") },
+	"source-check": {
+		renderCall: renderToucanWebCall("source-check"),
+		renderResult: renderToucanWebResult("source-check"),
+	},
+	enable: { renderCall: renderToucanWebCall("enable"), renderResult: renderToucanWebResult("enable") },
 };
 
-const KIND_BY_LABEL: Record<string, WebToolKind> = {
+const KIND_BY_LABEL: Record<string, ToucanWebToolKind> = {
 	"Web Search": "search",
 	"Fetch Content": "fetch",
 	"Get Search Content": "content",
 	"Source Check": "source-check",
-	"Enable Web Access": "enable",
+	"Enable Toucan Web": "enable",
 };
 
-const KIND_BY_NAME: Record<string, WebToolKind> = {
+const KIND_BY_NAME: Record<string, ToucanWebToolKind> = {
 	web_search: "search",
 	fetch_content: "fetch",
 	get_search_content: "content",
@@ -397,8 +400,8 @@ const KIND_BY_NAME: Record<string, WebToolKind> = {
 	web_enable: "enable",
 };
 
-/** The Toucan renderers for a tool registered by pi-web-access, matched by label or default name. */
-export function webAccessRenderersFor(
+/** The Toucan renderers for a Toucan Web tool, matched by label or default name. */
+export function toucanWebRenderersFor(
 	definition: ToolDefinition<any, any>,
 ): Pick<ToolDefinition<any, any>, "renderCall" | "renderResult"> | undefined {
 	const kind = KIND_BY_LABEL[definition.label] ?? KIND_BY_NAME[definition.name];

@@ -8,7 +8,7 @@
 
 ### Added
 
-- Web access is built in through `pi-web-access`: the `web-access` extension registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/search` and `/google-account`. Its curator browser UI is disabled: `/websearch`, `/curator`, and the curator shortcut are not registered, and searches always run with `workflow: "none"`. It maps the package's Pi module names to Toucan and reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:web-access`
+- Toucan Web is built in: it registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/search` and `/google-account`. Its curator browser UI is disabled: `/websearch`, `/curator`, and the curator shortcut are not registered, and searches always run with `workflow: "none"`. It reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:toucan-web`
 - `/skills` lists every loaded skill and `/context` lists every loaded AGENTS.md context file, each as a tree grouped by where it loads from (user, project, or installed package)
 - `/context` now starts with the estimated active context: percent used, tokens used, and the model's context window, followed by the context-file tree
 
@@ -24,6 +24,7 @@
 - Compaction and branch results are one-line, expandable inline rows instead of full-width padded panels; expanded summaries keep their Markdown and the existing click and `ctrl+o` expansion
 - User messages keep the three-row background band but now lead with the composer's indent and `›` arrow
 - The footer bar under the input shows the model's display name (`Claude Sonnet 4.5`) instead of the API id (`claude-sonnet-4-5`), falling back to the id when a model declares no name. The routed model shown after a virtual model uses its display name too
+- `/shortcuts` lists shortcuts registered by built-in extensions, such as web search activity (`Ctrl+Shift+W`), under Other; only third-party extension shortcuts stay under Extensions
 
 ## [24.0.0] - 2026-11-09
 

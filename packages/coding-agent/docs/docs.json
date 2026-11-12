@@ -105,8 +105,8 @@
               "path": "mcp.md"
             },
             {
-              "title": "Use Web Access",
-              "path": "web-access.md"
+              "title": "Use Toucan Web",
+              "path": "toucan-web.md"
             }
           ]
         },

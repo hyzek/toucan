@@ -3,7 +3,7 @@ import codemodeExtension from "./codemode/index.ts";
 import llamaExtension from "./llama/index.ts";
 import mcpExtension from "./mcp/index.ts";
 import toolSearchExtension from "./tool-search/index.ts";
-import webAccessExtension from "./web-access/index.ts";
+import toucanWebExtension from "./toucan-web/index.ts";
 
 export const builtInExtensions: InlineExtension[] = [
 	{ name: "llama.cpp", factory: llamaExtension, builtin: true },
@@ -11,6 +11,6 @@ export const builtInExtensions: InlineExtension[] = [
 	// MCP extension) takes over instead of running alongside the built-in one.
 	{ name: "codemode", factory: codemodeExtension, replaceable: true, builtin: true },
 	{ name: "tool-search", factory: toolSearchExtension, replaceable: true, builtin: true },
-	{ name: "web-access", factory: webAccessExtension, replaceable: true, builtin: true },
+	{ name: "toucan-web", factory: toucanWebExtension, replaceable: true, builtin: true },
 	{ name: "mcp", factory: mcpExtension, replaceable: true, builtin: true },
 ];

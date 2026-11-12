@@ -39,8 +39,8 @@ export const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@mariozechner/toucan-ai/oauth": bundledToucanAiOauth,
 	"@mariozechner/toucan-ai/providers/all": bundledToucanAiProviders,
 	"@mariozechner/toucan-coding-agent": bundledToucanCodingAgent,
-	// Pi 1.0 packages use these peer names. Map them to Toucan so the built-in
-	// web-access extension can load pi-web-access without separate peer installs.
+	// Pi 1.0 packages use these peer names. Map them to Toucan so built-in features can load
+	// Pi-based packages without separate peer installs.
 	"@earendil-works/pi-coding-agent": bundledToucanCodingAgent,
 	"@earendil-works/pi-tui": bundledToucanTui,
 	"@earendil-works/pi-ai": bundledToucanAiExtensionView,
