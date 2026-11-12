@@ -166,9 +166,9 @@ menu uses the same `tui.select.*` keys for its single list.
 |--------|---------|-------------|
 | `app.question.tabForward` | `tab`, `right` | Next question tab |
 | `app.question.tabBackward` | `shift+tab`, `left` | Previous question tab |
-| `app.question.toggle` | `space` | Toggle option (multi-select) |
+| `app.question.toggle` | `space` | Toggle option (multi-select); the only toggle key |
 | `tui.select.up` / `tui.select.down` | `up` / `down` | Move between options |
-| `tui.select.confirm` | `enter` | Answer / advance; choose Yes or No on the Submit tab |
+| `tui.select.confirm` | `enter` | Answer single-select and advance; on multi-select advance without toggling; choose Yes or No on the Submit tab |
 | `tui.select.cancel` | `escape` | Leave typing row, or dismiss form |
 
 ### Display and Message Queue

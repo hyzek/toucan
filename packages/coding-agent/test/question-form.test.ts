@@ -120,12 +120,16 @@ describe("QuestionForm tabs and Submit question", () => {
 		initTheme("dark");
 	});
 
-	it("renders solid-background tab chips", () => {
+	it("paints the tab row background continuously across chips, gaps, and tail", () => {
 		const { form } = makeForm([storageQuestion, extrasQuestion]);
 		const tabRow = form.render(100)[1]!;
-		const backgroundOpens = (tabRow.match(/\x1b\[4[0-9]+m|\x1b\[48;[0-9;]+m/g) ?? []).filter((s) => s !== "\x1b[49m");
-		// three chips + the band background = at least four background opens on the tab row
-		expect(backgroundOpens.length).toBeGreaterThanOrEqual(4);
+		// theme.bg ends every run with \x1b[49m; after each reset the next run (gap, chip, or
+		// tail padding) must open a background again, so no stretch of the row is unpainted.
+		const segments = tabRow.split("\x1b[49m");
+		expect(segments.length).toBeGreaterThanOrEqual(7); // indent, 3 chips, 2 gaps, tail
+		for (const segment of segments.slice(0, -1)) {
+			expect(segment.startsWith("\x1b[48;")).toBe(true);
+		}
 	});
 
 	it("auto-advances to the Submit tab once all questions are answered", () => {
@@ -181,6 +185,32 @@ describe("QuestionForm tabs and Submit question", () => {
 		expect(result()?.answers).toEqual([
 			{ header: "Extras", question: extrasQuestion.question, answers: [{ title: "CLI" }], typed: false },
 		]);
+	});
+
+	it("multi-select: space toggles, enter advances to the Submit tab without toggling", () => {
+		const { form, result } = makeForm([extrasQuestion]);
+		form.handleInput(SPACE); // toggle CLI on
+		form.handleInput(ENTER); // enter must NOT toggle CLI off; it advances
+		expect(text(form)).toContain("Submit these answers?");
+		expect(text(form)).toContain("Extras: CLI"); // still selected
+		form.handleInput(SHIFT_TAB); // back to the question: nothing was toggled off
+		expect(text(form)).toContain("☒ 1. CLI");
+		form.handleInput(TAB); // Submit tab
+		form.handleInput(ENTER); // Yes
+		expect(result()?.answers[0]?.answers).toEqual([{ title: "CLI" }]);
+	});
+
+	it("multi-select: enter on the free-text row starts typing", () => {
+		const { form, result } = makeForm([extrasQuestion]);
+		form.handleInput(DOWN);
+		form.handleInput(DOWN); // onto "Type your own answer."
+		form.handleInput(ENTER);
+		expect(text(form)).toContain("Your answer:");
+		form.handleInput("custom");
+		form.handleInput(ENTER);
+		form.handleInput(ENTER); // Yes on the Submit tab
+		expect(result()?.answers[0]?.answers).toEqual([{ title: "custom" }]);
+		expect(result()?.answers[0]?.typed).toBe(true);
 	});
 
 	it("shift+tab and left go to the previous tab", () => {

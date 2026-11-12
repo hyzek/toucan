@@ -289,10 +289,28 @@ export class QuestionForm {
 			this.finish(true);
 			return;
 		}
-		if (kb.matches(data, "app.question.toggle") || kb.matches(data, "tui.select.confirm")) {
-			if (this.onSubmitTab()) this.chooseSubmitOption(this.optionIndex);
-			else this.toggleOption(this.optionIndex);
+		if (kb.matches(data, "app.question.toggle")) {
+			// Space only toggles; on multi-select it never advances, so Enter stays free to move on.
+			if (!this.onSubmitTab()) this.toggleOption(this.optionIndex);
+			return;
 		}
+		if (kb.matches(data, "tui.select.confirm")) {
+			if (this.onSubmitTab()) this.chooseSubmitOption(this.optionIndex);
+			else this.confirmOption(this.optionIndex);
+		}
+	}
+
+	/** Enter on a question tab: pick single-select and move on, advance past multi-select. */
+	private confirmOption(index: number): void {
+		if (this.questions[this.currentTab].multiple) {
+			if (this.isOtherRow(index)) {
+				this.enterTyping();
+				return;
+			}
+			this.advanceAfterAnswer(this.currentTab);
+			return;
+		}
+		this.toggleOption(index);
 	}
 
 	// ------------------------------------------------------------------
@@ -312,22 +330,28 @@ export class QuestionForm {
 		rows.push("");
 
 		// The band: clip, pad to the full width, paint the editor background on every row.
+		// Rows that start with their own background (the tab row) pad with a separate
+		// editorBg run; an outer theme.bg would end the whole row in \x1b[49m anyway.
 		return rows.map((row) => {
 			const clipped = truncateToWidth(row, width, "");
-			const padded = clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped)));
-			return theme.bg("editorBg", padded);
+			const filler = " ".repeat(Math.max(0, width - visibleWidth(clipped)));
+			if (clipped.startsWith("\x1b[4")) return clipped + theme.bg("editorBg", filler);
+			return theme.bg("editorBg", clipped + filler);
 		});
 	}
 
 	private renderTabs(): string {
-		const parts: string[] = [INDENT];
+		// Segments, not one wrapped row: theme.bg ends every chip with \x1b[49m, so the indent,
+		// the gaps between chips, and the tail must carry their own editorBg to stay solid.
+		const band = (text: string) => theme.bg("editorBg", text);
+		const parts: string[] = [band(INDENT)];
 		for (let i = 0; i < this.questions.length; i++) {
 			const answered = this.isAnswered(i);
 			const cell = ` ${answered ? "■" : "□"} ${this.questions[i].header} `;
 			if (i === this.currentTab) parts.push(theme.bg("selectedBg", theme.fg("text", cell)));
 			else if (answered) parts.push(theme.bg("toolSuccessBg", theme.fg("success", cell)));
 			else parts.push(theme.bg("toolPendingBg", theme.fg("muted", cell)));
-			parts.push(" ");
+			parts.push(band(" "));
 		}
 		const submitCell = " ✓ Submit ";
 		if (this.onSubmitTab()) parts.push(theme.bg("selectedBg", theme.fg("text", submitCell)));
@@ -448,9 +472,10 @@ export class QuestionForm {
 			parts.push(`${this.keys("app.question.tabForward")}/${this.keys("app.question.tabBackward")} switch`);
 		parts.push(`${this.keys("tui.select.up")}/${this.keys("tui.select.down")} move`);
 		if (!this.onSubmitTab() && this.questions[this.currentTab].multiple) {
-			parts.push(`${this.keys("app.question.toggle")} select`);
+			parts.push(`${this.keys("app.question.toggle")} select`, `${this.keys("tui.select.confirm")} next`);
+		} else {
+			parts.push(`${this.keys("tui.select.confirm")} ${this.onSubmitTab() ? "choose" : "answer"}`);
 		}
-		parts.push(`${this.keys("tui.select.confirm")} ${this.onSubmitTab() ? "choose" : "answer"}`);
 		parts.push(`${this.keys("tui.select.cancel")} dismiss`);
 		return theme.fg("dim", parts.join(" · "));
 	}
