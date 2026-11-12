@@ -219,6 +219,18 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Toggle plan mode"
     },
+    "app.question.tabForward": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Question form: next tab"
+    },
+    "app.question.tabBackward": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Question form: previous tab"
+    },
+    "app.question.toggle": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Question form: toggle option"
+    },
     "app.model.cycleForward": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Cycle to next model"

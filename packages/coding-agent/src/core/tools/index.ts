@@ -60,6 +60,16 @@ export {
 	type PowerShellToolOptions,
 } from "./powershell.ts";
 export {
+	createQuestionTool,
+	createQuestionToolDefinition,
+	formatQuestionAnswers,
+	type QuestionToolAnswer,
+	type QuestionToolAnswerValue,
+	type QuestionToolDetails,
+	type QuestionToolOption,
+	type QuestionToolQuestion,
+} from "./question.ts";
+export {
 	createReadTool,
 	createReadToolDefinition,
 	type ReadOperations,
@@ -95,13 +105,24 @@ import { createFindTool, createFindToolDefinition, type FindToolOptions } from "
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.ts";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.ts";
 import { createPowerShellTool, createPowerShellToolDefinition, type PowerShellToolOptions } from "./powershell.ts";
+import { createQuestionTool, createQuestionToolDefinition } from "./question.ts";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.ts";
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName = "read" | "bash" | "powershell" | "edit" | "write" | "grep" | "find" | "ls" | "subagent";
+export type ToolName =
+	| "read"
+	| "bash"
+	| "powershell"
+	| "edit"
+	| "write"
+	| "grep"
+	| "find"
+	| "ls"
+	| "subagent"
+	| "question";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
@@ -112,6 +133,7 @@ export const allToolNames: Set<ToolName> = new Set([
 	"find",
 	"ls",
 	"subagent",
+	"question",
 ]);
 
 export interface ToolsOptions {
@@ -148,6 +170,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 		case "subagent":
 			if (!options?.subagent) throw new Error("The subagent tool requires runtime options (ToolsOptions.subagent).");
 			return createSubagentToolDefinition(cwd, options.subagent);
+		case "question":
+			return createQuestionToolDefinition();
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -212,6 +236,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): T
 		grep: createGrepToolDefinition(cwd, options?.grep),
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
+		question: createQuestionToolDefinition(),
 		...(options?.subagent ? { subagent: createSubagentToolDefinition(cwd, options.subagent) } : {}),
 	};
 }
@@ -244,6 +269,7 @@ export function createAllTools(cwd: string, options?: ToolsOptions): ToolRegistr
 		grep: createGrepTool(cwd, options?.grep),
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
+		question: createQuestionTool(),
 		...(options?.subagent
 			? { subagent: wrapToolDefinition(createSubagentToolDefinition(cwd, options.subagent)) }
 			: {}),

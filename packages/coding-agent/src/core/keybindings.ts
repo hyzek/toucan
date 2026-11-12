@@ -38,6 +38,18 @@ const APP_KEYBINDINGS = {
 		defaultKeys: "shift+tab",
 		description: "Toggle plan mode",
 	},
+	"app.question.tabForward": {
+		defaultKeys: ["tab", "right"],
+		description: "Question form: next tab",
+	},
+	"app.question.tabBackward": {
+		defaultKeys: ["shift+tab", "left"],
+		description: "Question form: previous tab",
+	},
+	"app.question.toggle": {
+		defaultKeys: "space",
+		description: "Question form: toggle option",
+	},
 	"app.model.cycleForward": {
 		defaultKeys: "ctrl+p",
 		description: "Cycle to next model",

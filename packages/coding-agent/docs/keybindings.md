@@ -157,6 +157,19 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 | `app.thinking.toggle` | `ctrl+t` | Collapse or expand thinking blocks |
 | `app.planMode.toggle` | `shift+tab` | Toggle plan mode (read-only research and planning) |
 
+### Question Form
+
+Shown while the `question` tool waits for answers; keys are local to the form.
+
+| Keybinding id | Default | Description |
+|--------|---------|-------------|
+| `app.question.tabForward` | `tab`, `right` | Next question tab |
+| `app.question.tabBackward` | `shift+tab`, `left` | Previous question tab |
+| `app.question.toggle` | `space` | Toggle option (multi-select) |
+| `tui.select.up` / `tui.select.down` | `up` / `down` | Move between options |
+| `tui.select.confirm` | `enter` | Answer / advance; choose Yes or No on the Submit tab |
+| `tui.select.cancel` | `escape` | Leave typing row, or dismiss form |
+
 ### Display and Message Queue
 
 | Keybinding id | Default | Description |

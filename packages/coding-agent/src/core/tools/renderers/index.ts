@@ -14,6 +14,7 @@ import { editRenderers } from "./edit.ts";
 import { findRenderers } from "./find.ts";
 import { grepRenderers } from "./grep.ts";
 import { lsRenderers } from "./ls.ts";
+import { questionRenderers } from "./question.ts";
 import { readRenderers } from "./read.ts";
 import { writeRenderers } from "./write.ts";
 
@@ -25,6 +26,7 @@ export {
 	findRenderers,
 	grepRenderers,
 	lsRenderers,
+	questionRenderers,
 	readRenderers,
 	writeRenderers,
 };
@@ -41,6 +43,7 @@ export function createAllToolRenderers(): Record<ToolName, ToolRenderers> {
 		find: findRenderers,
 		ls: lsRenderers,
 		subagent: subagentRenderers,
+		question: questionRenderers,
 	};
 }
 

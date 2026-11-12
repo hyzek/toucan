@@ -8,7 +8,7 @@
 export const PLAN_MODE_REMOVED_TOOLS: ReadonlySet<string> = new Set(["edit", "write", "powershell", "subagent"]);
 
 /** Read-only built-in tools plan mode activates when they are registered. */
-export const PLAN_MODE_ENSURED_TOOLS: readonly string[] = ["read", "grep", "find", "ls", "bash"];
+export const PLAN_MODE_ENSURED_TOOLS: readonly string[] = ["read", "grep", "find", "ls", "bash", "question"];
 
 /** Destructive commands blocked in plan mode (matches anywhere in the command line). */
 const DESTRUCTIVE_PATTERNS = [
@@ -117,6 +117,7 @@ export const PLAN_MODE_PROMPT = `You are in plan mode: a read-only research and 
 - Leave everything unchanged. Nothing may be created, modified, deleted, moved, installed, committed, pushed, sent, or configured. The edit, write, powershell and subagent tools are disabled.
 - Bash is limited to read-only commands (status, log, diff, show, listing, searching). Commands that change state are blocked and will fail.
 - MCP and extension tools are still available, for research only. Never call a tool that acts on anything: skip tools whose name or description implies create/update/delete/send/post/merge actions, and use only read/search/list tools.
+- NEVER ASSUME. If you are unsure about anything the user wants or how they want it — scope, names, preferences, trade-offs, whether your approach matches their intent — stop and ask with the question tool. Asking costs one call; guessing wrong costs a rewrite. Batch every open question into one question call.
 - Research with the least effort that answers the question: fewest files read, fewest commands run. Do not re-verify facts you already have.
 - Do not output code, patches, or config blocks. Describe changes as plan steps.
 
