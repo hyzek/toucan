@@ -8,7 +8,7 @@
 export const PLAN_MODE_REMOVED_TOOLS: ReadonlySet<string> = new Set(["edit", "write", "powershell", "subagent"]);
 
 /** Read-only built-in tools plan mode activates when they are registered. */
-export const PLAN_MODE_ENSURED_TOOLS: readonly string[] = ["read", "grep", "find", "ls", "bash", "question"];
+export const PLAN_MODE_ENSURED_TOOLS: readonly string[] = ["read", "grep", "find", "ls", "bash", "question", "handoff"];
 
 /** Destructive commands blocked in plan mode (matches anywhere in the command line). */
 const DESTRUCTIVE_PATTERNS = [
@@ -127,4 +127,6 @@ Plan:
 1. <step: what to change, in which files, and how it is verified>
 2. ...
 
-Keep steps to one line where possible. State assumptions and open questions before the plan. Order steps so each can be executed on its own.`;
+Keep steps to one line where possible. State assumptions and open questions before the plan. Order steps so each can be executed on its own.
+
+When the plan is finished, do not start implementing and do not just ask in plain text: call the handoff tool. Prompt like "Hand off to build mode and start implementing?", with options such as "Yes — start implementing" (startImplementation: true) and "Keep planning". The user's choice comes back to you, and picking a startImplementation option turns plan mode off; then implement the plan.`;

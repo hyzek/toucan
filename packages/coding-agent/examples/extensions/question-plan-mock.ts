@@ -1,16 +1,19 @@
 /**
- * Question-plan mock provider - exercises the question tool and the plan mode prompt offline.
+ * Question-plan mock provider - exercises the question tool, the plan mode prompt, and the
+ * handoff tool offline.
  *
  * Registers provider `planmock` with the model `plan-question`. Every prompt replays one flow:
  * the model calls the `question` tool (one single-select and one multi-select question), then
- * after the form submits it answers with a `Plan:` list. The plan reply also reports what the
- * model actually saw in its system prompt (whether a `<plan_mode>` section is present and which
- * tools are listed), so you can verify plan mode's prompt injection directly in the transcript:
- * toggle /plan, re-run, and read the check line. No files are written; fully offline.
+ * after the form submits it answers with a `Plan:` list and immediately calls `handoff`
+ * ("Hand off to build mode and start implementing?" - Yes / Keep planning). After the handoff
+ * choice it reports what the model actually saw in its system prompt (whether a `<plan_mode>`
+ * section is present and which tools are active), so you can verify plan mode's prompt
+ * injection directly in the transcript: toggle /plan, re-run, and read the check line.
+ * No files are written; fully offline.
  *
  * Usage (from the repo root):
  *   ./toucan-test.sh -e ./packages/coding-agent/examples/extensions/question-plan-mock.ts --model planmock/plan-question --api-key mock
- *   # then type any prompt and answer the form
+ *   # then type any prompt, answer the form, and pick in the handoff menu
  */
 
 import {
@@ -52,7 +55,8 @@ function promptCheck(context: TranscriptContext): string {
 		.join("\n");
 	return (
 		`plan_mode section in prompt: ${systemText.includes("<plan_mode>") ? "yes" : "no"}; ` +
-		`question listed: ${systemText.includes("- question:") ? "yes" : "no"}`
+		`question listed: ${systemText.includes("- question:") ? "yes" : "no"}; ` +
+		`handoff listed: ${systemText.includes("- handoff:") ? "yes" : "no"}`
 	);
 }
 
@@ -78,27 +82,48 @@ export default function questionPlanMock(toucan: ExtensionAPI) {
 			const answered = context.messages.some(
 				(message) => message.role === "toolResult" && message.toolName === "question",
 			);
-			const planned = [...context.messages]
-				.reverse()
-				.find((message) => message.role === "assistant")
-				?.content.some((block) => block.type === "text" && block.text.includes("Plan:"));
+			const handoffResult = context.messages.findLast(
+				(message) => message.role === "toolResult" && message.toolName === "handoff",
+			);
 			if (!answered) {
 				core.setResponses([
 					fauxAssistantMessage([fauxToolCall("question", { questions: mockQuestions })], {
 						stopReason: "toolUse",
 					}),
 				]);
-			} else if (!planned) {
+			} else if (!handoffResult) {
 				core.setResponses([
 					fauxAssistantMessage(
-						"Answers recorded. Here is the plan.\n\nPlan:\n1. Read core/tools/index.ts and plan-mode.ts to see the current wiring\n2. Toggle /plan and re-run this mock to compare the prompt check\n3. Re-run to replay the form\n\nPrompt check (what the model saw): " +
-							promptCheck(context) +
-							"\n",
+						[
+							{
+								type: "text",
+								text: "Answers recorded. Here is the plan.\n\nPlan:\n1. Read core/tools/index.ts and plan-mode.ts to see the current wiring\n2. Toggle /plan and re-run this mock to compare the prompt check\n3. Pick an option in the handoff menu below\n\n",
+							},
+							fauxToolCall("handoff", {
+								prompt: "Hand off to build mode and start implementing?",
+								summary: "3 steps ready. Step 1: read the tool registry wiring.",
+								options: [
+									{
+										label: "Yes — start implementing",
+										description: "turns plan mode off",
+										startImplementation: true,
+									},
+									{ label: "Keep planning", description: "stay read-only" },
+								],
+							}),
+						],
+						{ stopReason: "toolUse" },
 					),
 				]);
 			} else {
+				const choice =
+					handoffResult?.role === "toolResult"
+						? handoffResult.content.map((block) => (block.type === "text" ? block.text : "")).join(" ")
+						: "";
 				core.setResponses([
-					fauxAssistantMessage(`Mock: nothing more queued. Prompt check: ${promptCheck(context)}.`),
+					fauxAssistantMessage(
+						`Mock done. ${choice}\nPrompt check (what the model saw): ${promptCheck(context)}.`,
+					),
 				]);
 			}
 			return core.streamSimple(model, context, options);

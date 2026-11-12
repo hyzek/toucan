@@ -159,7 +159,8 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 
 ### Question Form
 
-Shown while the `question` tool waits for answers; keys are local to the form.
+Shown while the `question` tool waits for answers; keys are local to the form. The `handoff`
+menu uses the same `tui.select.*` keys for its single list.
 
 | Keybinding id | Default | Description |
 |--------|---------|-------------|

@@ -3866,6 +3866,10 @@ export class AgentSession {
 			: createAllToolDefinitions(this._cwd, {
 					read: { autoResizeImages },
 					bash: { commandPrefix: shellCommandPrefix, shellPath },
+					handoff: {
+						isPlanMode: () => this._planMode,
+						exitPlanMode: () => this.disablePlanMode(),
+					},
 					...(subagentsEnabled ? { subagent: { manager: () => this.subagentManager } } : {}),
 				});
 
@@ -3895,7 +3899,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write", "question", ...(subagentsEnabled ? ["subagent"] : [])];
+			: ["read", "bash", "edit", "write", "question", "handoff", ...(subagentsEnabled ? ["subagent"] : [])];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,

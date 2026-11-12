@@ -13,6 +13,7 @@ import { createShellRenderers } from "./bash.ts";
 import { editRenderers } from "./edit.ts";
 import { findRenderers } from "./find.ts";
 import { grepRenderers } from "./grep.ts";
+import { handoffRenderers } from "./handoff.ts";
 import { lsRenderers } from "./ls.ts";
 import { questionRenderers } from "./question.ts";
 import { readRenderers } from "./read.ts";
@@ -24,6 +25,7 @@ export {
 	createShellRenderers,
 	editRenderers,
 	findRenderers,
+	handoffRenderers,
 	grepRenderers,
 	lsRenderers,
 	questionRenderers,
@@ -44,6 +46,7 @@ export function createAllToolRenderers(): Record<ToolName, ToolRenderers> {
 		ls: lsRenderers,
 		subagent: subagentRenderers,
 		question: questionRenderers,
+		handoff: handoffRenderers,
 	};
 }
 

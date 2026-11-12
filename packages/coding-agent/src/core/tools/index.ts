@@ -41,6 +41,13 @@ export {
 	type GrepToolOptions,
 } from "./grep.ts";
 export {
+	createHandoffTool,
+	createHandoffToolDefinition,
+	type HandoffToolDetails,
+	type HandoffToolOption,
+	type HandoffToolOptions,
+} from "./handoff.ts";
+export {
 	createLsTool,
 	createLsToolDefinition,
 	type LsOperations,
@@ -103,6 +110,7 @@ import { type BashToolOptions, createBashTool, createBashToolDefinition } from "
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.ts";
+import { createHandoffToolDefinition, type HandoffToolOptions } from "./handoff.ts";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.ts";
 import { createPowerShellTool, createPowerShellToolDefinition, type PowerShellToolOptions } from "./powershell.ts";
 import { createQuestionTool, createQuestionToolDefinition } from "./question.ts";
@@ -122,7 +130,8 @@ export type ToolName =
 	| "find"
 	| "ls"
 	| "subagent"
-	| "question";
+	| "question"
+	| "handoff";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
@@ -134,6 +143,7 @@ export const allToolNames: Set<ToolName> = new Set([
 	"ls",
 	"subagent",
 	"question",
+	"handoff",
 ]);
 
 export interface ToolsOptions {
@@ -147,6 +157,8 @@ export interface ToolsOptions {
 	ls?: LsToolOptions;
 	/** Runtime services for the `subagent` tool. Without them the tool is not registered. */
 	subagent?: SubagentToolOptions;
+	/** Plan-mode switch for the `handoff` tool's start-implementation options. */
+	handoff?: HandoffToolOptions;
 }
 
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
@@ -172,6 +184,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createSubagentToolDefinition(cwd, options.subagent);
 		case "question":
 			return createQuestionToolDefinition();
+		case "handoff":
+			return createHandoffToolDefinition(options?.handoff);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -198,6 +212,10 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 		case "subagent":
 			if (!options?.subagent) throw new Error("The subagent tool requires runtime options (ToolsOptions.subagent).");
 			return wrapToolDefinition(createSubagentToolDefinition(cwd, options.subagent));
+		case "question":
+			return createQuestionTool();
+		case "handoff":
+			return wrapToolDefinition(createHandoffToolDefinition(options?.handoff));
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -237,6 +255,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): T
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
 		question: createQuestionToolDefinition(),
+		handoff: createHandoffToolDefinition(options?.handoff),
 		...(options?.subagent ? { subagent: createSubagentToolDefinition(cwd, options.subagent) } : {}),
 	};
 }
@@ -270,6 +289,7 @@ export function createAllTools(cwd: string, options?: ToolsOptions): ToolRegistr
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
 		question: createQuestionTool(),
+		handoff: wrapToolDefinition(createHandoffToolDefinition(options?.handoff)),
 		...(options?.subagent
 			? { subagent: wrapToolDefinition(createSubagentToolDefinition(cwd, options.subagent)) }
 			: {}),

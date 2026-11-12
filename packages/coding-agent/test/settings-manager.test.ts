@@ -654,6 +654,7 @@ describe("SettingsManager", () => {
 				"edit",
 				"subagent",
 				"question",
+				"handoff",
 				"codemode",
 			]);
 			expect(SettingsManager.inMemory({ defaultTools: ["read", "+grep", "+read"] }).getDefaultTools()).toEqual([
@@ -689,6 +690,7 @@ describe("SettingsManager", () => {
 				"write",
 				"subagent",
 				"question",
+				"handoff",
 				"codemode",
 			]);
 		});
