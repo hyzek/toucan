@@ -199,7 +199,7 @@ import { editInExternalEditor } from "./external-editor.ts";
 import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getDistinctModelName, getModelSearchText } from "./model-search.ts";
 import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
-import { formatContextTree, formatSkillsTree } from "./resource-tree.ts";
+import { formatContextReport, formatSkillsTree } from "./resource-tree.ts";
 import { shareSession } from "./session-share.ts";
 import { createInputShine, type InputShine, shouldPlayMaxShine } from "./theme/input-shine.ts";
 import {
@@ -6775,8 +6775,9 @@ export class InteractiveMode {
 	private handleContextCommand(): void {
 		const files = this.session.resourceLoader.getAgentsFiles().agentsFiles;
 		const cwd = this.sessionManager.getCwd();
+		const usage = this.session.getContextUsage();
 		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new ThemedText(() => formatContextTree(files, cwd), 1, 0));
+		this.chatContainer.addChild(new ThemedText(() => formatContextReport(files, cwd, usage), 1, 0));
 		this.ui.requestRender();
 	}
 

@@ -6,6 +6,7 @@
 
 - Web access is built in through `pi-web-access`: the `web-access` extension registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/search` and `/google-account`. Its curator browser UI is disabled: `/websearch`, `/curator`, and the curator shortcut are not registered, and searches always run with `workflow: "none"`. It maps the package's Pi module names to Toucan and reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:web-access`
 - `/skills` lists every loaded skill and `/context` lists every loaded AGENTS.md context file, each as a tree grouped by where it loads from (user, project, or installed package)
+- `/context` now starts with the estimated active context: percent used, tokens used, and the model's context window, followed by the context-file tree
 
 ### Changed
 

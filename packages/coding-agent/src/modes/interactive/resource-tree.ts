@@ -1,9 +1,10 @@
 /**
  * Chat reports for `/skills` and `/context`: the loaded skills and AGENTS.md context files,
- * grouped by the origin they load from and drawn as a tree.
+ * grouped by the origin they load from and drawn as a tree, plus the current context depth.
  */
 
 import { basename, dirname, isAbsolute, relative, sep } from "node:path";
+import type { ContextUsage } from "../../core/extensions/types.ts";
 import type { Skill } from "../../core/skills.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import { isPathWithin, shortenHomePath } from "../../utils/paths.ts";
@@ -33,14 +34,35 @@ export function formatSkillsTree(skills: readonly Skill[]): string {
 	return renderReport("Skills", skills.length, groups, "No skills loaded.");
 }
 
+/** Report the session's estimated context depth and the loaded context files. */
+export function formatContextReport(
+	files: readonly ContextFile[],
+	cwd: string,
+	usage: ContextUsage | undefined,
+): string {
+	return `${formatContextUsage(usage)}\n\n${formatContextTree(files, cwd)}`;
+}
+
 /** List every loaded context file grouped by user or project origin and its directory. */
-export function formatContextTree(files: readonly ContextFile[], cwd: string): string {
+function formatContextTree(files: readonly ContextFile[], cwd: string): string {
 	const groups: TreeGroup[] = [];
 	for (const file of files) {
 		const label = isPathWithin(dirname(file.path), cwd) ? "project" : "user";
 		addToGroup(groups, label, dirname(file.path), { label: theme.fg("text", basename(file.path)) });
 	}
 	return renderReport("Context files", files.length, groups, "No context files loaded.");
+}
+
+/** One line with the estimated percent and tokens used, and the model's context window. */
+function formatContextUsage(usage: ContextUsage | undefined): string {
+	const label = theme.fg("dim", "Context usage:");
+	if (!usage) return `${label} ${theme.fg("muted", "unavailable")}`;
+	if (usage.tokens === null || usage.percent === null) {
+		const limit = `${usage.contextWindow.toLocaleString()} token limit`;
+		return `${label} ${theme.fg("muted", `unknown until the next model response (${limit})`)}`;
+	}
+	const detail = `${Math.round(usage.percent)}% · ${usage.tokens.toLocaleString()} / ${usage.contextWindow.toLocaleString()} tokens`;
+	return `${label} ${theme.fg("text", detail)} ${theme.fg("dim", "(estimated)")}`;
 }
 
 /** Draw a forest of groups with blank lines between top-level groups. */

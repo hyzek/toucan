@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Skill } from "../src/core/skills.ts";
-import { formatContextTree, formatSkillsTree } from "../src/modes/interactive/resource-tree.ts";
+import { formatContextReport, formatSkillsTree } from "../src/modes/interactive/resource-tree.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
@@ -68,9 +68,12 @@ describe("resource tree reports", () => {
 			{ path: join(home, "work", "AGENTS.md"), content: "parent" },
 			{ path: join(cwd, "AGENTS.md"), content: "project" },
 		];
+		const usage = { tokens: 124_000, contextWindow: 200_000, percent: 62 };
 
-		expect(plain(formatContextTree(files, cwd))).toBe(
+		expect(plain(formatContextReport(files, cwd, usage))).toBe(
 			[
+				`Context usage: 62% · ${(124_000).toLocaleString()} / ${(200_000).toLocaleString()} tokens (estimated)`,
+				"",
 				"Context files (3)",
 				"",
 				"user",
@@ -86,8 +89,23 @@ describe("resource tree reports", () => {
 		);
 	});
 
+	it("reports unknown and unavailable context usage", () => {
+		const unknown = { tokens: null, contextWindow: 200_000, percent: null };
+		expect(plain(formatContextReport([], home, unknown))).toBe(
+			[
+				`Context usage: unknown until the next model response (${(200_000).toLocaleString()} token limit)`,
+				"",
+				"Context files (0)",
+				"",
+				"No context files loaded.",
+			].join("\n"),
+		);
+		expect(plain(formatContextReport([], home, undefined))).toBe(
+			"Context usage: unavailable\n\nContext files (0)\n\nNo context files loaded.",
+		);
+	});
+
 	it("reports empty lists", () => {
 		expect(plain(formatSkillsTree([]))).toBe("Skills (0)\n\nNo skills loaded.");
-		expect(plain(formatContextTree([], home))).toBe("Context files (0)\n\nNo context files loaded.");
 	});
 });

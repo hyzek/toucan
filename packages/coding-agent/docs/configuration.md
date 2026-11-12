@@ -45,4 +45,4 @@ Context files are separate from project `.toucan` configuration. Toucan loads th
 
 An `AGENTS.override.md` replaces `AGENTS.md` or `CLAUDE.md` only in the same directory. It does not suppress context files from the agent directory or other directories.
 
-Context-file discovery does not require project trust. Use `/context` to list the loaded files and the directories they came from.
+Context-file discovery does not require project trust. Use `/context` to see the estimated context usage and the loaded files with the directories they came from.

@@ -42,7 +42,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "resume", description: "Resume another session" },
 	{ name: "agents", description: "Open the agent command center (subagents, status, transcripts)" },
 	{ name: "skills", description: "Show loaded skills and where they come from" },
-	{ name: "context", description: "Show loaded AGENTS.md context files and where they come from" },
+	{ name: "context", description: "Show context usage and loaded AGENTS.md context files with where they come from" },
 	{ name: "reload", description: "Reload keybindings, extensions, skills, prompts, themes, and context files" },
 	{ name: "quit", description: `Quit ${APP_NAME}` },
 ];
