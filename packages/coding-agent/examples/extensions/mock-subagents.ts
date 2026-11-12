@@ -69,7 +69,8 @@ function mainScript(turn: number, context: TranscriptContext): AssistantMessage 
 				],
 				{ stopReason: "toolUse" },
 			);
-		case 1:
+		case 1: {
+			const resume = spawnedId(context, "explore");
 			return fauxAssistantMessage(
 				[
 					fauxText("The explore agent finished first. I want one more detail from it, so I resume its session.\n"),
@@ -81,13 +82,14 @@ function mainScript(turn: number, context: TranscriptContext): AssistantMessage 
 							task: "One more thing: which single file is the best entry point for the auth flow, and why?",
 							description: "Auth entry point",
 							background: false,
-							resume: spawnedId(context, "explore"),
+							...(resume === undefined ? {} : { resume }),
 						},
 						{ id: "agents-resume-explore" },
 					),
 				],
 				{ stopReason: "toolUse" },
 			);
+		}
 		default:
 			return fauxAssistantMessage([
 				fauxText(
