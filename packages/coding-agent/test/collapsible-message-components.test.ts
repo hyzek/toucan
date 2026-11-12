@@ -1,6 +1,8 @@
 import type { Box, TuiMouseEvent } from "@hyzek/toucan-tui";
+import { setKeybindings } from "@hyzek/toucan-tui";
 import { beforeAll, describe, expect, test } from "vitest";
 import type { MarkdownTransformContext, MarkdownTransformer } from "../src/core/extensions/types.ts";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { BranchSummaryMessageComponent } from "../src/modes/interactive/components/branch-summary-message.ts";
 import { CompactionSummaryMessageComponent } from "../src/modes/interactive/components/compaction-summary-message.ts";
 import { SkillInvocationMessageComponent } from "../src/modes/interactive/components/skill-invocation-message.ts";
@@ -35,7 +37,10 @@ function clickRow(component: Box, marker: string): void {
 }
 
 describe("collapsible message components", () => {
-	beforeAll(() => initTheme("dark"));
+	beforeAll(() => {
+		initTheme("dark");
+		setKeybindings(new KeybindingsManager());
+	});
 
 	test("toggles a compaction summary when clicked", () => {
 		const component = new CompactionSummaryMessageComponent({
@@ -45,7 +50,10 @@ describe("collapsible message components", () => {
 			timestamp: Date.now(),
 		});
 
-		expect(renderText(component)).not.toContain("compaction details");
+		const collapsed = renderText(component);
+		expect(collapsed.split("\n")).toHaveLength(1);
+		expect(collapsed).toContain("ctrl+o to expand");
+		expect(collapsed).not.toContain("compaction details");
 		clickRow(component, "[compaction]");
 		expect(renderText(component)).toContain("compaction details");
 		clickRow(component, "[compaction]");
@@ -60,7 +68,10 @@ describe("collapsible message components", () => {
 			timestamp: Date.now(),
 		});
 
-		expect(renderText(component)).not.toContain("branch details");
+		const collapsed = renderText(component);
+		expect(collapsed.split("\n")).toHaveLength(1);
+		expect(collapsed).toContain("ctrl+o to expand");
+		expect(collapsed).not.toContain("branch details");
 		clickRow(component, "[branch]");
 		expect(renderText(component)).toContain("branch details");
 		clickRow(component, "[branch]");
@@ -95,7 +106,7 @@ describe("collapsible message components", () => {
 			{
 				kind: "compaction summary",
 				messageType: "summary",
-				header: "Compacted from 1,234 tokens",
+				header: "[compaction] 1,234 tokens",
 				create: () =>
 					new CompactionSummaryMessageComponent(
 						{ role: "compactionSummary", summary: "details", tokensBefore: 1234, timestamp: Date.now() },
@@ -108,7 +119,7 @@ describe("collapsible message components", () => {
 			{
 				kind: "branch summary",
 				messageType: "summary",
-				header: "Branch Summary",
+				header: "[branch] summary",
 				create: () =>
 					new BranchSummaryMessageComponent(
 						{ role: "branchSummary", summary: "details", fromId: "entry-0", timestamp: Date.now() },

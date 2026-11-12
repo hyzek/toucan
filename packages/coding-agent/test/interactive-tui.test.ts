@@ -1,8 +1,10 @@
 import type { Component, Terminal, TUI, WheelScrollLines } from "@hyzek/toucan-tui";
-import { Container, isViewportTUI, Text } from "@hyzek/toucan-tui";
+import { Container, isViewportTUI, setKeybindings, Text } from "@hyzek/toucan-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { FullscreenExitOutput, TuiMode } from "../src/core/settings-manager.ts";
+import { HotkeyHints } from "../src/modes/interactive/components/hotkey-hints.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
@@ -17,6 +19,7 @@ import {
 	InteractiveMode,
 } from "../src/modes/interactive/interactive-mode.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { stripAnsi } from "../src/utils/ansi.ts";
 
 const clipboardMocks = vi.hoisted(() => ({
 	copyToClipboard: vi.fn<(text: string) => Promise<void>>(),
@@ -382,6 +385,7 @@ type ClearStatusContext = {
 	activeStatusIndicator: { kind: StatusIndicatorKind; dispose: () => void } | undefined;
 	activeWorkingIndicatorEmbedded: boolean;
 	statusContainer: Container;
+	footerHints: HotkeyHints;
 	defaultEditor: StatusEditor;
 	editor: Partial<StatusEditor>;
 	options: { tuiMode?: TuiMode };
@@ -399,14 +403,20 @@ type InteractiveModePrototype = {
 const interactiveModePrototype = InteractiveMode.prototype as unknown as InteractiveModePrototype;
 
 describe("clear-on-shrink status spacing", () => {
+	beforeEach(() => {
+		setKeybindings(new KeybindingsManager());
+	});
+
 	it.each([true, false])("routes every status through the editor opt-in (%s)", (embedWorkingStatus) => {
 		initTheme("dark");
 		const tui = { requestRender: vi.fn() } as unknown as TUI;
 		const editor: StatusEditor = { embedWorkingStatus, setWorkingStatusIndicator: vi.fn() };
+		const footerHints = new HotkeyHints(() => false);
 		const context: ClearStatusContext = {
 			activeStatusIndicator: undefined,
 			activeWorkingIndicatorEmbedded: false,
 			statusContainer: new Container(),
+			footerHints,
 			defaultEditor: { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() },
 			editor,
 			options: { tuiMode: "regular" },
@@ -426,6 +436,7 @@ describe("clear-on-shrink status spacing", () => {
 			for (const indicator of indicators) {
 				interactiveModePrototype.showStatusIndicator.call(context, indicator);
 				expect(context.activeStatusIndicator).toBe(indicator);
+				expect(stripAnsi(footerHints.render(200)[0] ?? "")).toContain("esc to interrupt");
 				expect(context.activeWorkingIndicatorEmbedded).toBe(embedWorkingStatus);
 				if (embedWorkingStatus) {
 					expect(editor.setWorkingStatusIndicator).toHaveBeenLastCalledWith(indicator);
@@ -444,10 +455,13 @@ describe("clear-on-shrink status spacing", () => {
 		(kind) => {
 			const dispose = vi.fn();
 			const editor: StatusEditor = { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() };
+			const footerHints = new HotkeyHints(() => false);
+			footerHints.add("interrupt", () => "esc to interrupt", 0);
 			const context: ClearStatusContext = {
 				activeStatusIndicator: { kind, dispose },
 				activeWorkingIndicatorEmbedded: true,
 				statusContainer: new Container(),
+				footerHints,
 				defaultEditor: editor,
 				editor,
 				options: { tuiMode: "regular" },
@@ -461,6 +475,7 @@ describe("clear-on-shrink status spacing", () => {
 			expect(dispose).toHaveBeenCalledOnce();
 			expect(editor.setWorkingStatusIndicator).toHaveBeenCalledWith(undefined);
 			expect(context.statusContainer.children).toHaveLength(0);
+			expect(footerHints.render(200)[0]).not.toContain("interrupt");
 		},
 	);
 
@@ -471,10 +486,13 @@ describe("clear-on-shrink status spacing", () => {
 		] as const) {
 			const defaultEditor: StatusEditor = { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() };
 			const customEditor = { embedWorkingStatus: false, setWorkingStatusIndicator: vi.fn() };
+			const footerHints = new HotkeyHints(() => false);
+			footerHints.add("interrupt", () => "esc to interrupt", 0);
 			const context: ClearStatusContext = {
 				activeStatusIndicator: { kind: "working", dispose: vi.fn() },
 				activeWorkingIndicatorEmbedded: false,
 				statusContainer: new Container(),
+				footerHints,
 				defaultEditor,
 				editor: customEditor,
 				options: { tuiMode },
@@ -488,6 +506,7 @@ describe("clear-on-shrink status spacing", () => {
 			expect(defaultEditor.setWorkingStatusIndicator).toHaveBeenCalledWith(undefined);
 			expect(customEditor.setWorkingStatusIndicator).not.toHaveBeenCalled();
 			expect(context.statusContainer.children).toHaveLength(expectedChildren);
+			expect(footerHints.render(200)[0]).not.toContain("interrupt");
 		}
 	});
 });

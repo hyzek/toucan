@@ -35,21 +35,11 @@ describe("thinking selector", () => {
 		expect(getLevelRow("high")?.startsWith("→   high")).toBe(true);
 	});
 
-	it("uses the configured save binding", () => {
-		setKeybindings(new KeybindingsManager({ "app.thinking.save": "ctrl+r" }));
-		const saveDefault = vi.fn();
-		const selector = new ThinkingSelectorComponent(
-			"medium",
-			["medium", "high"],
-			() => {},
-			() => {},
-			saveDefault,
-		);
-
-		expect(stripAnsi(selector.render(80).join("\n"))).toContain("Ctrl+R to set as default");
-		selector.handleInput("\x13");
-		expect(saveDefault).not.toHaveBeenCalled();
-		selector.handleInput("\x12");
-		expect(saveDefault).toHaveBeenCalledWith("medium");
+	it("shows no save-as-default hint and selects with Enter", () => {
+		const onSelect = vi.fn();
+		const selector = new ThinkingSelectorComponent("medium", ["medium", "high"], onSelect, () => {});
+		expect(stripAnsi(selector.render(80).join("\n"))).not.toContain("to set as default");
+		selector.handleInput("\r");
+		expect(onSelect).toHaveBeenCalledWith("medium");
 	});
 });

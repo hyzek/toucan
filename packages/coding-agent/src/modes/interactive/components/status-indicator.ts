@@ -2,7 +2,6 @@ import { type Component, clamp01, Loader, shinePhase, type TUI, truncateToWidth 
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
 import { theme } from "../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
-import { keyText } from "./keybinding-hints.ts";
 import type { WorkingStatusLine } from "./working-status.ts";
 
 // The default working indicator: a bullet dot that pulses from the secondary-text gray
@@ -99,10 +98,11 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		label: string,
 		indicator?: WorkingIndicatorOptions,
 		spinnerColorFn: (text: string) => string = (text) => theme.fg("accent", text),
+		kind: StatusIndicatorKind = "working",
 	) {
 		// The message color function is the identity because this class colors every part of the
 		// message itself: the swept label and the muted status tail.
-		super("working", ui, spinnerColorFn, (text) => text, label, indicator ?? createWorkingDotIndicator());
+		super(kind, ui, spinnerColorFn, (text) => text, label, indicator ?? createWorkingDotIndicator());
 		this.labelText = label;
 	}
 
@@ -135,8 +135,7 @@ export class RetryStatusIndicator extends StatusIndicator {
 	private countdown: CountdownTimer | undefined;
 
 	constructor(ui: TUI, attempt: number, maxAttempts: number, delayMs: number) {
-		const retryMessage = (seconds: number) =>
-			`Retrying (${attempt}/${maxAttempts}) in ${seconds}s... (${keyText("app.interrupt")} to cancel)`;
+		const retryMessage = (seconds: number) => `Retrying (${attempt}/${maxAttempts}) in ${seconds}s...`;
 		super(
 			"retry",
 			ui,
@@ -163,34 +162,46 @@ export class RetryStatusIndicator extends StatusIndicator {
 	}
 }
 
-export type CompactionStatusReason = "manual" | "threshold" | "overflow";
+/** A swept activity label with an elapsed-seconds tail, for work without token accounting. */
+class ElapsedStatusIndicator extends WorkingStatusIndicator {
+	private readonly label: string;
+	private readonly startedAt = Date.now();
+	private readonly elapsedTimer: ReturnType<typeof setInterval>;
 
-export class CompactionStatusIndicator extends StatusIndicator {
-	constructor(ui: TUI, reason: CompactionStatusReason, colorFn?: (text: string) => string) {
-		const cancelHint = `(${keyText("app.interrupt")} to cancel)`;
-		const label =
-			reason === "manual"
-				? `Compacting context... ${cancelHint}`
-				: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting... ${cancelHint}`;
-		super(
-			"compaction",
-			ui,
-			colorFn ?? ((spinner) => theme.fg("accent", spinner)),
-			colorFn ?? ((text) => theme.fg("muted", text)),
-			label,
-		);
+	constructor(ui: TUI, label: string, kind: StatusIndicatorKind) {
+		super(ui, label, undefined, undefined, kind);
+		this.label = label;
+		this.elapsedTimer = setInterval(() => this.updateElapsed(), 1000);
+	}
+
+	override dispose(): void {
+		clearInterval(this.elapsedTimer);
+		super.dispose();
+	}
+
+	private updateElapsed(): void {
+		const seconds = Math.floor((Date.now() - this.startedAt) / 1000);
+		this.setLine({ label: this.label, status: seconds >= 1 ? `${seconds}s` : "" });
 	}
 }
 
-export class BranchSummaryStatusIndicator extends StatusIndicator {
+export type CompactionStatusReason = "manual" | "threshold" | "overflow";
+
+export class CompactionStatusIndicator extends ElapsedStatusIndicator {
+	constructor(ui: TUI, reason: CompactionStatusReason) {
+		const label =
+			reason === "manual"
+				? "Compacting context"
+				: reason === "overflow"
+					? "Context overflow, auto-compacting"
+					: "Auto-compacting";
+		super(ui, label, "compaction");
+	}
+}
+
+export class BranchSummaryStatusIndicator extends ElapsedStatusIndicator {
 	constructor(ui: TUI) {
-		super(
-			"branchSummary",
-			ui,
-			(spinner) => theme.fg("accent", spinner),
-			(text) => theme.fg("muted", text),
-			`Summarizing branch... (${keyText("app.interrupt")} to cancel)`,
-		);
+		super(ui, "Summarizing branch", "branchSummary");
 	}
 }
 

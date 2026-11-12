@@ -68,8 +68,8 @@ function renderBottomStack(): string[] {
 	const editor = new Editor(ui, getEditorTheme(), inputBandOptions());
 	const footer = new FooterComponent(createSession(), createFooterData());
 	const hints = new HotkeyHints(() => false);
-	hints.add("agents", () => footerHint("\u2190", "for agents"));
-	hints.add("shortcuts", () => footerHint("?", "for shortcuts"));
+	hints.add("agents", () => footerHint("\u2190", "for agents"), 1);
+	hints.add("shortcuts", () => footerHint("?", "for shortcuts"), 2);
 	return [...tip.render(WIDTH), ...editor.render(WIDTH), ...footer.render(WIDTH), ...hints.render(WIDTH)].map((line) =>
 		stripTerminalSequences(line),
 	);

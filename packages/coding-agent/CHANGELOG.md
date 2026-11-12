@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- An explicit model or effort change is now the new default immediately: `Enter` in the model and thinking selectors, `/model <name>`, `/effort <level>`, and the model and thinking cycle keys all persist. The selectors lose their `Ctrl+S` set-as-default key and bottom hint rows, the `app.thinking.save` keybinding is removed, and `app.models.save` now only saves the model scope in the scoped models selector
+
 ### Added
 
 - Web access is built in through `pi-web-access`: the `web-access` extension registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/search` and `/google-account`. Its curator browser UI is disabled: `/websearch`, `/curator`, and the curator shortcut are not registered, and searches always run with `workflow: "none"`. It maps the package's Pi module names to Toucan and reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:web-access`
@@ -10,11 +14,15 @@
 
 ### Changed
 
-- Subagents are now off by default: the new `subagents.enabled` setting (also in `/settings`) registers the `subagent` tool and with it the agent command center (`Left` at an empty prompt, `/agents`). Disabled, the tool is not registered at all and the `← for agents` hint is hidden. Changing it takes effect on `/reload`. The footer hint row is now built from dynamically registered items (`HotkeyHints.addFront("agents", ...)`), so features contribute hints without the bar knowing about them
+- Subagents are now off by default: the new `subagents.enabled` setting (also in `/settings`) registers the `subagent` tool and with it the agent command center (`Left` at an empty prompt, `/agents`). Disabled, the tool is not registered at all and the `← for agents` hint is hidden. Changing it takes effect on `/reload`. The footer hint row is now built from dynamically registered, explicitly ordered items (`HotkeyHints.add("agents", ..., order)`), so features contribute hints without the bar knowing about them
 - The working line shows the full token count with dot grouping (`1.000 tokens`, `500.000 tokens`) instead of abbreviating it, and its runtime switches to minutes and hours (`1m 5s`, `1h 1m 10s`) instead of counting seconds indefinitely
 - While the agent is working, the working status row stays above the open `/` command menu instead of being pushed below it
 - The fullscreen `Jump to latest ↓` line brightens to the text color while hovered; clicking it still resumes following
 - Tool rows show paths under the session working directory relative to it, and a `SKILL.md` read as just `[skill] name`. Shell rows read `Bash <headline>` with the duration on the call line, keep the command source for the expanded view, and report `Done (N lines)` or `Exit N` with a 10-line preview instead of a separate timing row. Grep, find, and ls collapse to `N matches`, `N files`, or `N entries` and list at most 8 items when expanded. A write to a new file says `Create`, an unchanged write `✓ no changes`, and an undiffable write `Written`
+- While an interruptible operation is active (working, compaction, branch summarizing, retry), the hint row under the footer bar leads with `esc to interrupt` (the key follows the `app.interrupt` binding), followed by `← for agents` and `? for shortcuts`; the hint slots are fixed so the row never reshuffles. The inline `(esc to interrupt)` and `(esc to cancel)` text is gone from the status labels, making the hint row the single place for the key
+- Compaction and branch summarization use the same fading-dot activity indicator and swept label as working/thinking, with an elapsed-seconds tail, instead of the braille spinner
+- Compaction and branch results are one-line, expandable inline rows instead of full-width padded panels; expanded summaries keep their Markdown and the existing click and `ctrl+o` expansion
+- User messages keep the three-row background band but now lead with the composer's indent and `›` arrow
 - The footer bar under the input shows the model's display name (`Claude Sonnet 4.5`) instead of the API id (`claude-sonnet-4-5`), falling back to the id when a model declares no name. The routed model shown after a virtual model uses its display name too
 
 ## [24.0.0] - 2026-11-09

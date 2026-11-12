@@ -1,9 +1,10 @@
 /**
  * The hint row shown under the footer bar while the input box is empty.
  * Items are registered dynamically by id — `add("agents", ...)` — so features
- * contribute hints without this component knowing about them. Keys sit in
- * bright white; what they do stays dark gray. Hidden, it still takes one
- * line, so the footer bar never moves.
+ * contribute hints without this component knowing about them, and each item
+ * carries an explicit display order so add/remove timing cannot shuffle the
+ * row. Keys sit in bright white; what they do stays dark gray. Hidden, it
+ * still takes one line, so the footer bar never moves.
  */
 
 import { type Component, truncateToWidth, visibleWidth } from "@hyzek/toucan-tui";
@@ -15,28 +16,23 @@ export function footerHint(key: string, effect: string): string {
 	return theme.fg("text", key) + theme.fg("dim", ` ${effect}`);
 }
 
+interface HotkeyHintItem {
+	render: () => string;
+	order: number;
+}
+
 export class HotkeyHints implements Component {
 	private readonly hasInput: () => boolean;
-	/** Insertion order is display order, except for hints registered with `addFront`. */
-	private readonly items = new Map<string, () => string>();
+	/** Map iteration keeps insertion order; `render` sorts by `order`, and the sort is stable. */
+	private readonly items = new Map<string, HotkeyHintItem>();
 
 	constructor(hasInput: () => boolean) {
 		this.hasInput = hasInput;
 	}
 
-	/** Register a hint; re-adding an id replaces its content in place. */
-	add(id: string, render: () => string): void {
-		this.items.set(id, render);
-	}
-
-	/** Register a hint in front of the others; re-adding an id moves it to the front. */
-	addFront(id: string, render: () => string): void {
-		const entries = [...this.items.entries()];
-		this.items.clear();
-		this.items.set(id, render);
-		for (const [entryId, entryRender] of entries) {
-			if (entryId !== id) this.items.set(entryId, entryRender);
-		}
+	/** Register a hint at a fixed display position; re-adding an id replaces its content in place. */
+	add(id: string, render: () => string, order: number): void {
+		this.items.set(id, { render, order });
 	}
 
 	remove(id: string): void {
@@ -47,10 +43,13 @@ export class HotkeyHints implements Component {
 
 	render(width: number): string[] {
 		if (this.hasInput()) return [""];
-		const segments = [...this.items.values()].map((render) => render()).filter((segment) => segment.trim() !== "");
+		const segments = [...this.items.values()]
+			.sort((a, b) => a.order - b.order)
+			.map((item) => item.render())
+			.filter((segment) => segment.trim() !== "");
 		if (segments.length === 0) return [""];
 		const indent = " ".repeat(visibleWidth(INPUT_PROMPT));
-		const text = indent + segments.join(theme.fg("dim", " \u00b7 "));
+		const text = indent + segments.join(theme.fg("dim", " · "));
 		return [truncateToWidth(text, Math.max(1, width), theme.fg("dim", "..."))];
 	}
 }

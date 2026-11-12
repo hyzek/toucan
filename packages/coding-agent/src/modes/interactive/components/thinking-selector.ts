@@ -11,9 +11,8 @@ import {
 	Spacer,
 	Text,
 } from "@hyzek/toucan-tui";
-import { getSelectListTheme, theme } from "../theme/theme.ts";
+import { getSelectListTheme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyDisplayText } from "./keybinding-hints.ts";
 
 const THINKING_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	minPrimaryColumnWidth: 12,
@@ -40,7 +39,6 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 	private allItems: SelectItem[];
 	private onSelect: (level: ThinkingLevel) => void;
 	private onCancel: () => void;
-	private onSelectAsDefault?: (level: ThinkingLevel) => void;
 	private _focused = false;
 
 	get focused(): boolean {
@@ -57,13 +55,11 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 		availableLevels: ThinkingLevel[],
 		onSelect: (level: ThinkingLevel) => void,
 		onCancel: () => void,
-		onSelectAsDefault?: (level: ThinkingLevel) => void,
 		defaultThinkingLevel?: ThinkingLevel,
 	) {
 		super();
 		this.onSelect = onSelect;
 		this.onCancel = onCancel;
-		this.onSelectAsDefault = onSelectAsDefault;
 
 		this.allItems = availableLevels.map((level) => ({
 			value: level,
@@ -77,8 +73,6 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 		this.addChild(new Spacer(1));
 		this.addChild(new Text("Thinking Level", 0, 0));
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(`${keyDisplayText("app.thinking.cycle")} cycles thinking levels in-session`, 0, 0));
-		this.addChild(new Spacer(1));
 
 		this.searchInput = new Input();
 		this.searchInput.onSubmit = () => this.selectList.handleInput("\r");
@@ -90,16 +84,6 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 		this.selectListChildIndex = this.children.length;
 		this.addChild(this.selectList);
 		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"dim",
-					`  ${keyDisplayText("tui.select.confirm")} to select · ${keyDisplayText("app.thinking.save")} to set as default · ${keyDisplayText("tui.select.cancel")} to cancel`,
-				),
-				0,
-				0,
-			),
-		);
 
 		// Add bottom border
 		this.addChild(new DynamicBorder());
@@ -128,12 +112,6 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
-		if (kb.matches(keyData, "app.thinking.save") && this.onSelectAsDefault) {
-			const item = this.selectList.getSelectedItem();
-			if (item) this.onSelectAsDefault(item.value as ThinkingLevel);
-			return;
-		}
-
 		const isNav =
 			kb.matches(keyData, "tui.select.up") ||
 			kb.matches(keyData, "tui.select.down") ||

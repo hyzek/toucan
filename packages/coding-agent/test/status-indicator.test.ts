@@ -163,6 +163,54 @@ describe("status indicators", () => {
 		}
 	});
 
+	it("uses the activity dot and swept label for compaction and branch summaries", () => {
+		initTheme("dark");
+		vi.useFakeTimers();
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicators = [
+			new CompactionStatusIndicator(tui, "manual"),
+			new CompactionStatusIndicator(tui, "threshold"),
+			new CompactionStatusIndicator(tui, "overflow"),
+			new BranchSummaryStatusIndicator(tui),
+		];
+		try {
+			for (const indicator of indicators) {
+				const line = indicator.render(120)[1]!;
+				expect(stripAnsi(line).trim()).toMatch(
+					/^• (Compacting context|Auto-compacting|Context overflow, auto-compacting|Summarizing branch)/,
+				);
+				expect(line).toContain("\x1b[38;5;");
+				expect(line).not.toContain("⠋");
+			}
+			vi.advanceTimersByTime(1000);
+			expect(stripAnsi(indicators[0]!.render(120)[1]!)).toContain("(1s)");
+		} finally {
+			for (const indicator of indicators) indicator.dispose();
+		}
+	});
+
+	it("keeps the interrupt hint out of every status label", () => {
+		initTheme("dark");
+		vi.useFakeTimers();
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicators = [
+			new WorkingStatusIndicator(tui, "Working"),
+			new CompactionStatusIndicator(tui, "manual"),
+			new CompactionStatusIndicator(tui, "threshold"),
+			new CompactionStatusIndicator(tui, "overflow"),
+			new BranchSummaryStatusIndicator(tui),
+			new RetryStatusIndicator(tui, 1, 3, 3000),
+		];
+		try {
+			// The hint row under the footer is the single place for the interrupt key.
+			for (const indicator of indicators) {
+				expect(stripAnsi(indicator.render(120)[1]!)).not.toContain("esc");
+			}
+		} finally {
+			for (const indicator of indicators) indicator.dispose();
+		}
+	});
+
 	it("disposes retry countdown updates", () => {
 		initTheme("dark");
 		vi.useFakeTimers();

@@ -98,7 +98,7 @@ describe("chat viewport", () => {
 		const ui = new TuiAltScreen(terminal);
 		let hasInput = false;
 		const hints = new HotkeyHints(() => hasInput);
-		hints.add("agents", () => footerHint("\u2190", "for agents"));
+		hints.add("agents", () => footerHint("\u2190", "for agents"), 1);
 		const viewport = createChatViewport({
 			document: new Text("transcript line", 1, 0),
 			pendingMessages: new Container(),

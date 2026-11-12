@@ -7,10 +7,15 @@ import { theme } from "../theme/theme.ts";
 
 export interface KeyTextFormatOptions {
 	capitalize?: boolean;
+	/** Use short key names where the full name would dominate a hint row, e.g. `esc`. */
+	compact?: boolean;
 }
 
+const COMPACT_KEY_NAMES: Record<string, string> = { escape: "esc" };
+
 function formatKeyPart(part: string, options: KeyTextFormatOptions): string {
-	const displayPart = process.platform === "darwin" && part.toLowerCase() === "alt" ? "option" : part;
+	const platformPart = process.platform === "darwin" && part.toLowerCase() === "alt" ? "option" : part;
+	const displayPart = options.compact ? (COMPACT_KEY_NAMES[platformPart.toLowerCase()] ?? platformPart) : platformPart;
 	return options.capitalize ? displayPart.charAt(0).toUpperCase() + displayPart.slice(1) : displayPart;
 }
 
@@ -31,8 +36,8 @@ function formatKeys(keys: KeyId[], options: KeyTextFormatOptions = {}): string {
 	return formatKeyText(keys.join("/"), options);
 }
 
-export function keyText(keybinding: Keybinding): string {
-	return formatKeys(getKeybindings().getKeys(keybinding));
+export function keyText(keybinding: Keybinding, options: KeyTextFormatOptions = {}): string {
+	return formatKeys(getKeybindings().getKeys(keybinding), options);
 }
 
 export function keyDisplayText(keybinding: Keybinding): string {

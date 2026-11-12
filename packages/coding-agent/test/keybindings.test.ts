@@ -33,6 +33,11 @@ describe("Windows keybinding defaults", () => {
 		}
 	});
 
+	it("keeps the scoped-model save binding and has no thinking save binding", () => {
+		expect("app.thinking.save" in KEYBINDINGS).toBe(false);
+		expect(KEYBINDINGS["app.models.save"].defaultKeys).toBe("ctrl+s");
+	});
+
 	it("applies the detected defaults consistently", () => {
 		const windowsKeybindings = useWindowsKeybindings();
 		const nativeWindows = process.platform === "win32";

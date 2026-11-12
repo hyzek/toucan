@@ -114,27 +114,26 @@ describe("model selector", () => {
 		selector.dispose();
 	});
 
-	it("uses the configured save binding", async () => {
+	it("selects with Enter and shows no save-as-default hint", async () => {
 		setKeybindings(new KeybindingsManager({ "app.models.save": "ctrl+r" }));
 		harness = await createHarness();
 		const currentModel = harness.getModel()!;
-		const saveDefault = vi.fn();
+		const onSelect = vi.fn();
 		const selector = new ModelSelectorComponent(
 			createFakeTui(),
 			currentModel,
 			harness.session.modelRuntime,
 			[],
+			onSelect,
 			() => {},
-			() => {},
-			undefined,
-			saveDefault,
 		);
 
-		expect(stripAnsi(selector.render(120).join("\n"))).toContain("Ctrl+R to set as default");
-		selector.handleInput("\x13");
-		expect(saveDefault).not.toHaveBeenCalled();
-		selector.handleInput("\x12");
-		expect(saveDefault).toHaveBeenCalledWith(currentModel);
+		expect(stripAnsi(selector.render(120).join("\n"))).not.toContain("to set as default");
+		selector.handleInput("\x12"); // the remapped save key no longer selects
+		expect(onSelect).not.toHaveBeenCalled();
+		selector.handleInput("\r");
+		expect(onSelect).toHaveBeenCalledWith(currentModel);
+		selector.dispose();
 	});
 
 	it("lists every catalog that failed to refresh", async () => {

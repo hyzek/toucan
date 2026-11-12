@@ -34,10 +34,6 @@ const APP_KEYBINDINGS = {
 		defaultKeys: "shift+tab",
 		description: "Cycle thinking level",
 	},
-	"app.thinking.save": {
-		defaultKeys: "ctrl+s",
-		description: "Save thinking level",
-	},
 	"app.model.cycleForward": {
 		defaultKeys: "ctrl+p",
 		description: "Cycle to next model",
@@ -126,7 +122,7 @@ const APP_KEYBINDINGS = {
 	},
 	"app.models.save": {
 		defaultKeys: "ctrl+s",
-		description: "Save model selection",
+		description: "Save the scoped model configuration to settings",
 	},
 	"app.models.enableAll": {
 		defaultKeys: "ctrl+a",

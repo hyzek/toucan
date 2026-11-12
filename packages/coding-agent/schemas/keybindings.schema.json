@@ -215,10 +215,6 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Cycle thinking level"
     },
-    "app.thinking.save": {
-      "$ref": "#/$defs/KeybindingValue",
-      "description": "Save thinking level"
-    },
     "app.model.cycleForward": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Cycle to next model"
@@ -325,7 +321,7 @@
     },
     "app.models.save": {
       "$ref": "#/$defs/KeybindingValue",
-      "description": "Save model selection"
+      "description": "Save the scoped model configuration to settings"
     },
     "app.models.enableAll": {
       "$ref": "#/$defs/KeybindingValue",

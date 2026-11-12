@@ -358,6 +358,10 @@ const RADIUS_LOGIN_INTRO = "Radius is a service crafted for Toucan by the builde
 
 const AUTH_TYPE_ORDER = { oauth: 0, api_key: 1 } satisfies Record<AuthSelectorProvider["authType"], number>;
 
+// Fixed display slots for the hint row under the footer bar: `esc to interrupt`
+// leads whenever it is present, then agents, then shortcuts.
+const HOTKEY_HINT_ORDER = { interrupt: 0, agents: 1, shortcuts: 2 } as const;
+
 function createFuzzyAutocompleteItems<T>(
 	items: T[],
 	prefix: string,
@@ -695,7 +699,11 @@ export class InteractiveMode {
 		this.footerContainer.addChild(this.footer);
 		this.hintsContainer = new Container();
 		this.footerHints = new HotkeyHints(() => this.editor.getText().length > 0);
-		this.footerHints.add("shortcuts", () => footerHint(keyText("app.shortcuts.open"), "for shortcuts"));
+		this.footerHints.add(
+			"shortcuts",
+			() => footerHint(keyText("app.shortcuts.open"), "for shortcuts"),
+			HOTKEY_HINT_ORDER.shortcuts,
+		);
 		this.hintsContainer.addChild(this.footerHints);
 
 		// Load hide thinking block setting
@@ -1074,7 +1082,7 @@ export class InteractiveMode {
 
 			const expandedInstructions = () =>
 				[
-					hint("app.interrupt", "to interrupt"),
+					rawKeyHint(keyText("app.interrupt", { compact: true }), "to interrupt"),
 					hint("app.clear", "to clear"),
 					rawKeyHint(`${keyText("app.clear")} twice`, "to exit"),
 					hint("app.exit", "to exit (empty)"),
@@ -1871,10 +1879,10 @@ export class InteractiveMode {
 		});
 	}
 
-	/** Show the `← for agents` hint only while subagents are enabled; it leads the hint row. */
+	/** Show the `← for agents` hint only while subagents are enabled; it sits second in the hint row. */
 	private applySubagentHint(): void {
 		if (this.settingsManager.getSubagentsEnabled()) {
-			this.footerHints.addFront("agents", () => footerHint("\u2190", "for agents"));
+			this.footerHints.add("agents", () => footerHint("\u2190", "for agents"), HOTKEY_HINT_ORDER.agents);
 		} else {
 			this.footerHints.remove("agents");
 		}
@@ -2147,6 +2155,13 @@ export class InteractiveMode {
 	}
 
 	private showStatusIndicator(indicator: StatusIndicator): void {
+		// Esc has an action while any status indicator is shown (working, compaction,
+		// branch summary, retry), so the interrupt hint tracks indicator visibility.
+		this.footerHints.add(
+			"interrupt",
+			() => footerHint(keyText("app.interrupt", { compact: true }), "to interrupt"),
+			HOTKEY_HINT_ORDER.interrupt,
+		);
 		this.activeStatusIndicator?.dispose();
 		this.activeStatusIndicator = indicator;
 		this.activeWorkingIndicatorEmbedded = false;
@@ -2163,6 +2178,7 @@ export class InteractiveMode {
 		if (kind && this.activeStatusIndicator?.kind !== kind) {
 			return;
 		}
+		this.footerHints.remove("interrupt");
 		const clearedIndicator = this.activeStatusIndicator;
 		const clearedIndicatorWasEmbedded = this.activeWorkingIndicatorEmbedded;
 		clearedIndicator?.dispose();
@@ -2322,9 +2338,7 @@ export class InteractiveMode {
 		this.workingVisible = true;
 		this.setWorkingIndicator();
 		if (this.activeStatusIndicator?.kind === "working") {
-			this.activeStatusIndicator.setLabel(
-				`${this.defaultWorkingMessage} (${keyText("app.interrupt")} to interrupt)`,
-			);
+			this.activeStatusIndicator.setLabel(this.defaultWorkingMessage);
 			this.workingStatusEngine?.setFrozen(false);
 		}
 		this.setHiddenThinkingLabel();
@@ -3554,13 +3568,7 @@ export class InteractiveMode {
 				this.defaultEditor.onEscape = () => {
 					this.session.abortCompaction();
 				};
-				const colorFn = isEmbeddedStatus(this.editor)
-					? (text: string) =>
-							(this.editor.borderColor ?? theme.getThinkingBorderColor(this.session.thinkingLevel || "off"))(
-								text,
-							)
-					: undefined;
-				this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason, colorFn));
+				this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason));
 				this.ui.requestRender();
 				break;
 			}
@@ -3659,13 +3667,7 @@ export class InteractiveMode {
 				if (event.source === "branchSummary") {
 					this.showStatusIndicator(new BranchSummaryStatusIndicator(this.ui));
 				} else {
-					const colorFn = isEmbeddedStatus(this.editor)
-						? (text: string) =>
-								(this.editor.borderColor ?? theme.getThinkingBorderColor(this.session.thinkingLevel || "off"))(
-									text,
-								)
-						: undefined;
-					this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason, colorFn));
+					this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason));
 				}
 				this.ui.requestRender();
 				break;
@@ -4564,7 +4566,7 @@ export class InteractiveMode {
 
 	private cycleThinkingLevel(): void {
 		const previousLevel = this.session.thinkingLevel;
-		const newLevel = this.session.cycleThinkingLevel();
+		const newLevel = this.session.cycleThinkingLevel({ persist: true });
 		if (newLevel === undefined) {
 			this.showStatus("Current model does not support thinking");
 		} else {
@@ -4595,7 +4597,7 @@ export class InteractiveMode {
 
 	private async cycleModel(direction: "forward" | "backward"): Promise<void> {
 		try {
-			const result = await this.session.cycleModel(direction);
+			const result = await this.session.cycleModel(direction, { persist: true });
 			if (result === undefined) {
 				const msg = this.session.scopedModels.length > 0 ? "Only one model in scope" : "Only one model available";
 				this.showStatus(msg);
@@ -5226,16 +5228,16 @@ export class InteractiveMode {
 			return;
 		}
 
-		this.selectThinkingLevel(level, false);
+		this.selectThinkingLevel(level);
 	}
 
-	private selectThinkingLevel(level: ThinkingLevel, persist: boolean): void {
+	private selectThinkingLevel(level: ThinkingLevel): void {
 		const previousLevel = this.session.thinkingLevel;
 		try {
-			this.session.setThinkingLevel(level, { persist });
+			this.session.setThinkingLevel(level, { persist: true });
 			this.footer.invalidate();
 			this.updateEditorBorderColor();
-			this.showStatus(persist ? `Default thinking level: ${level}` : `Thinking level: ${level}`);
+			this.showStatus(`Thinking level: ${level}`);
 			// session.setThinkingLevel clamps to model capabilities, so the glint only sees the
 			// effective level: picking "max" on a model without it stays silent.
 			this.playMaxEffortShine(previousLevel, this.session.thinkingLevel);
@@ -5246,19 +5248,17 @@ export class InteractiveMode {
 
 	private showThinkingSelector(): void {
 		this.showSelector((done) => {
-			const selectLevel = (level: ThinkingLevel, persist: boolean) => {
-				this.selectThinkingLevel(level, persist);
-				done();
-			};
 			const selector = new ThinkingSelectorComponent(
 				this.session.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
 				this.session.getAvailableThinkingLevels(),
-				(level) => selectLevel(level, false),
+				(level) => {
+					this.selectThinkingLevel(level);
+					done();
+				},
 				() => {
 					done();
 					this.ui.requestRender();
 				},
-				(level) => selectLevel(level, true),
 				this.settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
 			);
 			return { component: selector, focus: selector };
@@ -5274,7 +5274,7 @@ export class InteractiveMode {
 		const model = await this.findExactModelMatch(searchTerm);
 		if (model) {
 			try {
-				await this.session.setModel(model, { persist: false });
+				await this.session.setModel(model, { persist: true });
 				this.footer.invalidate();
 				this.updateEditorBorderColor();
 				this.showStatus(`Model: ${model.id}`);
@@ -5415,14 +5415,14 @@ export class InteractiveMode {
 
 	private showModelSelector(initialSearchInput?: string): void {
 		this.showSelector((done) => {
-			const selectModel = async (model: Model<any>, persist: boolean) => {
+			const selectModel = async (model: Model<any>) => {
 				try {
-					await this.session.setModel(model, { persist });
+					await this.session.setModel(model, { persist: true });
 					this.updateAvailableProviderCount();
 					this.footer.invalidate();
 					this.updateEditorBorderColor();
 					done();
-					this.showStatus(persist ? `Default model: ${model.provider}/${model.id}` : `Model: ${model.id}`);
+					this.showStatus(`Model: ${model.provider}/${model.id}`);
 					void this.maybeWarnAboutAnthropicSubscriptionAuth(model);
 				} catch (error) {
 					done();
@@ -5436,13 +5436,12 @@ export class InteractiveMode {
 				this.session.model,
 				this.session.modelRuntime,
 				this.session.scopedModels,
-				(model) => selectModel(model, false),
+				(model) => void selectModel(model),
 				() => {
 					done();
 					this.ui.requestRender();
 				},
 				initialSearchInput,
-				(model) => selectModel(model, true),
 				defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
 			);
 			return { component: selector, focus: selector, dispose: () => selector.dispose() };
@@ -5712,7 +5711,6 @@ export class InteractiveMode {
 						this.defaultEditor.onEscape = () => {
 							this.session.abortBranchSummary();
 						};
-						this.chatContainer.addChild(new Spacer(1));
 						this.showStatusIndicator(new BranchSummaryStatusIndicator(this.ui));
 						showingSummaryIndicator = true;
 						this.ui.requestRender();
