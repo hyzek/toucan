@@ -15,6 +15,7 @@
 - While the agent is working, the working status row stays above the open `/` command menu instead of being pushed below it
 - The fullscreen `Jump to latest ↓` line brightens to the text color while hovered; clicking it still resumes following
 - Tool rows show paths under the session working directory relative to it, and a `SKILL.md` read as just `[skill] name`. Shell rows read `Bash <headline>` with the duration on the call line, keep the command source for the expanded view, and report `Done (N lines)` or `Exit N` with a 10-line preview instead of a separate timing row. Grep, find, and ls collapse to `N matches`, `N files`, or `N entries` and list at most 8 items when expanded. A write to a new file says `Create`, an unchanged write `✓ no changes`, and an undiffable write `Written`
+- The footer bar under the input shows the model's display name (`Claude Sonnet 4.5`) instead of the API id (`claude-sonnet-4-5`), falling back to the id when a model declares no name. The routed model shown after a virtual model uses its display name too
 
 ## [24.0.0] - 2026-11-09
 

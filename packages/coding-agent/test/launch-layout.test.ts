@@ -29,6 +29,7 @@ function createSession(): AgentSession {
 		state: {
 			model: {
 				id: "gpt-6.1-sol",
+				name: "GPT-6.1 Sol",
 				provider: "openai",
 				contextWindow: 200_000,
 				reasoning: true,
@@ -172,12 +173,12 @@ describe("launch bottom layout", () => {
 		}
 	});
 
-	it("renders the footer as a single bar led by the model and effort", () => {
+	it("renders the footer as a single bar led by the model name and effort", () => {
 		const lines = renderBottomStack();
 		const footer = lines.slice(4, 5);
 		expect(footer).toHaveLength(1);
 		expect(footer[0]!.startsWith("  ")).toBe(true);
-		expect(footer[0]!.trimStart().startsWith("gpt-6.1-sol · high")).toBe(true);
+		expect(footer[0]!.trimStart().startsWith("GPT-6.1 Sol \u00b7 high")).toBe(true);
 		expect(footer[0]!.trimEnd().endsWith("/tmp/project")).toBe(true);
 	});
 

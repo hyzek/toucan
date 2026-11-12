@@ -9,15 +9,18 @@ import { stripAnsi } from "../src/utils/ansi.ts";
 function createSession(options: {
 	sessionName: string;
 	modelId?: string;
+	modelName?: string;
 	reasoning?: boolean;
 	thinkingLevel?: string;
-	routedModel?: { model: { id: string }; thinkingLevel?: string };
+	routedModel?: { model: { id: string; name?: string }; thinkingLevel?: string };
 	cwd?: string;
 }): AgentSession {
+	const modelId = options.modelId ?? "test-model";
 	const session = {
 		state: {
 			model: {
-				id: options.modelId ?? "test-model",
+				id: modelId,
+				name: options.modelName ?? modelId,
 				provider: "test",
 				contextWindow: 200_000,
 				reasoning: options.reasoning ?? false,
@@ -97,10 +100,30 @@ describe("FooterComponent width handling", () => {
 			modelId: "auto",
 			reasoning: true,
 			thinkingLevel: "high",
-			routedModel: { model: { id: "gpt-5.6-luna" }, thinkingLevel: "medium" },
+			routedModel: { model: { id: "gpt-5.6-luna", name: "GPT-5.6 Luna" }, thinkingLevel: "medium" },
 		});
 
-		expect(renderFooter(session, 120)).toContain("auto \u00b7 high \u2192 gpt-5.6-luna \u00b7 medium");
+		expect(renderFooter(session, 120)).toContain("auto \u00b7 high \u2192 GPT-5.6 Luna \u00b7 medium");
+	});
+
+	it("shows the catalog display name instead of the API id", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "claude-sonnet-4-5",
+			modelName: "Claude Sonnet 4.5",
+		});
+
+		expect(renderFooter(session, 120)).toContain("Claude Sonnet 4.5 \u00b7 /tmp/project");
+	});
+
+	it("falls back to the API id when the model has no display name", () => {
+		const session = createSession({
+			sessionName: "",
+			modelId: "custom-endpoint-model",
+			modelName: "",
+		});
+
+		expect(renderFooter(session, 120)).toContain("custom-endpoint-model \u00b7 /tmp/project");
 	});
 
 	it("ends the bar with the working directory", () => {

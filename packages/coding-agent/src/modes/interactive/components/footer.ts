@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import type { Model } from "@hyzek/toucan-ai";
 import { type Component, truncateToWidth, visibleWidth } from "@hyzek/toucan-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
@@ -45,6 +46,14 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 }
 
 /**
+ * The name shown in the bar: the catalog display name ("Claude Sonnet 4.5"), falling back to the
+ * API id for models declared without one.
+ */
+function modelDisplayName(model: Model<any> | undefined): string {
+	return model?.name || model?.id || "no-model";
+}
+
+/**
  * Footer bar showing model and thinking level, session name, and the working directory.
  * Extension statuses come from the provider.
  */
@@ -86,7 +95,7 @@ export class FooterComponent implements Component {
 
 		// One bar like the reference design: model and thinking level lead the bar, indented by
 		// one cell to line up under the input caret, then the session name, and the directory.
-		const modelName = state.model?.id || "no-model";
+		const modelName = modelDisplayName(state.model);
 		let left = modelName;
 		if (state.model?.reasoning) {
 			const thinkingLevel = state.thinkingLevel || "off";
@@ -96,7 +105,7 @@ export class FooterComponent implements Component {
 		const routed = this.session.routedModel;
 		if (routed) {
 			const level = routed.thinkingLevel ? ` · ${routed.thinkingLevel}` : "";
-			left += ` → ${routed.model.id}${level}`;
+			left += ` → ${modelDisplayName(routed.model)}${level}`;
 		}
 		if (sessionName) {
 			left = `${left} · ${sessionName}`;
