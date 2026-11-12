@@ -8,8 +8,11 @@ import { sanitizeBinaryOutput } from "../../utils/shell.ts";
 import type { ToolRenderContext } from "../extensions/types.ts";
 import type { DiffStats } from "./diff-lines.ts";
 
-export function shortenPath(path: unknown): string {
+/** Paths under the session cwd display relative to it; other paths are shortened at the home directory. */
+export function shortenPath(path: unknown, cwd = ""): string {
 	if (typeof path !== "string") return "";
+	const root = cwd.replace(/\/+$/, "");
+	if (root && (path === root || path.startsWith(`${root}/`))) return path.slice(root.length + 1) || ".";
 	return shortenHomePath(path);
 }
 
@@ -88,6 +91,20 @@ export type ToolRenderResultLike<TDetails> = {
 
 const COLLAPSED_ARGS_CHARS = 100;
 
+/** Drops the `[notice]` block a search/list tool appends when the detail it carries is shown separately. */
+export function stripTrailingNotice(output: string): string {
+	const index = output.lastIndexOf("\n\n[");
+	if (index === -1) return output;
+	return output.slice(index).trimEnd().endsWith("]") ? output.slice(0, index) : output;
+}
+
+/** A single-line, length-capped form of a value such as a search pattern. */
+export function summarizeText(text: string, max = 40): string {
+	const oneLine = text.replace(/\n/g, " ").trim();
+	if (oneLine.length <= max) return oneLine;
+	return `${oneLine.slice(0, Math.max(0, max - 3))}...`;
+}
+
 /**
  * Generic tool call header: the title followed by the arguments. Collapsed, they are `key=value`
  * pairs on the title line, cut to {@link COLLAPSED_ARGS_CHARS}. Expanded, each is a `key: value`
@@ -143,11 +160,11 @@ export function startToolTimer(context: ToolRenderContext<ToolTimerState>): void
 }
 
 /**
- * The row's timing line, from `renderResult`: `Elapsed 4.2s` while the result is partial, redrawn
- * every second, and `Took 4.2s` once it is final. Undefined when the row has no start time and no
- * recorded duration.
+ * The row's elapsed time, as `4.2s`, redrawn every second while the result is partial and frozen once
+ * it is final. Undefined when the row has no start time and no recorded duration. A final result's
+ * recorded duration wins: it is monotonic and survives reloads.
  */
-export function toolTimerText(context: ToolRenderContext<ToolTimerState>, isPartial: boolean): string | undefined {
+export function toolDurationText(context: ToolRenderContext<ToolTimerState>, isPartial: boolean): string | undefined {
 	const state = context.state;
 	if (state.startedAt !== undefined && isPartial && !state.interval) {
 		state.interval = setInterval(() => context.invalidate(), 1000);
@@ -159,12 +176,16 @@ export function toolTimerText(context: ToolRenderContext<ToolTimerState>, isPart
 			state.interval = undefined;
 		}
 	}
-	// A final result's recorded duration wins: it is monotonic and survives reloads. The renderer's own clock is the
-	// fallback for live progress and for results stored without one.
-	if (!isPartial && context.durationMs !== undefined) return `Took ${formatToolDuration(context.durationMs)}`;
+	if (!isPartial && context.durationMs !== undefined) return formatToolDuration(context.durationMs);
 	if (state.startedAt === undefined) return undefined;
-	const endTime = state.endedAt ?? Date.now();
-	return `${isPartial ? "Elapsed" : "Took"} ${formatToolDuration(endTime - state.startedAt)}`;
+	return formatToolDuration((state.endedAt ?? Date.now()) - state.startedAt);
+}
+
+/** The row's timing line: `Elapsed 4.2s` while partial, `Took 4.2s` once final. */
+export function toolTimerText(context: ToolRenderContext<ToolTimerState>, isPartial: boolean): string | undefined {
+	const duration = toolDurationText(context, isPartial);
+	if (duration === undefined) return undefined;
+	return `${isPartial ? "Elapsed" : "Took"} ${duration}`;
 }
 
 export function invalidArgText(theme: Theme): string {
@@ -245,5 +266,5 @@ export function renderToolPath(
 	if (rawPath === null) return invalidArgText(theme);
 	const value = rawPath || options?.emptyFallback;
 	if (!value) return theme.fg("toolOutput", "...");
-	return linkPath(theme.fg("accent", shortenPath(value)), value, cwd);
+	return linkPath(theme.fg("accent", shortenPath(value, cwd)), value, cwd);
 }

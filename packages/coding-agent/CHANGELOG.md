@@ -4,13 +4,16 @@
 
 ### Added
 
-- Web access is built in through `pi-web-access`: the `web-access` extension registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/websearch`, `/curator`, `/search`, and `/google-account`. It maps the package's Pi module names to Toucan and reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:web-access`
+- Web access is built in through `pi-web-access`: the `web-access` extension registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/search` and `/google-account`. Its curator browser UI is disabled: `/websearch`, `/curator`, and the curator shortcut are not registered, and searches always run with `workflow: "none"`. It maps the package's Pi module names to Toucan and reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:web-access`
 - `/skills` lists every loaded skill and `/context` lists every loaded AGENTS.md context file, each as a tree grouped by where it loads from (user, project, or installed package)
 
 ### Changed
 
+- Subagents are now off by default: the new `subagents.enabled` setting (also in `/settings`) registers the `subagent` tool and with it the agent command center (`Left` at an empty prompt, `/agents`). Disabled, the tool is not registered at all and the `← for agents` hint is hidden. Changing it takes effect on `/reload`. The footer hint row is now built from dynamically registered items (`HotkeyHints.addFront("agents", ...)`), so features contribute hints without the bar knowing about them
 - The working line shows the full token count with dot grouping (`1.000 tokens`, `500.000 tokens`) instead of abbreviating it, and its runtime switches to minutes and hours (`1m 5s`, `1h 1m 10s`) instead of counting seconds indefinitely
 - While the agent is working, the working status row stays above the open `/` command menu instead of being pushed below it
+- The fullscreen `Jump to latest ↓` line brightens to the text color while hovered; clicking it still resumes following
+- Tool rows show paths under the session working directory relative to it, and a `SKILL.md` read as just `[skill] name`. Shell rows read `Bash <headline>` with the duration on the call line, keep the command source for the expanded view, and report `Done (N lines)` or `Exit N` with a 10-line preview instead of a separate timing row. Grep, find, and ls collapse to `N matches`, `N files`, or `N entries` and list at most 8 items when expanded. A write to a new file says `Create`, an unchanged write `✓ no changes`, and an undiffable write `Written`
 
 ## [24.0.0] - 2026-11-09
 

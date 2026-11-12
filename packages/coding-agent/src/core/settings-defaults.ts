@@ -58,6 +58,10 @@ export const SETTINGS_DEFAULTS = {
 		mode: "on",
 		inlineBudget: 3000,
 	},
+	subagents: {
+		enabled: false,
+		maxConcurrent: 10,
+	},
 	cacheWarming: "streaming",
 	tuiMode: "fullscreen",
 	fullscreenExitOutput: "transcript",

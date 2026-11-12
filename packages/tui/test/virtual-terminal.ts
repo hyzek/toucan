@@ -165,6 +165,15 @@ export class VirtualTerminal implements Terminal {
 		return lines;
 	}
 
+	/** The raw foreground color code of a viewport cell, for tests that assert on colors. */
+	getViewportCellFg(row: number, column: number): number | undefined {
+		const buffer = this.xterm.buffer.active;
+		return buffer
+			.getLine(buffer.viewportY + row)
+			?.getCell(column)
+			?.getFgColor();
+	}
+
 	/**
 	 * Get the entire scroll buffer
 	 */

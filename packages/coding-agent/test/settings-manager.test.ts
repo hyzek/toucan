@@ -652,6 +652,7 @@ describe("SettingsManager", () => {
 				"read",
 				"bash",
 				"edit",
+				"subagent",
 				"codemode",
 			]);
 			expect(SettingsManager.inMemory({ defaultTools: ["read", "+grep", "+read"] }).getDefaultTools()).toEqual([
@@ -685,8 +686,34 @@ describe("SettingsManager", () => {
 				"bash",
 				"edit",
 				"write",
+				"subagent",
 				"codemode",
 			]);
+		});
+	});
+
+	describe("subagents", () => {
+		it("should default to disabled and persist the setter", async () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+
+			expect(manager.getSubagentsEnabled()).toBe(false);
+
+			manager.setSubagentsEnabled(true);
+			await manager.flush();
+
+			expect(manager.getSubagentsEnabled()).toBe(true);
+			const savedSettings = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8"));
+			expect(savedSettings.subagents.enabled).toBe(true);
+		});
+
+		it("should keep maxConcurrent when only the enabled flag is written", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ subagents: { maxConcurrent: 3 } }));
+
+			const manager = SettingsManager.create(projectDir, agentDir);
+			manager.setSubagentsEnabled(true);
+
+			expect(manager.getSubagentsMaxConcurrent()).toBe(3);
+			expect(manager.getSubagentsEnabled()).toBe(true);
 		});
 	});
 

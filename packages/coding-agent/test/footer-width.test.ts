@@ -106,7 +106,7 @@ describe("FooterComponent width handling", () => {
 	it("ends the bar with the working directory", () => {
 		const session = createSession({ sessionName: "", reasoning: true, thinkingLevel: "high" });
 
-		expect(renderFooter(session, 120)).toBe("  test-model \u00b7 high  \u00b7  /tmp/project");
+		expect(renderFooter(session, 120)).toBe("  test-model \u00b7 high \u00b7 /tmp/project");
 	});
 
 	it("shows no token, cost, or context stats in the bar", () => {

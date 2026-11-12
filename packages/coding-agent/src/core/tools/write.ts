@@ -52,6 +52,8 @@ export interface WriteToolDetails {
 	 */
 	diff?: string;
 	firstChangedLine?: number;
+	/** The file did not exist before this write. */
+	created?: boolean;
 	/** The write left the file exactly as it was. */
 	unchanged?: boolean;
 }
@@ -130,7 +132,7 @@ async function writeChange(path: string, before: FileSnapshot | undefined): Prom
 		return { path, unchanged: true };
 	}
 	const { diff, firstChangedLine } = generateDiffString(beforeText, afterText);
-	return { path, diff, firstChangedLine };
+	return { path, created: before.kind === "missing" ? true : undefined, diff, firstChangedLine };
 }
 
 export function createWriteTool(cwd: string, options?: WriteToolOptions): TypeBoxAgentTool<typeof writeSchema> {

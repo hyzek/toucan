@@ -184,7 +184,7 @@ describe("ToolExecutionComponent parity", () => {
 		await promise;
 	});
 
-	test("bash renderer does not duplicate final full output truncation details", async () => {
+	test("bash renderer names truncated output once, on the status line", async () => {
 		const operations: BashOperations = {
 			exec: async (_command, _cwd, { onData }) => {
 				for (let i = 1; i <= 4000; i++) {
@@ -214,10 +214,10 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ ...result, isError: false }, false);
 
 		const rendered = stripAnsi(component.render(200).join("\n"));
-		expect(rendered.match(/Full output:/g)?.length ?? 0).toBe(1);
-		expect(rendered).toMatch(/line-4000[^\n]*\n[^\S\n]*\n \[Full output:/);
-		expect(rendered).not.toMatch(/line-4000[^\n]*\n[^\S\n]*\n[^\S\n]*\n \[Full output:/);
-		expect(rendered).toContain("Truncated: showing 2000 of 4000 lines");
+		expect(rendered.match(/full output:/g)?.length ?? 0).toBe(1);
+		expect(rendered).toContain("Done (2000 lines)");
+		expect(rendered).toContain("[truncated]");
+		expect(rendered).not.toContain("Truncated: showing");
 		expect(rendered).not.toContain("[Showing lines 2001-4000 of 4000. Full output:");
 	});
 
@@ -258,8 +258,8 @@ describe("ToolExecutionComponent parity", () => {
 		vi.advanceTimersByTime(1_000);
 		component.invalidate();
 		expect(stripAnsi(component.render(120).join("\n"))).toBe(completed);
-		expect(running).toContain(`Elapsed ${formatted}`);
-		expect(completed).toContain(`Took ${formatted}`);
+		expect(running).toContain(`\u00b7 ${formatted}`);
+		expect(completed).toContain(`\u00b7 ${formatted}`);
 	});
 
 	// #10549
@@ -285,8 +285,8 @@ describe("ToolExecutionComponent parity", () => {
 			component.updateResult({ content: [], isError: false, durationMs: 4_200 }, false);
 			return stripAnsi(component.render(120).join("\n"));
 		};
-		expect(render(true)).toContain("Took 4.2s");
-		expect(render(false)).toContain("Took 4.2s");
+		expect(render(true)).toContain("\u00b7 4.2s");
+		expect(render(false)).toContain("\u00b7 4.2s");
 	});
 
 	test("does not duplicate built-in headers when passed the active built-in definition", () => {
@@ -755,24 +755,36 @@ describe("ToolExecutionComponent parity", () => {
 		});
 	}
 
-	for (const scenario of [
-		{ title: "SKILL.md", path: join(process.cwd(), "attio", "SKILL.md"), compact: "[skill] attio:120-329" },
-		{ title: "Toucan documentation", path: getReadmePath(), compact: "Read docs README.md:120-329" },
-	] as const) {
-		test(`shows the read line range in compact ${scenario.title} reads before the expand hint`, () => {
-			const component = new ToolExecutionComponent(
-				"read",
-				`tool-compact-range-${scenario.title}`,
-				{ path: scenario.path, offset: 120, limit: 210 },
-				{},
-				createReadToolDefinition(process.cwd()),
-				createFakeTui(),
-				process.cwd(),
-			);
+	test("renders SKILL.md as a plain skill label, without a range or expand hint", () => {
+		const component = new ToolExecutionComponent(
+			"read",
+			"tool-compact-range-skill",
+			{ path: join(process.cwd(), "attio", "SKILL.md"), offset: 120, limit: 210 },
+			{},
+			createReadToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
 
-			const collapsed = stripAnsi(component.render(120).join("\n"));
-			expect(collapsed).toContain(scenario.compact);
-			expect(collapsed.indexOf(":120-329")).toBeLessThan(collapsed.indexOf("to expand"));
-		});
-	}
+		const collapsed = stripAnsi(component.render(120).join("\n"));
+		expect(collapsed).toContain("[skill] attio");
+		expect(collapsed).not.toContain(":120-329");
+		expect(collapsed).not.toContain("to expand");
+	});
+
+	test("shows the read line range in compact documentation reads before the expand hint", () => {
+		const component = new ToolExecutionComponent(
+			"read",
+			"tool-compact-range-docs",
+			{ path: getReadmePath(), offset: 120, limit: 210 },
+			{},
+			createReadToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+
+		const collapsed = stripAnsi(component.render(120).join("\n"));
+		expect(collapsed).toContain("Read docs README.md:120-329");
+		expect(collapsed.indexOf(":120-329")).toBeLessThan(collapsed.indexOf("to expand"));
+	});
 });

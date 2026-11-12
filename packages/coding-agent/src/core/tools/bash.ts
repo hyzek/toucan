@@ -309,7 +309,8 @@ export interface ShellToolConfig {
 	name: string;
 	label: string;
 	shellName: string;
-	prompt: string;
+	/** The label the call row shows, for example `Bash`. */
+	renderLabel: string;
 	promptSnippet: string;
 	promptGuidelines?: readonly string[];
 	tempFilePrefix: string;
@@ -503,7 +504,7 @@ export function createShellToolDefinition(
 				clearUpdateTimer();
 			}
 		},
-		...createShellRenderers(config.prompt),
+		...createShellRenderers(config.renderLabel),
 	};
 }
 
@@ -511,7 +512,7 @@ const bashToolConfig: ShellToolConfig = {
 	name: "bash",
 	label: "bash",
 	shellName: "bash",
-	prompt: "$",
+	renderLabel: "Bash",
 	promptSnippet: bashToolSystemPromptContribution.snippet,
 	promptGuidelines: bashToolSystemPromptContribution.guidelines,
 	tempFilePrefix: "toucan-bash",

@@ -47,3 +47,21 @@ describe("ToolBranchBlock", () => {
 		expect(rows(block, 10)).toEqual(["  └ yyy..."]);
 	});
 });
+
+describe("ToolBranchBlock openEnded", () => {
+	beforeAll(() => initTheme("dark"));
+
+	it("leaves the last row continuing the guide", () => {
+		const block = new ToolBranchBlock({ openEnded: true });
+		block.addChild(new Text("first\nlast", 0, 0));
+
+		expect(rows(block, 20)).toEqual(["  ├ first", "  │ last"]);
+	});
+
+	it("opens a single row instead of closing it", () => {
+		const block = new ToolBranchBlock({ openEnded: true });
+		block.addChild(new Text("alone", 0, 0));
+
+		expect(rows(block, 20)).toEqual(["  ├ alone"]);
+	});
+});

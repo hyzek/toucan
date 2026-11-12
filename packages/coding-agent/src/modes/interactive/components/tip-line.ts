@@ -19,7 +19,7 @@ const TIPS = [
 	`Tip: ${APP_NAME} can explain its own features and look up its docs. Ask it how to use or extend ${APP_NAME}.`,
 ];
 
-/** Shown in the tip slot while the fullscreen transcript is scrolled away from its end. Clicking it resumes following. */
+/** Shown in the tip slot while the fullscreen transcript is scrolled away from its end; hovered it turns from dim to the text color, and clicking it resumes following. */
 const JUMP_LABEL = "Jump to latest ↓";
 
 export function pickLaunchTip(): string {
@@ -53,12 +53,13 @@ export class TipLine implements Component {
  * notices and the `/new` confirmation do not. Typing does not hide it. It returns after `/new`,
  * because the transcript is cleared. Once a transcript exists, the slot instead shows a
  * right-aligned jump-to-latest line while the fullscreen transcript is scrolled away from its
- * end; clicking that line resumes end-following.
+ * end; the line brightens while hovered, and clicking it resumes end-following.
  */
 export class SessionTip implements Component {
 	private readonly tip = new TipLine(pickLaunchTip());
 	private readonly hasTranscript: () => boolean;
 	private readonly getTranscript: () => ScrollView | undefined;
+	private jumpHovered = false;
 
 	constructor(hasTranscript: () => boolean, getTranscript: () => ScrollView | undefined = () => undefined) {
 		this.hasTranscript = hasTranscript;
@@ -69,20 +70,42 @@ export class SessionTip implements Component {
 
 	render(width: number): string[] {
 		if (!this.hasTranscript()) return this.tip.render(width);
-		return this.jumpVisible() ? [rightAligned(theme.fg("dim", JUMP_LABEL), width)] : [];
+		if (!this.jumpVisible()) {
+			this.jumpHovered = false;
+			return [];
+		}
+		const color = this.jumpHovered ? "text" : "dim";
+		return [rightAligned(theme.fg(color, JUMP_LABEL), width)];
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
 		const transcript = this.getTranscript();
-		if (!transcript || event.type !== "click" || !this.jumpVisible()) return undefined;
-		// Only the label itself jumps; the padding beside it belongs to the rest of the row.
-		const labelStart = Math.max(0, event.width - visibleWidth(JUMP_LABEL) - 1);
-		if (event.y !== 0 || event.x < labelStart || event.x > event.width - 2) return undefined;
+		if (!transcript || !this.jumpVisible()) return undefined;
+		const overLabel = this.isOverLabel(event);
+		if (event.type === "move") {
+			if (overLabel === this.jumpHovered) return undefined;
+			this.jumpHovered = overLabel;
+			return { handled: true, render: true };
+		}
+		// A wheel over the row still scrolls the transcript; routeWheel re-renders, so
+		// the hover update does not need to claim the event.
+		if (event.type === "wheel") {
+			this.jumpHovered = overLabel;
+			return undefined;
+		}
+		if (event.type !== "click" || !overLabel) return undefined;
 		transcript.scrollToEnd();
+		this.jumpHovered = false;
 		return { handled: true };
 	}
 
 	private jumpVisible(): boolean {
 		return this.getTranscript()?.isFollowingEnd === false;
+	}
+
+	// Only the label itself highlights and jumps; the padding beside it belongs to the rest of the row.
+	private isOverLabel(event: TuiMouseEvent): boolean {
+		const labelStart = Math.max(0, event.width - visibleWidth(JUMP_LABEL) - 1);
+		return event.y === 0 && event.x >= labelStart && event.x <= event.width - 2;
 	}
 }

@@ -90,6 +90,22 @@
       ],
       "default": "one-at-a-time"
     },
+    "subagents": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Register the subagent tool and enable the agent command center (Left at an empty prompt, /agents). Off by default.",
+          "default": false
+        },
+        "maxConcurrent": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many background subagents may run at once; further background spawns queue behind them.",
+          "default": 10
+        }
+      }
+    },
     "followUpMode": {
       "anyOf": [
         {

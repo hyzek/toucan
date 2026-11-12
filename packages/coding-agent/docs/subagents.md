@@ -2,6 +2,8 @@
 
 Toucan ships a built-in `subagent` tool. It runs a task in an isolated child agent session: the subagent works on its own with its own system prompt and tools, finishes the task, and reports its final answer back to the calling agent.
 
+Subagents are **off by default**. Set `"subagents": { "enabled": true }` in your settings (user or project) to register the tool and with it the agent command center (`Left` at an empty prompt, `/agents`) and its footer hint. Disabled, Toucan does not register the `subagent` tool at all, so no allow-list can bring it back.
+
 Subagents are useful for work that is self-contained and would otherwise fill the main conversation with intermediate steps: broad codebase searches, audits, research questions, plan drafts.
 
 ## How the tool works
@@ -10,7 +12,7 @@ Subagents are useful for work that is self-contained and would otherwise fill th
 subagent({ action: "spawn", agent: "explore", task: "Find every file that handles authentication and summarize how sessions are validated." })
 ```
 
-- By default the spawn is **background**: the call returns the agent's id right away, and its result arrives as a follow-up message when it finishes, before the next step of your work. It shows in the transcript as a tool-style result row (`Subagent results`, one line per finished agent with its answer under a `└─` guide), not as a prompt. Pass `background: false` to block the call and get the answer inline.
+- By default the spawn is **background**: the call returns the agent's id right away, and its result arrives as a follow-up message when it finishes, before the next step of your work. It shows in the transcript as tool-style rows (one row per finished agent with its answer under a `└─` guide, folded like a read row), not as a prompt. Pass `background: false` to block the call and get the answer inline.
 - The subagent does not see the conversation that spawned it. Write the `task` so it carries everything the subagent needs.
 - The subagent runs with its own tools, model, and system prompt, decided by its agent type (below). It cannot call `subagent` itself.
 - Each run gets its own session file next to the calling session and nests under it in `/resume`.

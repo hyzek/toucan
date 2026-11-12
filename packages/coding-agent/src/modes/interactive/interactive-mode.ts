@@ -156,7 +156,7 @@ import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { FooterComponent, formatCwdForFooter, formatTokens } from "./components/footer.ts";
-import { HotkeyHints } from "./components/hotkey-hints.ts";
+import { footerHint, HotkeyHints } from "./components/hotkey-hints.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LaunchPanel } from "./components/launch-panel.ts";
 import { LoginDialogComponent } from "./components/login-dialog.ts";
@@ -465,6 +465,8 @@ export class InteractiveMode {
 	private footer: FooterComponent;
 	private footerContainer: Container;
 	private hintsContainer: Container;
+	/** The hint row under the footer bar; features add and remove hints by id. */
+	private footerHints: HotkeyHints;
 	/** Every top-level screen, kept so the agents command center can take the screen over and give it back. */
 	private standardScreens: Component[] = [];
 	private agentsScreenComponent: Component | undefined;
@@ -692,7 +694,9 @@ export class InteractiveMode {
 		this.footerContainer = new Container();
 		this.footerContainer.addChild(this.footer);
 		this.hintsContainer = new Container();
-		this.hintsContainer.addChild(new HotkeyHints(() => this.editor.getText().length > 0));
+		this.footerHints = new HotkeyHints(() => this.editor.getText().length > 0);
+		this.footerHints.add("shortcuts", () => footerHint(keyText("app.shortcuts.open"), "for shortcuts"));
+		this.hintsContainer.addChild(this.footerHints);
 
 		// Load hide thinking block setting
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
@@ -759,7 +763,10 @@ export class InteractiveMode {
 
 	private createBaseAutocompleteProvider(): AutocompleteProvider {
 		// Define commands for autocomplete
-		const slashCommands: SlashCommand[] = BUILTIN_SLASH_COMMANDS.map((command) => ({
+		const subagentsEnabled = this.settingsManager.getSubagentsEnabled();
+		const slashCommands: SlashCommand[] = BUILTIN_SLASH_COMMANDS.filter(
+			(command) => subagentsEnabled || command.name !== "agents",
+		).map((command) => ({
 			name: command.name,
 			description: command.description,
 			...(command.argumentHint && { argumentHint: command.argumentHint }),
@@ -1864,10 +1871,20 @@ export class InteractiveMode {
 		});
 	}
 
+	/** Show the `← for agents` hint only while subagents are enabled; it leads the hint row. */
+	private applySubagentHint(): void {
+		if (this.settingsManager.getSubagentsEnabled()) {
+			this.footerHints.addFront("agents", () => footerHint("\u2190", "for agents"));
+		} else {
+			this.footerHints.remove("agents");
+		}
+	}
+
 	private applyRuntimeSettings(): void {
 		setCapabilityOverrides(this.settingsManager.getTerminalCapabilityOverrides());
 		this.ensurePngTranscoder();
 		configureHttpDispatcher(this.settingsManager.getHttpIdleTimeoutMs());
+		this.applySubagentHint();
 		this.applyFullscreenScrollbarSetting();
 		if (this.renderer instanceof TuiAltScreen) {
 			this.renderer.setCopyOnSelect(this.settingsManager.getFullscreenCopyOnSelect());
@@ -2934,6 +2951,8 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
 		this.defaultEditor.onAction("app.session.fork", () => this.showUserMessageSelector());
 		this.defaultEditor.onAction("app.session.resume", () => this.showSessionSelector());
+		// openAgentsScreen ignores the key while subagents are disabled; with an empty prompt,
+		// Left has no other effect, so no per-setting registration is needed here.
 		this.defaultEditor.onAction("app.agents.open", () => this.openAgentsScreen());
 		this.defaultEditor.onAction("app.shortcuts.open", () => this.handleHotkeysCommand());
 
@@ -3160,7 +3179,11 @@ export class InteractiveMode {
 				return;
 			}
 			if (text === "/agents") {
-				this.openAgentsScreen();
+				if (this.settingsManager.getSubagentsEnabled()) {
+					this.openAgentsScreen();
+				} else {
+					this.showStatus("Subagents are disabled; set subagents.enabled in settings to enable them.");
+				}
 				this.editor.setText("");
 				return;
 			}
@@ -4963,6 +4986,7 @@ export class InteractiveMode {
 					autoResizeImages: this.settingsManager.getImageAutoResize(),
 					blockImages: this.settingsManager.getBlockImages(),
 					enableSkillCommands: this.settingsManager.getEnableSkillCommands(),
+					subagentsEnabled: this.settingsManager.getSubagentsEnabled(),
 					steeringMode: this.session.steeringMode,
 					followUpMode: this.session.followUpMode,
 					transport: this.settingsManager.getTransport(),
@@ -5022,6 +5046,13 @@ export class InteractiveMode {
 					onEnableSkillCommandsChange: (enabled) => {
 						this.settingsManager.setEnableSkillCommands(enabled);
 						this.setupAutocompleteProvider();
+					},
+					onSubagentsEnabledChange: (enabled) => {
+						this.settingsManager.setSubagentsEnabled(enabled);
+						this.applySubagentHint();
+						this.showStatus(
+							`Subagents ${enabled ? "enabled" : "disabled"}; run /reload to change the subagent tool.`,
+						);
 					},
 					onSteeringModeChange: (mode) => {
 						this.session.setSteeringMode(mode);
@@ -5750,7 +5781,7 @@ export class InteractiveMode {
 
 	/** Open the agent command center as a full-screen takeover of this session's subagents. */
 	openAgentsScreen(): void {
-		if (this.agentsScreenComponent) return;
+		if (this.agentsScreenComponent || !this.settingsManager.getSubagentsEnabled()) return;
 		const screen = new AgentsCommandCenterComponent(this.session, {
 			ui: this.ui,
 			onClose: () => this.closeAgentsScreen(),

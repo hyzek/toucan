@@ -57,12 +57,12 @@ describe("write tool rendering", () => {
 
 	it("previews the content only while the call is still streaming", () => {
 		const streaming = callLines({ path: "/repo/new.ts", content: "hello\nworld" }, true);
-		expect(streaming[0]).toBe("• Write /repo/new.ts");
+		expect(streaming[0]).toBe("• Create new.ts");
 		expect(streaming).toContain("hello");
 		expect(streaming).toContain("world");
 
 		// Once the call is complete the content preview is gone; the change block tells the story.
-		expect(callLines({ path: "/repo/new.ts", content: "hello\nworld" })).toEqual(["• Write /repo/new.ts"]);
+		expect(callLines({ path: "/repo/new.ts", content: "hello\nworld" })).toEqual(["• Create new.ts"]);
 
 		// A replayed row has no final streaming state; it shows the header and the block, not both bodies.
 		const replay = tool.renderCall(
@@ -70,7 +70,17 @@ describe("write tool rendering", () => {
 			theme,
 			renderContext({ args: { path: "/repo/new.ts", content: "hello\nworld" }, argsComplete: false }),
 		);
-		expect(replay.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["• Write /repo/new.ts"]);
+		expect(replay.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["• Create new.ts"]);
+	});
+
+	it("keeps Write for a file that already exists", () => {
+		const tool = createWriteToolDefinition(process.cwd()) as Required<
+			Pick<ToolDefinition, "renderCall" | "renderResult">
+		>;
+		const context = renderContext({ cwd: process.cwd(), args: { path: "package.json", content: "x" } });
+		expect(
+			stripAnsi(tool.renderCall({ path: "package.json", content: "x" }, theme, context).render(80).join("\n")),
+		).toContain("• Write package.json");
 	});
 
 	it("states the change under the row, then the diff, joined by a guide", () => {
@@ -92,10 +102,10 @@ describe("write tool rendering", () => {
 	});
 
 	it("says so when the write left the file unchanged", () => {
-		expect(resultLines(undefined, { unchanged: true })).toEqual(["  └ no change"]);
+		expect(resultLines(undefined, { unchanged: true })).toEqual(["  └ ✓ no changes"]);
 	});
 
-	it("shows nothing extra when the file could not be diffed", () => {
+	it("says it wrote when the file could not be diffed", () => {
 		const args = { path: "/repo/src/app.ts", content: "x" };
 		const component = tool.renderResult(
 			{ content: [{ type: "text", text: "ok" }], details: { path: "/repo/src/app.ts" } },
@@ -103,7 +113,22 @@ describe("write tool rendering", () => {
 			theme,
 			renderContext({ args }),
 		);
-		expect(component.render(80)).toEqual([]);
+		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["  └ Written"]);
+	});
+
+	it("labels a file that did not exist before as Create", async () => {
+		const args = { path: "/repo/new.ts", content: "x" };
+		const callContext = renderContext({ args });
+		const first = tool.renderCall(args, theme, callContext);
+		tool.renderResult(
+			{ content: [{ type: "text", text: "ok" }], details: { path: "/repo/new.ts", created: true, diff: "+1 x" } },
+			{ expanded: false, isPartial: false },
+			theme,
+			{ ...callContext, lastComponent: undefined },
+		);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const second = tool.renderCall(args, theme, { ...callContext, lastComponent: first });
+		expect(stripAnsi(second.render(80).join("\n"))).toContain("• Create new.ts");
 	});
 
 	it("keeps the error text under a failed write", () => {
@@ -114,6 +139,6 @@ describe("write tool rendering", () => {
 			theme,
 			renderContext({ args, isError: true }),
 		);
-		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["", "EACCES: permission denied"]);
+		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["  └ EACCES: permission denied"]);
 	});
 });

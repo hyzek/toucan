@@ -16,7 +16,7 @@ function renderContext(overrides: Partial<ToolRenderContext> = {}): ToolRenderCo
 		invalidate: () => {},
 		toolCallId: "call-1",
 		cwd: "/repo",
-		executionStarted: true,
+		executionStarted: false,
 		argsComplete: true,
 		isPartial: false,
 		expanded: false,
@@ -59,7 +59,7 @@ describe("bash tool rendering of file edits", () => {
 	});
 
 	it("keeps the command line for a command that is not a single-file edit", () => {
-		expect(callLine("ls -1 | grep x")).toBe("• $ ls -1 | grep x");
+		expect(callLine("ls -1 | grep x")).toBe("• Bash ls -1 | grep x");
 	});
 
 	it("states the change under the row, then the diff, joined by a guide", () => {
@@ -93,7 +93,9 @@ describe("bash tool rendering of file edits", () => {
 			context,
 		);
 
-		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual(["", "(no output)"]);
+		expect(component.render(80).map((line) => stripAnsi(line).trimEnd())).toEqual([
+			"  └ Done (0 lines) (ctrl+o to expand)",
+		]);
 	});
 
 	it("folds a long diff and names the expand key", () => {

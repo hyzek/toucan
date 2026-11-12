@@ -1,35 +1,52 @@
 /**
  * Presentation for the find tool.
  *
- * Renderers live apart from the implementation so a process that only displays tool output does not
- * load the execution path or its typebox parameter schema. `find.ts` spreads these into its
- * definition, so the tool's public shape is unchanged.
+ * The call is `Find "pattern" in path`; the result is one line saying how many files matched, and
+ * expanding lists them. A collapsed search reports its count instead of dumping every path.
  */
 
-import { Text } from "@hyzek/toucan-tui";
-import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
+import { Container, Text } from "@hyzek/toucan-tui";
+import { directoryIcon, fileIcon } from "../../../modes/interactive/components/file-icon.ts";
+import { ToolBranchBlock } from "../../../modes/interactive/components/tool-branch.ts";
 import type { Theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
 import type { FindToolDetails } from "../find.ts";
-import { getTextOutput, invalidArgText, shortenPath, str, toolRowCallLine } from "../render-utils.ts";
+import {
+	getTextOutput,
+	invalidArgText,
+	shortenPath,
+	str,
+	stripTrailingNotice,
+	summarizeText,
+	toolRowCallLine,
+} from "../render-utils.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
 
-function formatFindCall(args: { pattern: string; path?: string; limit?: number } | undefined, theme: Theme): string {
+const NO_FILES = "No files found matching pattern";
+/** Expanded lists stop here, as in the reference renderer. */
+const EXPANDED_PREVIEW_FILES = 8;
+
+function formatFindCall(
+	args: { pattern: string; path?: string; limit?: number } | undefined,
+	theme: Theme,
+	cwd: string,
+): string {
 	const pattern = str(args?.pattern);
 	const rawPath = str(args?.path);
-	const path = rawPath !== null ? shortenPath(rawPath || ".") : null;
-	const limit = args?.limit;
+	const path = rawPath !== null ? shortenPath(rawPath || ".", cwd) : null;
 	const invalidArg = invalidArgText(theme);
-	let text =
-		theme.fg("toolTitle", theme.bold("Find")) +
-		" " +
-		(pattern === null ? invalidArg : theme.fg("accent", pattern || "")) +
-		theme.fg("toolOutput", ` in ${path === null ? invalidArg : path}`);
-	if (limit !== undefined) {
-		text += theme.fg("toolOutput", ` (limit ${limit})`);
-	}
-	return text;
+	const shown = pattern === null ? invalidArg : theme.fg("accent", `"${summarizeText(pattern, 40)}"`);
+	return `${theme.fg("toolTitle", theme.bold("Find"))} ${shown}${theme.fg("toolOutput", ` in ${path === null ? invalidArg : path}`)}`;
 }
+
+function truncationText(details: FindToolDetails | undefined): string | undefined {
+	const warnings: string[] = [];
+	if (details?.resultLimitReached) warnings.push(`${details.resultLimitReached} results limit`);
+	if (details?.truncation?.truncated)
+		warnings.push(`${formatSize(details.truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
+	return warnings.length > 0 ? warnings.join(", ") : undefined;
+}
+
 function formatFindResult(
 	result: {
 		content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
@@ -37,41 +54,60 @@ function formatFindResult(
 	},
 	options: ToolRenderResultOptions,
 	theme: Theme,
+	context: { isError: boolean; keyHint: (key: "app.tools.expand", description: string) => string },
 	showImages: boolean,
-): string {
-	const output = getTextOutput(result, showImages).trim();
-	let text = "";
-	if (output) {
-		const lines = output.split("\n");
-		const maxLines = options.expanded ? lines.length : 20;
-		const displayLines = lines.slice(0, maxLines);
-		const remaining = lines.length - maxLines;
-		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
-		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
-		}
+): ToolBranchBlock {
+	const block = new ToolBranchBlock();
+	if (context.isError) {
+		const message = getTextOutput(result, showImages).trim();
+		block.addChild(new Text(theme.fg("error", message || "Failed"), 0, 0));
+		return block;
+	}
+	if (options.isPartial) {
+		block.addChild(new Text(theme.fg("muted", "Finding\u2026"), 0, 0));
+		return block;
 	}
 
-	const resultLimit = result.details?.resultLimitReached;
-	const truncation = result.details?.truncation;
-	if (resultLimit || truncation?.truncated) {
-		const warnings: string[] = [];
-		if (resultLimit) warnings.push(`${resultLimit} results limit`);
-		if (truncation?.truncated) warnings.push(`${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
-		text += `\n${theme.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
+	let output = getTextOutput(result, showImages).trim();
+	if (truncationText(result.details)) output = stripTrailingNotice(output);
+	const files = output && output !== NO_FILES ? output.split("\n").filter((line) => line.trim() !== "") : [];
+	if (files.length === 0) {
+		block.addChild(new Text(theme.fg("muted", "no files found"), 0, 0));
+		return block;
 	}
-	return text;
+
+	const truncated = truncationText(result.details);
+	const hint = ` (${context.keyHint("app.tools.expand", options.expanded ? "to collapse" : "to expand")})`;
+	block.addChild(
+		new Text(
+			`${theme.fg("muted", `${files.length} files`)}${truncated ? theme.fg("warning", " (truncated)") : ""}${theme.fg("muted", hint)}`,
+			0,
+			0,
+		),
+	);
+	if (options.expanded) {
+		const shown = files.slice(0, EXPANDED_PREVIEW_FILES);
+		const lines = shown.map((line) => {
+			const icon = line.endsWith("/") ? directoryIcon(theme) : fileIcon(line, theme);
+			return `${icon}${theme.fg("dim", line)}`;
+		});
+		const remaining = files.length - shown.length;
+		if (remaining > 0) lines.push(theme.fg("muted", `\u2026 ${remaining} more files`));
+		block.addChild(new Text(lines.join("\n"), 0, 0));
+	}
+	return block;
 }
 
 export const findRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "renderResult"> = {
 	renderCall(args, theme, context) {
 		const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-		text.setText(toolRowCallLine(formatFindCall(args as any, theme), context, theme));
+		text.setText(toolRowCallLine(formatFindCall(args as any, theme, context.cwd), context, theme));
 		return text;
 	},
 	renderResult(result, options, theme, context) {
-		const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-		text.setText(formatFindResult(result as any, options, theme, context.showImages));
-		return text;
+		const component = (context.lastComponent as Container | undefined) ?? new Container();
+		component.clear();
+		component.addChild(formatFindResult(result as any, options, theme, context, context.showImages));
+		return component;
 	},
 };

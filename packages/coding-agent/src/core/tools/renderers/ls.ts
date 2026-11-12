@@ -1,28 +1,38 @@
 /**
  * Presentation for the ls tool.
  *
- * Renderers live apart from the implementation so a process that only displays tool output does not
- * load the execution path or its typebox parameter schema. `ls.ts` spreads these into its
- * definition, so the tool's public shape is unchanged.
+ * The call is `Ls path`; the result is one line saying how many entries the directory holds, and
+ * expanding lists them. A collapsed listing reports its count instead of dumping every entry.
  */
 
-import { Text } from "@hyzek/toucan-tui";
-import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
+import { Container, Text } from "@hyzek/toucan-tui";
+import { directoryIcon, fileIcon } from "../../../modes/interactive/components/file-icon.ts";
+import { ToolBranchBlock } from "../../../modes/interactive/components/tool-branch.ts";
 import type { Theme } from "../../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
 import type { LsToolDetails } from "../ls.ts";
-import { getTextOutput, renderToolPath, str, toolRowCallLine } from "../render-utils.ts";
+import { getTextOutput, renderToolPath, str, stripTrailingNotice, toolRowCallLine } from "../render-utils.ts";
 import { DEFAULT_MAX_BYTES, formatSize } from "../truncate.ts";
+
+/** Expanded lists stop here, as in the reference renderer. */
+const EXPANDED_PREVIEW_ENTRIES = 8;
 
 function formatLsCall(args: { path?: string; limit?: number } | undefined, theme: Theme, cwd: string): string {
 	const limit = args?.limit;
 	const pathDisplay = renderToolPath(str(args?.path), theme, cwd, { emptyFallback: "." });
 	let text = `${theme.fg("toolTitle", theme.bold("Ls"))} ${pathDisplay}`;
-	if (limit !== undefined) {
-		text += theme.fg("toolOutput", ` (limit ${limit})`);
-	}
+	if (limit !== undefined) text += theme.fg("toolOutput", ` (limit ${limit})`);
 	return text;
 }
+
+function truncationText(details: LsToolDetails | undefined): string | undefined {
+	const warnings: string[] = [];
+	if (details?.entryLimitReached) warnings.push(`${details.entryLimitReached} entries limit`);
+	if (details?.truncation?.truncated)
+		warnings.push(`${formatSize(details.truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
+	return warnings.length > 0 ? warnings.join(", ") : undefined;
+}
+
 function formatLsResult(
 	result: {
 		content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
@@ -30,30 +40,50 @@ function formatLsResult(
 	},
 	options: ToolRenderResultOptions,
 	theme: Theme,
+	context: { isError: boolean; keyHint: (key: "app.tools.expand", description: string) => string },
 	showImages: boolean,
-): string {
-	const output = getTextOutput(result, showImages).trim();
-	let text = "";
-	if (output) {
-		const lines = output.split("\n");
-		const maxLines = options.expanded ? lines.length : 20;
-		const displayLines = lines.slice(0, maxLines);
-		const remaining = lines.length - maxLines;
-		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
-		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
-		}
+): ToolBranchBlock {
+	const block = new ToolBranchBlock();
+	if (context.isError) {
+		const message = getTextOutput(result, showImages).trim();
+		block.addChild(new Text(theme.fg("error", message || "Failed"), 0, 0));
+		return block;
+	}
+	if (options.isPartial) {
+		block.addChild(new Text(theme.fg("muted", "Listing\u2026"), 0, 0));
+		return block;
 	}
 
-	const entryLimit = result.details?.entryLimitReached;
-	const truncation = result.details?.truncation;
-	if (entryLimit || truncation?.truncated) {
-		const warnings: string[] = [];
-		if (entryLimit) warnings.push(`${entryLimit} entries limit`);
-		if (truncation?.truncated) warnings.push(`${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
-		text += `\n${theme.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
+	let output = getTextOutput(result, showImages).trim();
+	if (truncationText(result.details)) output = stripTrailingNotice(output);
+	const entries =
+		output && output !== "(empty directory)" ? output.split("\n").filter((line) => line.trim() !== "") : [];
+	if (entries.length === 0) {
+		block.addChild(new Text(theme.fg("muted", "empty directory"), 0, 0));
+		return block;
 	}
-	return text;
+
+	const truncated = truncationText(result.details);
+	const hint = ` (${context.keyHint("app.tools.expand", options.expanded ? "to collapse" : "to expand")})`;
+	block.addChild(
+		new Text(
+			`${theme.fg("muted", `${entries.length} entries`)}${truncated ? theme.fg("warning", " (truncated)") : ""}${theme.fg("muted", hint)}`,
+			0,
+			0,
+		),
+	);
+	if (options.expanded) {
+		const shown = entries.slice(0, EXPANDED_PREVIEW_ENTRIES);
+		const lines = shown.map((entry) =>
+			entry.endsWith("/")
+				? `${directoryIcon(theme)}${theme.fg("accent", theme.bold(entry))}`
+				: `${fileIcon(entry, theme)}${theme.fg("dim", entry)}`,
+		);
+		const remaining = entries.length - shown.length;
+		if (remaining > 0) lines.push(theme.fg("muted", `\u2026 ${remaining} more entries`));
+		block.addChild(new Text(lines.join("\n"), 0, 0));
+	}
+	return block;
 }
 
 export const lsRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "renderResult"> = {
@@ -63,8 +93,9 @@ export const lsRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "renderR
 		return text;
 	},
 	renderResult(result, options, theme, context) {
-		const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-		text.setText(formatLsResult(result as any, options, theme, context.showImages));
-		return text;
+		const component = (context.lastComponent as Container | undefined) ?? new Container();
+		component.clear();
+		component.addChild(formatLsResult(result as any, options, theme, context, context.showImages));
+		return component;
 	},
 };

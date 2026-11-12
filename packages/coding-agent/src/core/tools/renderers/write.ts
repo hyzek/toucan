@@ -6,11 +6,14 @@
  * definition, so the tool's public shape is unchanged.
  *
  * The row names the file, and a block under it says what the write did: the diff against the file's
- * previous content (all added lines for a new file), a `no change` line when the write left the file
- * as it was, or nothing when the file cannot be diffed. While the call is still running, the row
- * previews the content instead, so the write can be watched as it arrives.
+ * previous content (all added lines for a new file), `✓ no changes` when the write left the file as
+ * it was, or `Written` when the file cannot be diffed. While the call is still running, the row
+ * previews the content instead, so the write can be watched as it arrives. A file that did not exist
+ * is labelled `Create` before the result arrives.
  */
 
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { Container, Text } from "@hyzek/toucan-tui";
 import { COLLAPSED_DIFF_ROWS, type DiffComponent } from "../../../modes/interactive/components/diff.ts";
 import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
@@ -34,6 +37,8 @@ type WriteHighlightCache = {
 	highlightedLines: string[];
 };
 class WriteCallRenderComponent extends Text {
+	// Whether the file did not exist before the write; the header says Create instead of Write.
+	created?: boolean;
 	// Line by line highlighting of a call whose content is still streaming.
 	cache?: WriteHighlightCache;
 	// A streamed call highlights its first lines on every delta, which stop changing once the file is longer, and a
@@ -116,9 +121,14 @@ function trimTrailingEmptyLines(lines: readonly string[]): string[] {
 	}
 	return lines.slice(0, end);
 }
-function formatWriteHeader(args: { path?: string; file_path?: string } | undefined, theme: Theme, cwd: string): string {
+function formatWriteHeader(
+	args: { path?: string; file_path?: string } | undefined,
+	theme: Theme,
+	cwd: string,
+	created: boolean | undefined,
+): string {
 	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
-	return `${theme.fg("toolTitle", theme.bold("Write"))} ${pathDisplay}`;
+	return `${theme.fg("toolTitle", theme.bold(created ? "Create" : "Write"))} ${pathDisplay}`;
 }
 function formatWriteCall(
 	args: { path?: string; file_path?: string; content?: string } | undefined,
@@ -127,10 +137,11 @@ function formatWriteCall(
 	cache: WriteHighlightCache | undefined,
 	highlighter: CodeHighlighter,
 	cwd: string,
+	created: boolean | undefined,
 ): string {
 	const rawPath = str(args?.file_path ?? args?.path);
 	const fileContent = str(args?.content);
-	let text = formatWriteHeader(args, theme, cwd);
+	let text = formatWriteHeader(args, theme, cwd, created);
 
 	if (fileContent === null) {
 		text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;
@@ -160,6 +171,12 @@ export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rend
 		const fileContent = str(renderArgs?.content);
 		const component =
 			(context.lastComponent as WriteCallRenderComponent | undefined) ?? new WriteCallRenderComponent();
+		(context.state as { callComponent?: WriteCallRenderComponent }).callComponent = component;
+		// Decide Create vs Write before the result arrives, as the reference row does; the result's
+		// recorded `created` flag corrects this on replay or if the filesystem changed underneath.
+		if (component.created === undefined && rawPath && (context.argsComplete || fileContent)) {
+			component.created = !existsSync(resolve(context.cwd, rawPath));
+		}
 		component.cache =
 			fileContent !== null && context.isPartial && !context.argsComplete
 				? updateWriteHighlightCacheIncremental(component.cache, rawPath, fileContent, component.highlighter)
@@ -177,8 +194,9 @@ export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rend
 							component.cache,
 							component.highlighter,
 							context.cwd,
+							component.created,
 						)
-					: formatWriteHeader(renderArgs, theme, context.cwd),
+					: formatWriteHeader(renderArgs, theme, context.cwd, component.created),
 				context,
 				theme,
 			),
@@ -195,13 +213,19 @@ export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rend
 				.filter((c) => c.type === "text")
 				.map((c) => c.text || "")
 				.join("\n");
-			if (output) {
-				component.addChild(new Text(`\n${theme.fg("error", output)}`, context.outputPad, 0));
-			}
+			const block = new ToolBranchBlock();
+			block.addChild(new Text(theme.fg("error", output || "Failed"), 0, 0));
+			component.addChild(block);
 			return component;
 		}
 
+		if (options.isPartial) return component;
 		const details = result.details as WriteToolDetails | undefined;
+		const callComponent = context.state.callComponent as WriteCallRenderComponent | undefined;
+		if (callComponent && details?.created !== undefined && callComponent.created !== details.created) {
+			callComponent.created = details.created;
+			queueMicrotask(() => context.invalidate());
+		}
 		if (details?.diff) {
 			component.addChild(
 				createChangeBlock(
@@ -221,7 +245,11 @@ export const writeRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "rend
 			);
 		} else if (details?.unchanged) {
 			const block = new ToolBranchBlock();
-			block.addChild(new Text(theme.fg("muted", "no change"), 0, 0));
+			block.addChild(new Text(theme.fg("muted", "\u2713 no changes"), 0, 0));
+			component.addChild(block);
+		} else {
+			const block = new ToolBranchBlock();
+			block.addChild(new Text(theme.fg("success", "Written"), 0, 0));
 			component.addChild(block);
 		}
 		return component;

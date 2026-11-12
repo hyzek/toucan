@@ -1,4 +1,14 @@
-import { Container, Editor, ScrollView, Spacer, stripTerminalSequences, Text, TuiMainScreen } from "@hyzek/toucan-tui";
+import {
+	Container,
+	Editor,
+	ScrollView,
+	Spacer,
+	stripTerminalSequences,
+	Text,
+	TuiMainScreen,
+	type TuiMouseEvent,
+	visibleWidth,
+} from "@hyzek/toucan-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AgentSession } from "../src/core/agent-session.ts";
@@ -6,7 +16,7 @@ import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provide
 import { ChatNotice, hasChatTranscript } from "../src/modes/interactive/components/chat-notice.ts";
 import { inputBandOptions } from "../src/modes/interactive/components/custom-editor.ts";
 import { FooterComponent } from "../src/modes/interactive/components/footer.ts";
-import { HotkeyHints } from "../src/modes/interactive/components/hotkey-hints.ts";
+import { footerHint, HotkeyHints } from "../src/modes/interactive/components/hotkey-hints.ts";
 import { SessionTip, TipLine } from "../src/modes/interactive/components/tip-line.ts";
 import { getEditorTheme, initTheme } from "../src/modes/interactive/theme/theme.ts";
 
@@ -57,6 +67,8 @@ function renderBottomStack(): string[] {
 	const editor = new Editor(ui, getEditorTheme(), inputBandOptions());
 	const footer = new FooterComponent(createSession(), createFooterData());
 	const hints = new HotkeyHints(() => false);
+	hints.add("agents", () => footerHint("\u2190", "for agents"));
+	hints.add("shortcuts", () => footerHint("?", "for shortcuts"));
 	return [...tip.render(WIDTH), ...editor.render(WIDTH), ...footer.render(WIDTH), ...hints.render(WIDTH)].map((line) =>
 		stripTerminalSequences(line),
 	);
@@ -108,6 +120,26 @@ describe("launch bottom layout", () => {
 		).toBe(true);
 		expect(line).not.toContain("\x1b[4"); // no background
 		expect(line).not.toContain("Ctrl"); // no hotkey hint
+		const hoverMove = (x: number): TuiMouseEvent => ({
+			type: "move",
+			button: "none",
+			x,
+			y: 0,
+			screenX: x,
+			screenY: 0,
+			width: WIDTH,
+			height: 1,
+			shift: false,
+			alt: false,
+			ctrl: false,
+		});
+		const labelStart = WIDTH - visibleWidth("Jump to latest ↓") - 1;
+		expect(tip.handleMouse(hoverMove(labelStart + 5))?.render).toBe(true); // hovered
+		const hovered = tip.render(WIDTH)[0]!;
+		expect(hovered).not.toBe(line); // a different color while hovered
+		expect(stripTerminalSequences(hovered)).toBe(stripTerminalSequences(line!));
+		tip.handleMouse(hoverMove(2)); // padding beside the label does not highlight
+		expect(tip.render(WIDTH)[0]).toBe(line);
 		transcript.scrollToEnd();
 		expect(tip.render(WIDTH)).toHaveLength(0);
 	});

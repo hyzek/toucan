@@ -18,8 +18,21 @@ const OPEN = "\u251c";
 const RUN = "\u2502";
 const CLOSE = "\u2514";
 
+export interface ToolBranchBlockOptions {
+	/**
+	 * Leave the guide open at the bottom: the last row keeps `│` instead of closing with `└`. A call
+	 * that shows its command under the header uses this so the result below can continue the guide.
+	 */
+	openEnded?: boolean;
+}
+
 export class ToolBranchBlock implements Component {
 	private children: Component[] = [];
+	private readonly openEnded: boolean;
+
+	constructor(options: ToolBranchBlockOptions = {}) {
+		this.openEnded = options.openEnded === true;
+	}
 
 	addChild(child: Component): void {
 		this.children.push(child);
@@ -41,7 +54,7 @@ export class ToolBranchBlock implements Component {
 		const last = filled.lastIndexOf(true);
 		return rows.map((row, index) => {
 			if (!filled[index] || index < first || index > last) return truncateToWidth(row, width);
-			const glyph = index === last ? CLOSE : index === first ? OPEN : RUN;
+			const glyph = index === last && !this.openEnded ? CLOSE : index === first ? OPEN : RUN;
 			return `${" ".repeat(INDENT)}${theme.fg("borderMuted", glyph)} ${truncateToWidth(row, inner)}`;
 		});
 	}

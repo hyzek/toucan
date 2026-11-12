@@ -43,9 +43,26 @@ describe("subagent tool", () => {
 		else process.env[ENV_AGENT_DIR] = previousAgentDir;
 	});
 
-	it("runs a built-in agent and returns its final answer", async () => {
+	it("registers and activates the tool only while the setting is enabled across a reload", async () => {
 		isolateAgentDir();
 		harness = await createHarness();
+		expect(harness.session.getAllTools().map((tool) => tool.name)).not.toContain("subagent");
+		expect(harness.session.getActiveToolNames()).not.toContain("subagent");
+
+		harness.settingsManager.setSubagentsEnabled(true);
+		await harness.session.reload();
+		expect(harness.session.getAllTools().map((tool) => tool.name)).toContain("subagent");
+		expect(harness.session.getActiveToolNames()).toContain("subagent");
+
+		harness.settingsManager.setSubagentsEnabled(false);
+		await harness.session.reload();
+		expect(harness.session.getAllTools().map((tool) => tool.name)).not.toContain("subagent");
+		expect(harness.session.getActiveToolNames()).not.toContain("subagent");
+	});
+
+	it("runs a built-in agent and returns its final answer", async () => {
+		isolateAgentDir();
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
 
 		let childTools: string[] = [];
 		harness.setResponses([
@@ -68,7 +85,7 @@ describe("subagent tool", () => {
 
 	it("fails unknown agent types, listing what is available", async () => {
 		isolateAgentDir();
-		harness = await createHarness();
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
 
 		harness.setResponses([
 			fauxAssistantMessage([subagentCall("nope")], { stopReason: "toolUse" }),
@@ -96,7 +113,7 @@ describe("subagent tool", () => {
 				"You are a code reviewer. Report findings as a list.",
 			].join("\n"),
 		);
-		harness = await createHarness();
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
 
 		let childTools: string[] = [];
 		harness.setResponses([
@@ -120,7 +137,7 @@ describe("subagent tool", () => {
 
 	it("does not load project agents while the project is untrusted", async () => {
 		isolateAgentDir();
-		harness = await createHarness();
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
 		mkdirSync(join(harness.tempDir, ".toucan", "agents"), { recursive: true });
 		writeFileSync(
 			join(harness.tempDir, ".toucan", "agents", "project-agent.md"),
@@ -142,7 +159,7 @@ describe("subagent tool", () => {
 
 	it("loads project agents once the project is trusted", async () => {
 		isolateAgentDir();
-		harness = await createHarness();
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
 		mkdirSync(join(harness.tempDir, ".toucan", "agents"), { recursive: true });
 		writeFileSync(
 			join(harness.tempDir, ".toucan", "agents", "project-agent.md"),
@@ -164,7 +181,7 @@ describe("subagent tool", () => {
 	});
 	it("notifies the parent when a background agent finishes", async () => {
 		isolateAgentDir();
-		harness = await createHarness();
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
 
 		// The parent's second request is queued before the child's, so responses land in order.
 		harness.setResponses([
@@ -190,7 +207,7 @@ describe("subagent tool", () => {
 	});
 	it("steers a wrap-up at the turn limit instead of cutting the agent off", async () => {
 		isolateAgentDir();
-		harness = await createHarness();
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
 
 		harness.setResponses([
 			fauxAssistantMessage([subagentCall("explore", { background: false, max_turns: 1 })], {
@@ -210,7 +227,7 @@ describe("subagent tool", () => {
 
 	it("aborts an agent that keeps going past the grace period", async () => {
 		isolateAgentDir();
-		harness = await createHarness();
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
 
 		const keepGoing = () => fauxAssistantMessage([fauxToolCall("ls", { path: "." })], { stopReason: "toolUse" });
 		harness.setResponses([
@@ -244,7 +261,10 @@ describe("subagent tool", () => {
 	});
 
 	async function runResumeTest(parentDir: string): Promise<void> {
-		harness = await createHarness({ sessionManager: SessionManager.create(parentDir, join(parentDir, "sessions")) });
+		harness = await createHarness({
+			sessionManager: SessionManager.create(parentDir, join(parentDir, "sessions")),
+			settings: { subagents: { enabled: true } },
+		});
 
 		let resumedSawFirstAnswer = false;
 		harness.setResponses([

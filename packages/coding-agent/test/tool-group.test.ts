@@ -84,7 +84,8 @@ describe("ToolGroupComponent", () => {
 
 		const lines = render(group);
 		expect(lines[0]).toContain("Reading 1 file, running 1 shell command…");
-		expect(lines[1]).toBe("$ sleep 5");
+		expect(lines[1]).toContain("Bash sleep 5");
+		expect(lines[1]).toContain("\u00b7 0.0s");
 	});
 
 	test("counts failures onto the sentence", () => {

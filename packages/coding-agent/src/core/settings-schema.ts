@@ -168,6 +168,23 @@ const CodemodeSettingsSchema = Type.Object({
 	),
 });
 
+const SubagentsSettingsSchema = Type.Object({
+	enabled: Type.Optional(
+		Type.Boolean({
+			description:
+				"Register the subagent tool and enable the agent command center (Left at an empty prompt, /agents). Off by default.",
+			default: SETTINGS_DEFAULTS.subagents.enabled,
+		}),
+	),
+	maxConcurrent: Type.Optional(
+		Type.Integer({
+			minimum: 1,
+			description: "How many background subagents may run at once; further background spawns queue behind them.",
+			default: SETTINGS_DEFAULTS.subagents.maxConcurrent,
+		}),
+	),
+});
+
 const PackageSourceSchema = Type.Union(
 	[
 		Type.String({ description: "Load all resources from the package." }),
@@ -238,6 +255,7 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.steeringMode,
 			}),
 		),
+		subagents: Type.Optional(SubagentsSettingsSchema),
 		followUpMode: Type.Optional(
 			Type.Union([Type.Literal("all"), Type.Literal("one-at-a-time")], {
 				default: SETTINGS_DEFAULTS.followUpMode,

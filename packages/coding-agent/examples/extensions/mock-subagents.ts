@@ -16,6 +16,8 @@
  *
  * Usage:
  *   node packages/coding-agent/dist/bundle/cli.js -e ./packages/coding-agent/examples/extensions/mock-subagents.ts
+ *   # subagents are off by default; set "subagents": { "enabled": true } in
+ *   # .toucan/settings.json (project) or <agent-dir>/settings.json (user) first
  *   # then select mock/mock-agents via /model and type any prompt
  *   # press Left at the empty prompt (or /agents) to watch the command center
  */

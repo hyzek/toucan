@@ -68,6 +68,7 @@ export interface SettingsConfig {
 	autoResizeImages: boolean;
 	blockImages: boolean;
 	enableSkillCommands: boolean;
+	subagentsEnabled: boolean;
 	steeringMode: "all" | "one-at-a-time";
 	followUpMode: "all" | "one-at-a-time";
 	transport: Transport;
@@ -110,6 +111,7 @@ export interface SettingsCallbacks {
 	onAutoResizeImagesChange: (enabled: boolean) => void;
 	onBlockImagesChange: (blocked: boolean) => void;
 	onEnableSkillCommandsChange: (enabled: boolean) => void;
+	onSubagentsEnabledChange: (enabled: boolean) => void;
 	onSteeringModeChange: (mode: "all" | "one-at-a-time") => void;
 	onFollowUpModeChange: (mode: "all" | "one-at-a-time") => void;
 	onTransportChange: (transport: Transport) => void;
@@ -815,6 +817,16 @@ export class SettingsSelectorComponent extends Container {
 			values: ["true", "false"],
 		});
 
+		// Subagents toggle (insert after skill-commands); the tool itself changes on /reload.
+		const skillCommandsIndexForSubagents = items.findIndex((item) => item.id === "skill-commands");
+		items.splice(skillCommandsIndexForSubagents + 1, 0, {
+			id: "subagents",
+			label: "Subagents",
+			description: "Register the subagent tool and the agent command center (Left at an empty prompt, /agents)",
+			currentValue: config.subagentsEnabled ? "true" : "false",
+			values: ["true", "false"],
+		});
+
 		// Hardware cursor toggle (insert after skill-commands)
 		const skillCommandsIndex = items.findIndex((item) => item.id === "skill-commands");
 		items.splice(skillCommandsIndex + 1, 0, {
@@ -901,6 +913,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "skill-commands":
 						callbacks.onEnableSkillCommandsChange(newValue === "true");
+						break;
+					case "subagents":
+						callbacks.onSubagentsEnabledChange(newValue === "true");
 						break;
 					case "steering-mode":
 						callbacks.onSteeringModeChange(newValue as "all" | "one-at-a-time");

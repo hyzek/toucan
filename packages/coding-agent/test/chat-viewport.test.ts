@@ -2,7 +2,7 @@ import { Container, stripTerminalSequences, Text, TuiAltScreen, visibleWidth } f
 import { beforeAll, describe, expect, test } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { createChatViewport } from "../src/modes/interactive/chat-viewport.ts";
-import { HotkeyHints } from "../src/modes/interactive/components/hotkey-hints.ts";
+import { footerHint, HotkeyHints } from "../src/modes/interactive/components/hotkey-hints.ts";
 import { SessionTip } from "../src/modes/interactive/components/tip-line.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
@@ -67,8 +67,18 @@ describe("chat viewport", () => {
 		expect(lines[jumpRow]).not.toContain("\x1b[4"); // no background
 		expect(lines[jumpRow]).not.toContain("Ctrl"); // no hotkey hint
 
-		// Clicking beside the label does not jump; clicking the label resumes end-following.
+		// Hovering the label recolors it; hovering off the row restores it.
 		const labelStart = WIDTH - visibleWidth("Jump to latest ↓") - 1;
+		const labelFg = terminal.getViewportCellFg(jumpRow, labelStart);
+		expect(labelFg).toBeDefined();
+		terminal.sendInput(`\x1b[<35;${labelStart + 6};${jumpRow + 1}M`); // motion over the label
+		await terminal.waitForRender();
+		expect(terminal.getViewportCellFg(jumpRow, labelStart)).not.toBe(labelFg);
+		terminal.sendInput(`\x1b[<35;2;${jumpRow + 1}M`); // motion over the left padding
+		await terminal.waitForRender();
+		expect(terminal.getViewportCellFg(jumpRow, labelStart)).toBe(labelFg);
+
+		// Clicking beside the label does not jump; clicking the label resumes end-following.
 		terminal.sendInput(`\x1b[<0;${labelStart};${jumpRow + 1}M`);
 		terminal.sendInput(`\x1b[<0;${labelStart};${jumpRow + 1}m`);
 		await terminal.waitForRender();
@@ -87,6 +97,8 @@ describe("chat viewport", () => {
 		const terminal = new VirtualTerminal(WIDTH, HEIGHT);
 		const ui = new TuiAltScreen(terminal);
 		let hasInput = false;
+		const hints = new HotkeyHints(() => hasInput);
+		hints.add("agents", () => footerHint("\u2190", "for agents"));
 		const viewport = createChatViewport({
 			document: new Text("transcript line", 1, 0),
 			pendingMessages: new Container(),
@@ -94,7 +106,7 @@ describe("chat viewport", () => {
 			tip: new SessionTip(() => false),
 			editor: new Text("\u203a editor band", 1, 0),
 			footer: new Text("  footer bar", 1, 0),
-			hints: new HotkeyHints(() => hasInput),
+			hints,
 		});
 		ui.setLayoutRoot(viewport.root);
 		ui.start();

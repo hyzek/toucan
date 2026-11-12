@@ -37,13 +37,21 @@ interface CompactReadClassification {
 }
 const COMPACT_RESOURCE_FILE_NAMES = new Set(["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]);
 type ReadRenderArgs = { path?: string; file_path?: string; offset?: unknown; limit?: unknown };
+/** The compact rows (skills, docs, resources) keep the short line range. */
 function styledReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): string {
 	const range = formatReadLineRange(args?.offset, args?.limit);
 	return range ? theme.fg("warning", range) : "";
 }
+/** The read range as the reference row writes it: `(offset=10, limit=20)`. */
+function readArgsText(args: ReadRenderArgs | undefined, theme: Theme): string {
+	const parts: string[] = [];
+	if (args?.offset != null) parts.push(`offset=${String(args.offset)}`);
+	if (args?.limit != null) parts.push(`limit=${String(args.limit)}`);
+	return parts.length > 0 ? ` ${theme.fg("muted", `(${parts.join(", ")})`)}` : "";
+}
 function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme, cwd: string): string {
 	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
-	return `${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}${styledReadLineRange(args, theme)}`;
+	return `${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}${readArgsText(args, theme)}`;
 }
 function trimTrailingEmptyLines(lines: string[]): string[] {
 	let end = lines.length;
@@ -100,13 +108,9 @@ function formatCompactReadCall(
 	args: ReadRenderArgs | undefined,
 	theme: Theme,
 ): string {
-	const expandHint = theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
 	if (classification.kind === "skill") {
 		return (
-			theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
-			theme.fg("customMessageText", classification.label) +
-			styledReadLineRange(args, theme) +
-			expandHint
+			theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) + theme.fg("customMessageText", classification.label)
 		);
 	}
 
@@ -115,7 +119,7 @@ function formatCompactReadCall(
 		" " +
 		theme.fg("accent", classification.label) +
 		styledReadLineRange(args, theme) +
-		expandHint
+		theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`)
 	);
 }
 function formatReadResult(

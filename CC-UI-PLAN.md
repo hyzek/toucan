@@ -305,6 +305,35 @@ Manual check:
 - [ ] Resume a session: the same turn lines appear, timed from the stored timestamps.
 - [ ] Light theme: bands, accent bars and gutters stay readable.
 
+## Phase 8 — Bash and search rows after b24
+
+The first port kept the old bash renderer and previewed search results. Both were the largest remaining
+differences from the reference plugin. This phase aligns the row content:
+
+- Bash: `Bash <headline>` with the duration right-aligned on the call line; the command source appears
+  under the guide only when expanded; collapsed output is `Done (N lines)` plus the first 10 lines and
+  `... (N more lines)`; errors are `Exit N`; the separate `Took ...` row is gone. The command headline
+  skips `cd`/`set`/assignments, is middle-truncated to 180 characters, and appends `· N lines` for a
+  multi-line script. `bash-command.ts` owns that model.
+- Read: paths are relative to the session cwd; normal reads use the reference `(offset=…, limit=…)`
+  argument form. A SKILL.md read is just `[skill] name`; docs/resources keep their compact range and
+  expand hint.
+- Grep/find/ls: collapsed rows report `N matches` / `N files` / `N entries` instead of dumping hits;
+  expanding lists the first 8 and adds `… N more`. Find and ls use the reference Nerd Font file and
+  directory icons; the guide is the tree. Empty and error states say `no matches`, `no files found`,
+  `empty directory`, or `Failed`. Truncation is marked on the summary, not repeated as a warning row.
+- Write: a file that did not exist before is labelled `Create` before the result arrives (the result's
+  recorded flag corrects a replay); unchanged writes say `✓ no changes`; writes that cannot be
+  diffed say `Written`; errors sit under the guide.
+- Read: a SKILL.md row is just `[skill] name`, as the reference draws it; docs/resources keep their
+  compact range and expand hint.
+- Shared: `renderToolPath` now shortens absolute paths under the session cwd. `ToolBranchBlock` can
+  leave its guide open when a call block continues into its result.
+
+Remaining deliberate or open differences from the plugin: the `├ │ └` guide instead of `└` plus plain
+indent, `Ls` instead of `List`, syntax-highlighted expanded reads instead of dim text, the bash
+10-line preview vs the plugin's summary-only default, and toucan's diff surfaces/rules.
+
 ## Open questions (answer before starting the phase)
 
 - Phase 2: exact verb list — copy the plugin's gerunds or write our own?

@@ -73,3 +73,32 @@ describe("read tool rendering", () => {
 		]);
 	});
 });
+
+describe("read call row", () => {
+	beforeAll(() => initTheme("dark"));
+
+	function callLine(args: { path?: string; offset?: number; limit?: number }): string {
+		const component = tool.renderCall(args, theme, renderContext({ args }));
+		return stripAnsi(component.render(80).join("\n")).trimEnd();
+	}
+
+	it("shows a path relative to the session cwd", () => {
+		expect(callLine({ path: "/repo/src/app.ts" })).toBe("• Read src/app.ts");
+	});
+
+	it("writes offset and limit the way the reference row does", () => {
+		expect(callLine({ path: "/repo/src/app.ts", offset: 10, limit: 20 })).toBe(
+			"• Read src/app.ts (offset=10, limit=20)",
+		);
+	});
+
+	it("renders SKILL.md as a plain skill label, as the reference row does", () => {
+		const component = tool.renderCall(
+			{ path: "/repo/.toucan/skills/demo/SKILL.md", offset: 1, limit: 20 },
+			theme,
+			renderContext({ args: { path: "/repo/.toucan/skills/demo/SKILL.md", offset: 1, limit: 20 } }),
+		);
+		const rendered = stripAnsi(component.render(80).join("\n")).trimEnd();
+		expect(rendered).toBe("• [skill] demo");
+	});
+});

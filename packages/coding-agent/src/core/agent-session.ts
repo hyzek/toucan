@@ -3766,6 +3766,9 @@ export class AgentSession {
 		const autoResizeImages = this.settingsManager.getImageAutoResize();
 		const shellCommandPrefix = this.settingsManager.getShellCommandPrefix();
 		const shellPath = this.settingsManager.getShellPath();
+		// Subagents are opt-in: disabled, the tool is never registered, so no
+		// allow-list or default activation can bring it back.
+		const subagentsEnabled = this.settingsManager.getSubagentsEnabled();
 		const baseToolDefinitions = this._baseToolsOverride
 			? Object.fromEntries(
 					Object.entries(this._baseToolsOverride).map(([name, tool]) => [
@@ -3776,9 +3779,7 @@ export class AgentSession {
 			: createAllToolDefinitions(this._cwd, {
 					read: { autoResizeImages },
 					bash: { commandPrefix: shellCommandPrefix, shellPath },
-					subagent: {
-						manager: () => this.subagentManager,
-					},
+					...(subagentsEnabled ? { subagent: { manager: () => this.subagentManager } } : {}),
 				});
 
 		this._baseToolDefinitions = new Map(
@@ -3807,7 +3808,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write", "subagent"];
+			: ["read", "bash", "edit", "write", ...(subagentsEnabled ? ["subagent"] : [])];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,
@@ -3844,11 +3845,21 @@ export class AgentSession {
 		const addedDefaultTools = getDefaultTools().filter((name) => !previousDefaultTools.has(name));
 		// Tools the new extensions register later, such as MCP tools, are pending until then.
 		for (const name of this.getActiveToolNames()) this._pendingToolNames.add(name);
+		const previousToolNames = new Set(this._toolDefinitions.keys());
 		this._buildRuntime({
 			activeToolNames: [...this.getActiveToolNames(), ...addedDefaultTools],
 			flagValues: previousFlagValues,
 			includeAllExtensionTools: true,
 		});
+		// A default tool that was not registered before this reload, such as `subagent` after enabling
+		// it, is not in `addedDefaultTools`; activate it now that the reload registered it.
+		const activeToolNames = this.getActiveToolNames();
+		const newlyRegisteredDefaults = getDefaultTools().filter(
+			(name) => !previousToolNames.has(name) && !activeToolNames.includes(name) && this._toolDefinitions.has(name),
+		);
+		if (newlyRegisteredDefaults.length > 0) {
+			this.setActiveToolsByName([...activeToolNames, ...newlyRegisteredDefaults]);
+		}
 
 		const hasBindings =
 			this._extensionUIContext ||

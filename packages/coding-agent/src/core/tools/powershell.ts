@@ -40,7 +40,7 @@ const powershellToolConfig: ShellToolConfig = {
 	name: "powershell",
 	label: "powershell",
 	shellName: "PowerShell",
-	prompt: "PS>",
+	renderLabel: "PowerShell",
 	promptSnippet: powershellToolSystemPromptContribution.snippet,
 	promptGuidelines: powershellToolSystemPromptContribution.guidelines,
 	tempFilePrefix: "toucan-powershell",
