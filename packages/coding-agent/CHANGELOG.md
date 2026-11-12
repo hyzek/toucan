@@ -8,12 +8,14 @@
 
 ### Added
 
+- Plan mode is built in: `shift+tab` or `/plan` toggles a read-only research mode. While on, `edit`, `write`, `powershell` and `subagent` are deactivated, `bash` only runs allowlisted read-only commands, the system prompt gains a `plan_mode` section (research-only, no write-style MCP calls, answer with a numbered `Plan:`), and the footer bar shows a right-aligned purple `◇ Plan mode`. The editor border tints with the new `planMode` theme token (falls back to `accent`). The mode persists in the session and resumes with it
 - Toucan Web is built in: it registers `web_search`, `fetch_content`, `get_search_content`, `source_check`, and `web_enable`, plus `/search` and `/google-account`. Its curator browser UI is disabled: `/websearch`, `/curator`, and the curator shortcut are not registered, and searches always run with `workflow: "none"`. It reads `web-search.json` from the Toucan agent directory. Disable it with `-builtin:toucan-web`
 - `/skills` lists every loaded skill and `/context` lists every loaded AGENTS.md context file, each as a tree grouped by where it loads from (user, project, or installed package)
 - `/context` now starts with the estimated active context: percent used, tokens used, and the model's context window, followed by the context-file tree
 
 ### Changed
 
+- The thinking-level cycle moved from `shift+tab` to `alt+t` (`app.thinking.cycle`), freeing `shift+tab` for the new plan mode toggle (`app.planMode.toggle`); custom `keybindings.json` overrides are untouched
 - Subagents are now off by default: the new `subagents.enabled` setting (also in `/settings`) registers the `subagent` tool and with it the agent command center (`Left` at an empty prompt, `/agents`). Disabled, the tool is not registered at all and the `← for agents` hint is hidden. Changing it takes effect on `/reload`. The footer hint row is now built from dynamically registered, explicitly ordered items (`HotkeyHints.add("agents", ..., order)`), so features contribute hints without the bar knowing about them
 - The working line shows the full token count with dot grouping (`1.000 tokens`, `500.000 tokens`) instead of abbreviating it, and its runtime switches to minutes and hours (`1m 5s`, `1h 1m 10s`) instead of counting seconds indefinitely
 - While the agent is working, the working status row stays above the open `/` command menu instead of being pushed below it

@@ -103,6 +103,11 @@ export const THEME_TOKENS = defineThemeTokens({
 		fallback: "thinkingXhigh",
 	},
 	bashMode: { slot: "foreground", description: "Editor border color in bash mode" },
+	planMode: {
+		slot: "foreground",
+		description: "Plan mode indicator color and editor border in plan mode",
+		fallback: "accent",
+	},
 });
 
 export type ThemeToken = keyof typeof THEME_TOKENS;

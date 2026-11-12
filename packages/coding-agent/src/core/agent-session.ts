@@ -120,6 +120,12 @@ import { type BashExecutionMessage, type CustomMessage, convertToLlm } from "./m
 import { ModelRegistry } from "./model-registry.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import { NestedToolCallRunner } from "./nested-tool-calls.ts";
+import {
+	isReadOnlyBashCommand,
+	PLAN_MODE_ENSURED_TOOLS,
+	PLAN_MODE_PROMPT,
+	PLAN_MODE_REMOVED_TOOLS,
+} from "./plan-mode.ts";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.ts";
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.ts";
 import { exportSessionToJsonl } from "./session-export.ts";
@@ -491,6 +497,10 @@ export class AgentSession {
 	private _allowlistFiltersMcp = false;
 	private _excludedTools?: (name: string) => boolean;
 	private _baseToolsOverride?: Record<string, AgentTool>;
+	/** Plan mode: read-only research mode. Active tools are swapped while it is on. */
+	private _planMode = false;
+	/** Active tools captured when plan mode turned on, restored when it turns off. */
+	private _toolsBeforePlanMode: string[] | undefined;
 	private _sessionStartEvent: SessionStartEvent;
 	private _extensionUIContext?: ExtensionUIContext;
 	private _extensionMode: ExtensionMode = "print";
@@ -542,6 +552,7 @@ export class AgentSession {
 		this._excludedTools = config.excludedToolNames ? createToolNameMatcher(config.excludedToolNames) : undefined;
 		this._baseToolsOverride = config.baseToolsOverride;
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
+		this._restorePlanMode();
 
 		// Always subscribe to agent events for internal handling
 		// (session persistence, extensions, auto-compaction, retry logic)
@@ -719,6 +730,16 @@ export class AgentSession {
 		{ toolCall, args }: BeforeToolCallContext,
 		parentToolCallId?: string,
 	): Promise<BeforeToolCallResult | undefined> {
+		// Plan mode's read-only guarantee. Trust boundary: model-supplied tool arguments.
+		if (this._planMode && toolCall.name === "bash") {
+			const command = (args as { command?: unknown }).command;
+			if (typeof command !== "string" || !isReadOnlyBashCommand(command)) {
+				return {
+					block: true,
+					reason: `Plan mode: bash is limited to read-only commands. Blocked: ${command ?? "(no command)"}. Turn plan mode off (/plan) to run it.`,
+				};
+			}
+		}
 		const runner = this._extensionRunner;
 		if (!runner.hasHandlers("tool_call")) {
 			return undefined;
@@ -1615,6 +1636,71 @@ export class AgentSession {
 		this._rebuildSystemPrompt(tools.map((tool) => tool.name));
 	}
 
+	/** Whether plan mode (read-only research and planning) is active. */
+	get planMode(): boolean {
+		return this._planMode;
+	}
+
+	/** Turn plan mode on: deactivate state-changing tools and add the plan_mode prompt section. */
+	enablePlanMode(): void {
+		if (this._planMode) return;
+		this._toolsBeforePlanMode = this.getActiveToolNames();
+		this._planMode = true;
+		this._applyPlanModeTools();
+		this._appendPlanModeEntry();
+	}
+
+	/** Turn plan mode off: restore the tools that were active before it turned on. */
+	disablePlanMode(): void {
+		if (!this._planMode) return;
+		this._planMode = false;
+		this.setActiveToolsByName(this._toolsBeforePlanMode ?? this.getActiveToolNames());
+		this._toolsBeforePlanMode = undefined;
+		this._appendPlanModeEntry();
+	}
+
+	/** Toggle plan mode. Returns the new state. Takes effect on the next agent turn. */
+	togglePlanMode(): boolean {
+		if (this._planMode) this.disablePlanMode();
+		else this.enablePlanMode();
+		return this._planMode;
+	}
+
+	/**
+	 * Activate the plan-mode tool set: previously active tools minus the state-changing
+	 * built-ins, plus the read-only built-ins that are registered. MCP and extension tools
+	 * stay as they were; write restraint there is prompt-level.
+	 */
+	private _applyPlanModeTools(): void {
+		const active = this._toolsBeforePlanMode ?? this.getActiveToolNames();
+		const kept = active.filter((name) => !PLAN_MODE_REMOVED_TOOLS.has(name));
+		const ensured = PLAN_MODE_ENSURED_TOOLS.filter((name) => this._toolRegistry.has(name));
+		this.setActiveToolsByName([...new Set([...kept, ...ensured])]);
+	}
+
+	/** Persist plan mode so resume restores it. Data is our own entry; readers re-validate shape. */
+	private _appendPlanModeEntry(): void {
+		this.sessionManager.appendCustomEntry("plan-mode", {
+			enabled: this._planMode,
+			toolsBeforePlanMode: this._toolsBeforePlanMode,
+		});
+	}
+
+	/** Restore plan mode from the session's entries (trust boundary: session file contents). */
+	private _restorePlanMode(): void {
+		const entries = this.sessionManager.getEntries();
+		for (let i = entries.length - 1; i >= 0; i--) {
+			const entry = entries[i];
+			if (entry.type !== "custom" || entry.customType !== "plan-mode") continue;
+			const data = entry.data as { enabled?: unknown; toolsBeforePlanMode?: unknown } | undefined;
+			this._planMode = data?.enabled === true;
+			this._toolsBeforePlanMode = Array.isArray(data?.toolsBeforePlanMode)
+				? data.toolsBeforePlanMode.filter((name): name is string => typeof name === "string")
+				: undefined;
+			return;
+		}
+	}
+
 	/**
 	 * Whether `--tools` and `--exclude-tools` keep the tool registered. MCP tools stay registered
 	 * unless the allowlist filters them (see `_allowlistFiltersMcp`).
@@ -1812,6 +1898,7 @@ export class AgentSession {
 			hiddenTools: [...this._hiddenDeclarations],
 			toolSnippets,
 			toolGuidelines: Object.fromEntries(this._toolPromptGuidelines),
+			sections: this._planMode ? { plan_mode: PLAN_MODE_PROMPT } : {},
 		});
 	}
 
@@ -3814,6 +3901,8 @@ export class AgentSession {
 			activeToolNames: baseActiveToolNames,
 			includeAllExtensionTools: options.includeAllExtensionTools,
 		});
+		// Plan mode outlives reloads and runtime rebuilds: re-apply its tool set.
+		if (this._planMode) this._applyPlanModeTools();
 	}
 
 	async reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void> {

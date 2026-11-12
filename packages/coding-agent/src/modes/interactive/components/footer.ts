@@ -116,6 +116,12 @@ export class FooterComponent implements Component {
 		if (areExperimentalFeaturesEnabled()) {
 			bar += ` · ${theme.bold(theme.fg("warning", "xp"))}`;
 		}
+		// Plan mode badge, right-aligned on the same bar. Dropped when the width is tight.
+		if (this.session.planMode) {
+			const badge = theme.fg("planMode", "◇ Plan mode");
+			const gap = width - visibleWidth(bar) - visibleWidth(badge);
+			if (gap >= 2) bar += " ".repeat(gap) + badge;
+		}
 		if (visibleWidth(bar) > width) {
 			bar = truncateToWidth(bar, width, theme.fg("dim", "..."));
 		}

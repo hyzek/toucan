@@ -112,7 +112,7 @@ Theme colors describe interface roles rather than individual components. Use the
 | Markdown | `md*` |
 | Tool diffs | `toolDiff*` |
 | Syntax highlighting | `syntax*` |
-| Editor modes | `thinking*`, `bashMode` |
+| Editor modes | `thinking*`, `bashMode`, `planMode` |
 | HTML export | `export.pageBg`, `export.cardBg`, `export.infoBg` |
 
 The schema is the format reference. The built-in themes provide complete values that you can copy and adjust.

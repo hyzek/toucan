@@ -215,6 +215,10 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Cycle thinking level"
     },
+    "app.planMode.toggle": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Toggle plan mode"
+    },
     "app.model.cycleForward": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Cycle to next model"

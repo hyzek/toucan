@@ -322,6 +322,10 @@
         "bashMode": {
           "$ref": "#/$defs/ColorValue",
           "description": "Editor border color in bash mode"
+        },
+        "planMode": {
+          "$ref": "#/$defs/ColorValue",
+          "description": "Plan mode indicator color and editor border in plan mode"
         }
       },
       "description": "Theme color definitions (scrollbar, thinkingMax, and search highlight colors are optional and use compatible fallbacks)",

@@ -381,6 +381,10 @@ export class Theme {
 	getBashModeBorderColor(): (str: string) => string {
 		return (str: string) => this.fg("bashMode", str);
 	}
+
+	getPlanModeBorderColor(): (str: string) => string {
+		return (str: string) => this.fg("planMode", str);
+	}
 }
 
 // ============================================================================

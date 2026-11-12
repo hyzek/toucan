@@ -1089,6 +1089,7 @@ export class InteractiveMode {
 					hint("app.suspend", "to suspend"),
 					keyHint("tui.editor.deleteToLineEnd", "to delete to end"),
 					hint("app.thinking.cycle", "to cycle thinking level"),
+					hint("app.planMode.toggle", "to toggle plan mode"),
 					rawKeyHint(
 						`${keyText("app.model.cycleForward")}/${keyText("app.model.cycleBackward")}`,
 						"to cycle models",
@@ -2946,6 +2947,7 @@ export class InteractiveMode {
 		this.defaultEditor.onCtrlD = () => this.handleCtrlD();
 		this.defaultEditor.onAction("app.suspend", () => this.handleCtrlZ());
 		this.defaultEditor.onAction("app.thinking.cycle", () => this.cycleThinkingLevel());
+		this.defaultEditor.onAction("app.planMode.toggle", () => this.togglePlanMode());
 		this.defaultEditor.onAction("app.model.cycleForward", () => this.cycleModel("forward"));
 		this.defaultEditor.onAction("app.model.cycleBackward", () => this.cycleModel("backward"));
 
@@ -3159,6 +3161,11 @@ export class InteractiveMode {
 			if (text === "/new") {
 				this.editor.setText("");
 				await this.handleClearCommand();
+				return;
+			}
+			if (text === "/plan") {
+				this.editor.setText("");
+				this.togglePlanMode();
 				return;
 			}
 			if (text === "/compact" || text.startsWith("/compact ")) {
@@ -4556,12 +4563,22 @@ export class InteractiveMode {
 	private updateEditorBorderColor(): void {
 		if (this.isBashMode) {
 			this.editor.borderColor = theme.getBashModeBorderColor();
+		} else if (this.session.planMode) {
+			this.editor.borderColor = theme.getPlanModeBorderColor();
 		} else {
 			const level = this.session.thinkingLevel || "off";
 			this.editor.borderColor = theme.getThinkingBorderColor(level);
 		}
 		this.activeStatusIndicator?.invalidate();
 		this.ui.requestRender();
+	}
+
+	/** Toggle plan mode (read-only research), mirroring the thinking-level cycle's feedback. */
+	private togglePlanMode(): void {
+		const enabled = this.session.togglePlanMode();
+		this.footer.invalidate();
+		this.updateEditorBorderColor();
+		this.showStatus(enabled ? "Plan mode: read-only research" : "Plan mode off: full access");
 	}
 
 	private cycleThinkingLevel(): void {
@@ -6955,6 +6972,7 @@ export class InteractiveMode {
 		const exit = this.getAppKeyDisplay("app.exit");
 		const suspend = this.getAppKeyDisplay("app.suspend");
 		const cycleThinkingLevel = this.getAppKeyDisplay("app.thinking.cycle");
+		const togglePlanMode = this.getAppKeyDisplay("app.planMode.toggle");
 		const cycleModelForward = this.getAppKeyDisplay("app.model.cycleForward");
 		const selectModel = this.getAppKeyDisplay("app.model.select");
 		const expandTools = this.getAppKeyDisplay("app.tools.expand");
@@ -7013,6 +7031,7 @@ export class InteractiveMode {
 | \`${exit}\` | Exit (when editor is empty) |
 | \`${suspend}\` | Suspend to background |
 | \`${cycleThinkingLevel}\` | Cycle thinking level |
+| \`${togglePlanMode}\` | Toggle plan mode (read-only research) |
 | \`${cycleModelForward}\` / \`${cycleModelBackward}\` | Cycle models |
 | \`${selectModel}\` | Open model selector |
 | \`${expandTools}\` | Toggle tool output expansion |

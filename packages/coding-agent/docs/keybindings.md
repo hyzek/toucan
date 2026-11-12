@@ -153,8 +153,9 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 | `app.model.cycleForward` | `ctrl+p` | Cycle to next model |
 | `app.model.cycleBackward` | `shift+ctrl+p` (`alt+p` on Windows and WSL) | Cycle to previous model |
 | `app.models.save` | `ctrl+s` | Save the scoped model configuration to settings (scoped models selector) |
-| `app.thinking.cycle` | `shift+tab` | Cycle thinking level |
+| `app.thinking.cycle` | `alt+t` | Cycle thinking level |
 | `app.thinking.toggle` | `ctrl+t` | Collapse or expand thinking blocks |
+| `app.planMode.toggle` | `shift+tab` | Toggle plan mode (read-only research and planning) |
 
 ### Display and Message Queue
 
