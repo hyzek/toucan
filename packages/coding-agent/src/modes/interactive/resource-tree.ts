@@ -55,14 +55,14 @@ function formatContextTree(files: readonly ContextFile[], cwd: string): string {
 
 /** One line with the estimated percent and tokens used, and the model's context window. */
 function formatContextUsage(usage: ContextUsage | undefined): string {
-	const label = theme.fg("dim", "Context usage:");
-	if (!usage) return `${label} ${theme.fg("muted", "unavailable")}`;
+	const label = theme.bold(theme.fg("accent", "Context usage"));
+	if (!usage) return `${label}: ${theme.fg("muted", "unavailable")}`;
 	if (usage.tokens === null || usage.percent === null) {
 		const limit = `${usage.contextWindow.toLocaleString()} token limit`;
-		return `${label} ${theme.fg("muted", `unknown until the next model response (${limit})`)}`;
+		return `${label}: ${theme.fg("muted", `unknown until the next model response (${limit})`)}`;
 	}
 	const detail = `${Math.round(usage.percent)}% · ${usage.tokens.toLocaleString()} / ${usage.contextWindow.toLocaleString()} tokens`;
-	return `${label} ${theme.fg("text", detail)} ${theme.fg("dim", "(estimated)")}`;
+	return `${label}: ${theme.fg("text", detail)} ${theme.fg("dim", "(estimated)")}`;
 }
 
 /** Draw a forest of groups with blank lines between top-level groups. */
