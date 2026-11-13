@@ -5,7 +5,7 @@
  * run finishes.
  */
 
-import type { ThinkingLevel } from "@hyzek/toucan-agent-core";
+import type { BeforeToolCallContext, BeforeToolCallResult, ThinkingLevel } from "@hyzek/toucan-agent-core";
 import type { Api, AssistantMessage, Model } from "@hyzek/toucan-ai";
 import { getAgentDir } from "../../config.ts";
 import type { AgentSession } from "../agent-session.ts";
@@ -25,6 +25,8 @@ export interface SubagentRuntime {
 	sessionManager: SessionManager;
 	model: Model<Api> | undefined;
 	thinkingLevel: ThinkingLevel;
+	isToolAllowed?: (name: string) => boolean;
+	beforeToolCall?: (context: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
 }
 
 export interface SubagentRunUsage {
@@ -122,8 +124,16 @@ export async function startSubagentSession(request: {
 		resourceLoader,
 		model,
 		thinkingLevel,
-		tools: definition.tools ? [...definition.tools] : [...ASSIGNABLE_TOOL_NAMES],
+		tools: (definition.tools ?? ASSIGNABLE_TOOL_NAMES).filter((name) => runtime.isToolAllowed?.(name) ?? true),
 	});
+	const childBeforeToolCall = session.agent.beforeToolCall;
+	session.agent.beforeToolCall = async (context, callSignal) => {
+		if (runtime.isToolAllowed && !runtime.isToolAllowed(context.toolCall.name)) {
+			return { block: true, reason: "Tool is disabled in the parent session." };
+		}
+		const parentResult = await runtime.beforeToolCall?.(context);
+		return parentResult?.block ? parentResult : childBeforeToolCall?.(context, callSignal);
+	};
 
 	let abortRequested = false;
 	const handleAbort = () => {
@@ -133,11 +143,15 @@ export async function startSubagentSession(request: {
 	if (signal) {
 		if (signal.aborted) handleAbort();
 		else signal.addEventListener("abort", handleAbort);
+		session.agent.subscribe((event) => {
+			if (event.type === "agent_start" && signal.aborted) session.agent.abort();
+		});
 	}
 
 	// Graceful turn limit: count this run's assistant turns (a resume starts fresh),
 	// warn at the limit, abort after the grace period.
 	let turnAbort = false;
+	const startMessageCount = session.messages.length;
 	if (maxTurns !== undefined && maxTurns > 0) {
 		let assistantTurns = 0;
 		let warned = false;
@@ -155,8 +169,7 @@ export async function startSubagentSession(request: {
 	}
 
 	let runError: unknown;
-	const done = session
-		.prompt(task, { expandPromptTemplates: false })
+	const done = (signal?.aborted ? Promise.resolve() : session.prompt(task, { expandPromptTemplates: false }))
 		.catch((error) => {
 			runError = error;
 		})
@@ -165,7 +178,15 @@ export async function startSubagentSession(request: {
 		})
 		.then(async () => {
 			try {
-				return await collectResult({ session, sessionManager, model, abortRequested, turnAbort, runError });
+				return await collectResult({
+					session,
+					sessionManager,
+					model,
+					abortRequested,
+					turnAbort,
+					runError,
+					startMessageCount,
+				});
 			} finally {
 				session.dispose();
 			}
@@ -186,12 +207,13 @@ function collectResult(input: {
 	abortRequested: boolean;
 	turnAbort: boolean;
 	runError: unknown;
+	startMessageCount: number;
 }): SubagentRunResult {
 	const { session, sessionManager, model, abortRequested, turnAbort, runError } = input;
 	const usage: SubagentRunUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
 	let turns = 0;
 	let lastAssistant: AssistantMessage | undefined;
-	for (const message of session.messages) {
+	for (const message of session.messages.slice(input.startMessageCount)) {
 		if (message.role !== "assistant") continue;
 		turns++;
 		lastAssistant = message;

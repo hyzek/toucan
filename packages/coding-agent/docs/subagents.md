@@ -15,6 +15,7 @@ subagent({ action: "spawn", agent: "explore", task: "Find every file that handle
 - By default the spawn is **background**: the call returns the agent's id right away, and its result arrives as a follow-up message when it finishes, before the next step of your work. It shows in the transcript as tool-style rows (one row per finished agent with its answer under a `└─` guide, folded like a read row), not as a prompt. Pass `background: false` to block the call and get the answer inline.
 - The subagent does not see the conversation that spawned it. Write the `task` so it carries everything the subagent needs.
 - The subagent runs with its own tools, model, and system prompt, decided by its agent type (below). It cannot call `subagent` itself.
+- Child tool calls pass through the parent's tool-call extension hooks and explicit allow/deny lists. Read, shell, edit and write tools must also be active in the parent session; grep, find and ls require the parent's read tool.
 - Each run gets its own session file next to the calling session and nests under it in `/resume`.
 - Press Esc while a `background: false` call runs to stop the subagent; the partial output is reported as incomplete. Background runs keep going; stop one with the `stop` action.
 
@@ -44,7 +45,7 @@ The continuation re-reads the agent type's current definition (its `model:`, `to
 | --- | --- | --- |
 | `general-purpose` | all built-in tools | the default Toucan prompt, plus a short subagent note |
 | `explore` | read, grep, find, ls | standalone read-only exploration prompt |
-| `plan` | read, bash, grep, find, ls | standalone read-only architect prompt |
+| `plan` | read, grep, find, ls | standalone read-only architect prompt |
 
 ## Custom agent types
 
@@ -77,7 +78,7 @@ All fields are optional.
 | --- | --- | --- |
 | `name` | filename | the type name used by the tool |
 | `description` | first body line | shown to the model when it picks a type |
-| `tools` | all built-in tools | comma-separated tool names: `read, bash, edit, write, grep, find, ls, powershell` |
+| `tools` | all built-in tools | comma-separated tool names: `read, bash, edit, write, grep, find, ls, powershell`. An empty list grants no tools |
 | `model` | the parent's model | `provider/modelId`, or a fuzzy name such as `"haiku"` matched against configured models |
 | `thinking` | the parent's level | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
 | `max_turns` | unlimited | agentic turns before the agent is told to wrap up; the run aborts after a 5-turn grace period. A `max_turns` on the spawn call applies when the file sets none; the file wins when it does |

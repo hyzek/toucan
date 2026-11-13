@@ -575,6 +575,10 @@ export class AgentSession {
 					sessionManager: this.sessionManager,
 					model: this.model,
 					thinkingLevel: this.thinkingLevel,
+					isToolAllowed: (name) =>
+						this._isAllowedTool(name) &&
+						this.getActiveToolNames().includes(["grep", "find", "ls"].includes(name) ? "read" : name),
+					beforeToolCall: (context) => this._beforeToolCall(context),
 				}),
 				maxConcurrent: () => this.settingsManager.getSubagentsMaxConcurrent(),
 				notifyParent: (text) => this.sendUserMessage(text, { deliverAs: "followUp", expandPromptTemplates: false }),

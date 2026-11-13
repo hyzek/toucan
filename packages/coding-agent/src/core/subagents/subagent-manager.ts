@@ -76,6 +76,8 @@ export class SubagentManager {
 	private records = new Map<string, SubagentRecord>();
 	private spawnRequests = new Map<string, SpawnRequest>();
 	private handles = new Map<string, SubagentHandle>();
+	private abortControllers = new Map<string, AbortController>();
+	private disposed = false;
 	private completions = new Map<
 		string,
 		{ promise: Promise<SubagentRecord>; settle: (record: SubagentRecord) => void }
@@ -139,6 +141,12 @@ export class SubagentManager {
 	 * concurrency limit; foreground spawns always start at once.
 	 */
 	spawn(request: SpawnRequest): SubagentRecord {
+		if (
+			request.resumeSessionFile &&
+			[...this.spawnRequests.values()].some((pending) => pending.resumeSessionFile === request.resumeSessionFile)
+		) {
+			throw new Error("That subagent session is already being resumed.");
+		}
 		const id = `agent-${(this.nextId++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 		const record: SubagentRecord = {
 			id,
@@ -184,12 +192,13 @@ export class SubagentManager {
 			record.status = "stopped";
 			record.finishedAt = Date.now();
 			this.settleCompletion(record);
+			this.spawnRequests.delete(id);
 			if (record.background) this.noteCompletion(record);
 			this.emitChange();
 			return;
 		}
 		if (record.status === "running") {
-			this.handles.get(id)?.abort();
+			this.abortControllers.get(id)?.abort();
 			return;
 		}
 		throw new Error(`Subagent ${id} is already ${record.status}.`);
@@ -197,13 +206,15 @@ export class SubagentManager {
 
 	/** Stop every running child and drop pending notifications. Called when the parent session dies. */
 	stopAll(): void {
+		this.disposed = true;
 		if (this.flushTimer !== undefined) {
 			clearTimeout(this.flushTimer);
 			this.flushTimer = undefined;
 		}
 		this.pendingNotes = [];
+		this.ackedNotes = [];
 		for (const [id, record] of this.records) {
-			if (record.status === "running") this.handles.get(id)?.abort();
+			if (record.status === "running") this.abortControllers.get(id)?.abort();
 			else if (record.status === "queued") this.stop(id);
 		}
 	}
@@ -214,6 +225,8 @@ export class SubagentManager {
 
 		const request = this.spawnRequests.get(record.id);
 		if (!request) return;
+		const controller = new AbortController();
+		this.abortControllers.set(record.id, controller);
 
 		this.running++;
 		record.status = "running";
@@ -228,7 +241,7 @@ export class SubagentManager {
 				task: request.task,
 				model: request.model,
 				thinkingLevel: request.thinkingLevel,
-				signal: request.signal,
+				signal: request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal,
 				maxTurns: request.definition.maxTurns ?? request.maxTurns,
 				resumeSessionFile: request.resumeSessionFile,
 			});
@@ -238,6 +251,7 @@ export class SubagentManager {
 		} catch (error) {
 			failure = error instanceof Error ? error.message : String(error);
 		} finally {
+			this.abortControllers.delete(record.id);
 			this.running--;
 		}
 
@@ -290,6 +304,7 @@ export class SubagentManager {
 	}
 
 	private noteCompletion(record: SubagentRecord): void {
+		if (this.disposed) return;
 		this.pendingNotes.push(record);
 		if (this.flushTimer !== undefined) return;
 		this.flushTimer = setTimeout(() => {
@@ -305,14 +320,15 @@ export class SubagentManager {
 		// Record the turn the note is offered into: if that turn ends without the
 		// parent having read it, the same batch is offered again next boundary.
 		const text = formatCompletionNotes(notes);
+		const acknowledgements = notes.map((record) => ({ record, text }));
+		this.ackedNotes.push(...acknowledgements);
 		try {
 			await this.deps.notifyParent(text);
-			// Acked: in the queue or the transcript, awaiting delivery (a user
-			// message start) before the next turn boundary.
-			this.ackedNotes.push(...notes.map((record) => ({ record, text })));
 		} catch {
+			const undelivered = acknowledgements.filter((ack) => this.ackedNotes.includes(ack));
+			this.ackedNotes = this.ackedNotes.filter((ack) => !acknowledgements.includes(ack));
 			// The parent session is gone (replaced or disposed mid-flush); re-queue the batch.
-			this.pendingNotes.unshift(...notes);
+			if (!this.disposed) this.pendingNotes.unshift(...undelivered.map((ack) => ack.record));
 		}
 	}
 

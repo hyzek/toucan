@@ -13,7 +13,15 @@
 - The working line shows the full token count with dot grouping (`1.000 tokens`, `500.000 tokens`) instead of abbreviating it, and its runtime switches to minutes and hours (`1m 5s`, `1h 1m 10s`) instead of counting seconds indefinitely
 - While the agent is working, the working status row stays above the open `/` command menu instead of being pushed below it
 - The fullscreen `Jump to latest ↓` line brightens to the text color while hovered; clicking it still resumes following
+- The built-in planning agent now uses only read, grep, find, and ls; shell and file mutation tools must be active in the parent to be assigned to any subagent
 - Tool rows show paths under the session working directory relative to it, and a `SKILL.md` read as just `[skill] name`. Shell rows read `Bash <headline>` with the duration on the call line, keep the command source for the expanded view, and report `Done (N lines)` or `Exit N` with a 10-line preview instead of a separate timing row. Grep, find, and ls collapse to `N matches`, `N files`, or `N entries` and list at most 8 items when expanded. A write to a new file says `Create`, an unchanged write `✓ no changes`, and an undiffable write `Written`
+
+### Fixed
+
+- Subagent tool calls now respect parent tool restrictions and extension tool-call hooks, stopping during startup works, and disposal does not send later completion notices
+- Subagent notifications are acknowledged before delivery, concurrent resumes of the same session are rejected, and continuation usage counts only the new run
+- Empty agent tool lists grant no tools, malformed lists reject the definition, and `enabled: false` disables a built-in agent
+- Multi-command shell input is not classified as a single-file edit, and recognized shell edits show their command in the collapsed view
 
 ## [24.0.0] - 2026-11-09
 

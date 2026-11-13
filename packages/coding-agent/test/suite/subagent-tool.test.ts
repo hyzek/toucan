@@ -83,6 +83,71 @@ describe("subagent tool", () => {
 		expect(childTools.sort()).toEqual(["find", "grep", "ls", "read"]);
 	});
 
+	it("enforces the parent extension's tool-call policy inside a child", async () => {
+		isolateAgentDir();
+		let blocked = false;
+		harness = await createHarness({
+			settings: { subagents: { enabled: true } },
+			extensionFactories: [
+				(pi) => {
+					pi.on("tool_call", async (event) => {
+						if (event.toolName !== "write") return undefined;
+						blocked = true;
+						return { block: true, reason: "protected" };
+					});
+				},
+			],
+		});
+		const target = join(harness.tempDir, "protected.txt");
+		harness.setResponses([
+			fauxAssistantMessage([subagentCall("general-purpose", { background: false })], { stopReason: "toolUse" }),
+			fauxAssistantMessage([fauxToolCall("write", { path: target, content: "secret" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage("could not write"),
+			fauxAssistantMessage("done"),
+		]);
+		await harness.session.prompt("go");
+		expect(blocked).toBe(true);
+		expect(existsSync(target)).toBe(false);
+		expect(resultText(getToolResult(harness, "subagent"))).toContain("could not write");
+	});
+
+	it("does not expose a parent-disabled write tool to a child", async () => {
+		isolateAgentDir();
+		harness = await createHarness({
+			settings: { subagents: { enabled: true } },
+			excludedToolNames: ["write"],
+		});
+		let tools: string[] = [];
+		harness.setResponses([
+			fauxAssistantMessage([subagentCall("general-purpose", { background: false })], { stopReason: "toolUse" }),
+			(context: TranscriptContext) => {
+				tools = getCurrentTools(context.messages).map((tool) => tool.name);
+				return fauxAssistantMessage("done");
+			},
+			fauxAssistantMessage("done"),
+		]);
+		await harness.session.prompt("go");
+		expect(tools).not.toContain("write");
+	});
+
+	it("does not give an explicitly tool-less child any built-in tools", async () => {
+		const dir = isolateAgentDir();
+		mkdirSync(join(dir, "agents"));
+		writeFileSync(join(dir, "agents", "no-tools.md"), "---\ntools: []\n---\nAnswer without tools.");
+		harness = await createHarness({ settings: { subagents: { enabled: true } } });
+		let childTools: string[] = [];
+		harness.setResponses([
+			fauxAssistantMessage([subagentCall("no-tools", { background: false })], { stopReason: "toolUse" }),
+			(context: TranscriptContext) => {
+				childTools = getCurrentTools(context.messages).map((tool) => tool.name);
+				return fauxAssistantMessage("done");
+			},
+			fauxAssistantMessage("done"),
+		]);
+		await harness.session.prompt("go");
+		expect(childTools).toEqual([]);
+	});
+
 	it("fails unknown agent types, listing what is available", async () => {
 		isolateAgentDir();
 		harness = await createHarness({ settings: { subagents: { enabled: true } } });
@@ -294,6 +359,7 @@ describe("subagent tool", () => {
 		);
 		expect(results).toHaveLength(2);
 		expect(resultText(results[1])).toContain("second answer");
+		expect(resultText(results[1])).toContain("1 turns");
 		expect(resumedSawFirstAnswer).toBe(true);
 	}
 });
