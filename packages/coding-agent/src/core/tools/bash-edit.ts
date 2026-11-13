@@ -219,6 +219,7 @@ function tokenize(command: string): Token[] | undefined {
 			i++;
 			continue;
 		}
+		if (char === "\n" || char === "\r") return undefined;
 		if (/\s/.test(char)) {
 			push();
 			continue;
@@ -256,6 +257,7 @@ function stripHeredocBodies(command: string): string | undefined {
 	for (let i = 0; i < lines.length; i++) {
 		const marker = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\s*$/.exec(lines[i]);
 		if (!marker) {
+			if (kept.length > 0 && lines[i].trim()) return undefined;
 			kept.push(lines[i]);
 			continue;
 		}

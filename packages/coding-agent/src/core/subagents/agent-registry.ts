@@ -90,14 +90,16 @@ export function discoverAgentDefinitions(options: {
 
 	const userDir = join(options.agentDir, "agents");
 	for (const definition of loadAgentsFromDir(userDir, "user", diagnostics)) {
-		byName.set(definition.name.toLowerCase(), definition);
+		if ("disabled" in definition) byName.delete(definition.name.toLowerCase());
+		else byName.set(definition.name.toLowerCase(), definition);
 	}
 
 	if (options.projectTrusted) {
 		const projectDir = findNearestProjectAgentsDir(options.cwd);
 		if (projectDir) {
 			for (const definition of loadAgentsFromDir(projectDir, "project", diagnostics)) {
-				byName.set(definition.name.toLowerCase(), definition);
+				if ("disabled" in definition) byName.delete(definition.name.toLowerCase());
+				else byName.set(definition.name.toLowerCase(), definition);
 			}
 		}
 	}
@@ -128,8 +130,8 @@ function loadAgentsFromDir(
 	dir: string,
 	source: Exclude<AgentSource, "builtin">,
 	diagnostics: string[],
-): AgentDefinition[] {
-	const agents: AgentDefinition[] = [];
+): (AgentDefinition | { name: string; disabled: true })[] {
+	const agents: (AgentDefinition | { name: string; disabled: true })[] = [];
 	if (!existsSync(dir)) return agents;
 
 	let entries: Dirent[];
@@ -145,7 +147,7 @@ function loadAgentsFromDir(
 		if (!entry.isFile() && !entry.isSymbolicLink()) continue;
 
 		const filePath = join(dir, entry.name);
-		let definition: AgentDefinition | undefined;
+		let definition: AgentDefinition | { name: string; disabled: true };
 		try {
 			definition = parseAgentFile(readFileSync(filePath, "utf-8"), filePath, source);
 		} catch (error) {
@@ -157,15 +159,13 @@ function loadAgentsFromDir(
 	return agents;
 }
 
-/** Parse one agent markdown file; undefined when the file disables itself. Throws on a malformed name. */
+/** Parse one agent markdown file, including disabled entries that remove an earlier definition. */
 function parseAgentFile(
 	content: string,
 	filePath: string,
 	source: Exclude<AgentSource, "builtin">,
-): AgentDefinition | undefined {
+): AgentDefinition | { name: string; disabled: true } {
 	const { frontmatter, body } = parseFrontmatter<AgentFrontmatter>(content);
-
-	if (frontmatter.enabled === false) return undefined;
 
 	const fallbackName = basename(filePath, ".md");
 	const name =
@@ -173,6 +173,7 @@ function parseAgentFile(
 	if (name.includes("/") || name.includes(":")) {
 		throw new Error(`invalid agent name "${name}"`);
 	}
+	if (frontmatter.enabled === false) return { name, disabled: true };
 
 	const description =
 		typeof frontmatter.description === "string" && frontmatter.description.trim()
@@ -221,16 +222,20 @@ function parseAgentFile(
  *     tools: read, bash        # string
  *     tools: [read, bash]      # array
  *
- * Anything else (a number, a map, a nested list) yields no tools rather than throwing: one bad
- * field must not take down every other agent in the same directory.
+ * An omitted field inherits the built-in tool set. An explicit empty list grants no tools;
+ * malformed fields reject this definition so they cannot grant more access by accident.
  */
 function parseToolList(value: unknown): string[] | undefined {
-	const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) && typeof value !== "string")
+		throw new Error("tools must be a list or comma-separated string");
+	const raw = Array.isArray(value) ? value : value.split(",");
+	if (raw.some((item) => typeof item !== "string")) throw new Error("tools must contain only strings");
 	const tools = raw
 		.filter((item): item is string => typeof item === "string")
 		.map((item) => item.trim())
 		.filter(Boolean);
-	return tools.length > 0 ? tools : undefined;
+	return tools;
 }
 
 function firstBodyLine(body: string): string | undefined {

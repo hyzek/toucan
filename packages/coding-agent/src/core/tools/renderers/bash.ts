@@ -204,7 +204,7 @@ export function createShellRenderers(label: string): Pick<ToolDefinition<any, an
 					duration ? theme.fg("muted", `\u00b7 ${duration}`) : "",
 				),
 			);
-			if (context.expanded && command) {
+			if (command && (context.expanded || detectShellFileEdit(command))) {
 				const commandBlock = renderCommandBlock(command);
 				if (commandBlock) component.addChild(commandBlock);
 			}

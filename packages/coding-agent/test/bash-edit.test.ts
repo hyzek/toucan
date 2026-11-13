@@ -42,6 +42,8 @@ describe("detectShellFileEdit", () => {
 		["sed -i 's/a/b/ f.ts"],
 		["rm -f t.txt"],
 		["git commit -m 'edit'"],
+		["echo changed > main.txt\nrm other.txt"],
+		["cat > main.txt <<EOF\nhello\nEOF\nrm other.txt"],
 	])("leaves %s a plain shell row", (command) => {
 		expect(detectShellFileEdit(command)).toBeUndefined();
 	});
