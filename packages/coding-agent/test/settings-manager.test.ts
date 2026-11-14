@@ -85,6 +85,37 @@ describe("SettingsManager", () => {
 			expect(savedSettings.theme).toBe("light");
 		});
 
+		// Channel builds share one ~/.toucan state dir, so an older channel must load files a
+		// newer channel wrote: unknown keys are kept on save and missing fields fall back to defaults.
+		it("should load and re-save unknown keys written by a newer version", async () => {
+			const settingsPath = join(agentDir, "settings.json");
+			writeFileSync(
+				settingsPath,
+				JSON.stringify(
+					{
+						theme: "dark",
+						futureChannelSetting: { enabled: true, names: ["quantum"] },
+						nestedFuture: { deep: { value: 42 } },
+					},
+					null,
+					2,
+				),
+			);
+
+			const manager = SettingsManager.create(projectDir, agentDir);
+			// Unknown keys do not disturb loading; known fields get their defaults.
+			expect(manager.getGlobalSettings().theme).toBe("dark");
+			expect(manager.drainErrors()).toEqual([]);
+
+			manager.setTheme("light");
+			await manager.flush();
+
+			const savedSettings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+			expect(savedSettings.theme).toBe("light");
+			expect(savedSettings.futureChannelSetting).toEqual({ enabled: true, names: ["quantum"] });
+			expect(savedSettings.nestedFuture).toEqual({ deep: { value: 42 } });
+		});
+
 		it("should let in-memory changes override file changes for same key", async () => {
 			const settingsPath = join(agentDir, "settings.json");
 			writeFileSync(

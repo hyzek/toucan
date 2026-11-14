@@ -81,6 +81,9 @@ These variables are read by Toucan itself:
 | `TOUCAN_CODING_AGENT_DIR` | Override the config directory; default is `~/.toucan/agent` |
 | `TOUCAN_CODING_AGENT_SESSION_DIR` | Override session storage; overridden by `--session-dir` |
 | `TOUCAN_PACKAGE_DIR` | Override the package directory, useful for Nix/Guix store paths |
+| `TOUCAN_HOME` | Override the channel state root; default is `~/.toucan`. See [Channel builds](cli.md#channel-builds) |
+| `TOUCAN_REPO_URL` | Override the git repository channel builds clone from; default is `https://github.com/hyzek/toucan.git` |
+| `TOUCAN_CHANNEL` | Set by the channel launcher to the active channel name |
 | `TOUCAN_OFFLINE` | Disable automatic network activity, including model catalog refreshes |
 | `TOUCAN_SKIP_VERSION_CHECK` | Disable the `pi.dev` latest-version request |
 | `TOUCAN_SELF_UPDATE_COMMAND` | Command `toucan update` runs to update Toucan itself, split on whitespace, with `{packageName}`, `{version}`, and `{installSpec}` placeholders. Takes precedence over the `selfUpdateCommand` setting. See [Custom update command](cli.md#custom-update-command) |

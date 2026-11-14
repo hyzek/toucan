@@ -295,6 +295,24 @@ export TOUCAN_SELF_UPDATE_COMMAND="mise use -g npm:{packageName}@{version}"
 
 `toucan update` runs it only when pi.dev has a newer release, replacing `{packageName}`, `{version}`, and `{installSpec}` (`{packageName}@{version}`) with that release. The value is split on spaces. For arguments with spaces, use the `selfUpdateCommand` setting in `~/.toucan/agent/settings.json` instead, an argv array such as `["nix", "profile", "upgrade", "toucan"]`.
 
+### Channel builds
+
+Channel builds run Toucan from GitHub checkouts under `~/.toucan` instead of npm. Each channel is a separate build, and all builds share the same settings, sessions, and credentials. The `toucan:` source prefix is reserved for channel operations; other source forms address packages.
+
+| Task | Command |
+|---|---|
+| Install or rebuild a channel | `toucan install toucan:<name>[@<ref>]` |
+| List channel builds | `toucan channel` |
+| Switch the active channel | `toucan channel <name>` |
+| Update the running channel build | `toucan update` |
+| Remove a channel build | `toucan remove toucan:<name>` |
+
+Channels: `dev` and `nightly` track those branches; `stable` tracks the newest `b<N>` release tag. `@<ref>` pins the build to a branch, tag, or ref, e.g. `toucan install toucan:stable@b24`; a pinned build keeps updating on its pin.
+
+`toucan install` clones the ref, checks the Node version against the build's `engines.node`, runs `npm ci --ignore-scripts`, builds the workspace, and swaps the finished build into `~/.toucan/builds/<name>` only on success. `toucan update` rebuilds the channel the running build belongs to when the remote commit moved (add `--force` to rebuild anyway). `toucan channel <name>` switches the active channel and builds it on demand.
+
+The launcher at `~/.toucan/bin/toucan` starts the active channel; add that directory to `PATH` (`toucan launcher` regenerates it). On first use, `scripts/install.sh` in the repository root performs the whole setup, including the `PATH` entry. Channel builds are not supported on Windows.
+
 ### Aliases and command options
 
 - `toucan uninstall <source>` is an alias for `toucan remove <source>`.

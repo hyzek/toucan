@@ -1,17 +1,6 @@
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readdirSync,
-	readFileSync,
-	renameSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
-import { join, resolve } from "node:path";
+import { delimiter, join } from "node:path";
 import { Markdown, type MarkdownTheme } from "@hyzek/toucan-tui";
 import chalk from "chalk";
-import lockfile from "proper-lockfile";
 import { selectConfig } from "./cli/config-selector.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import {
@@ -33,6 +22,21 @@ import {
 	type SelfUpdatePackageTarget,
 	VERSION,
 } from "./config.ts";
+import {
+	detectChannelInstall,
+	ensureLauncher,
+	getChannelBuildDir,
+	getChannelLauncherDir,
+	installChannel,
+	isChannelName,
+	isChannelSource,
+	listChannelBuilds,
+	parseChannelSource,
+	readActiveChannel,
+	removeChannel,
+	switchChannel,
+	updateChannel,
+} from "./core/channel-manager.ts";
 import type { InlineExtension } from "./core/extensions/types.ts";
 import { ModelRuntime } from "./core/model-runtime.ts";
 import { DefaultPackageManager, isOfflineModeEnabled } from "./core/package-manager.ts";
@@ -40,217 +44,16 @@ import { type AppMode, resolveProjectTrusted } from "./core/project-trust.ts";
 import { DefaultResourceLoader, formatPackageInstallWarning, isBuiltinExtension } from "./core/resource-loader.ts";
 import { SettingsManager } from "./core/settings-manager.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
-import { spawnProcess, spawnProcessSync, waitForChildProcess } from "./utils/child-process.ts";
-import { canonicalizePath, getCwdRelativePath } from "./utils/paths.ts";
-import { stripBom } from "./utils/text.ts";
-import { getToucanUserAgent } from "./utils/toucan-user-agent.ts";
+import { spawnProcess, spawnProcessSync } from "./utils/child-process.ts";
 import { formatVersionCheckError, getLatestToucanRelease, isNewerPackageVersion } from "./utils/version-check.ts";
 import {
 	cleanupWindowsSelfUpdateQuarantine,
 	quarantineWindowsNativeDependencies,
 } from "./utils/windows-self-update.ts";
 
-export type PackageCommand = "install" | "remove" | "update" | "list";
+export type PackageCommand = "install" | "remove" | "update" | "list" | "channel" | "launcher";
 
 type UpdateTarget = { type: "all" } | { type: "self" } | { type: "extensions"; source?: string } | { type: "models" };
-
-// Upstream pi service: the fork does not host pi.dev; endpoints are kept as-is for now.
-const DEFAULT_INSTALLER_API_BASE = "https://pi.dev/api/installer/releases";
-const MANAGED_INSTALL_MARKER = "managed-install.json";
-const MANAGED_RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-
-function getActiveManagedInstallRoot(): string | undefined {
-	const configuredRoot = process.env.TOUCAN_MANAGED_INSTALL_ROOT?.trim();
-	if (!configuredRoot) return undefined;
-
-	const managedRoot = resolve(configuredRoot);
-	const releasesDir = canonicalizePath(join(managedRoot, "releases"));
-	// The launcher environment is inherited by child processes. Do not classify a
-	// source checkout or another Toucan installation launched from managed Toucan as managed.
-	if (getCwdRelativePath(canonicalizePath(getPackageDir()), releasesDir) === undefined) return undefined;
-
-	const markerPath = join(managedRoot, MANAGED_INSTALL_MARKER);
-	try {
-		const marker = JSON.parse(stripBom(readFileSync(markerPath, "utf8"))) as {
-			kind?: unknown;
-			layout?: unknown;
-			schemaVersion?: unknown;
-		};
-		if (marker.kind !== "toucan-managed-install" || marker.schemaVersion !== 1 || marker.layout !== "releases-v1") {
-			throw new Error();
-		}
-	} catch {
-		throw new Error(`Managed install marker is missing or invalid: ${markerPath}`);
-	}
-
-	return managedRoot;
-}
-
-async function fetchInstallerArtifact(url: string, label: string): Promise<string> {
-	const response = await fetch(url, { headers: { "User-Agent": getToucanUserAgent(VERSION) } });
-	if (!response.ok) {
-		throw new Error(`Could not download managed installer ${label} from ${url}: HTTP ${response.status}`);
-	}
-	return await response.text();
-}
-
-async function runManagedNpmCi(stageDir: string): Promise<void> {
-	// No age-gate override: the release lockfile pins every package, so npm never
-	// resolves versions and a configured min-release-age does not apply.
-	const args = [
-		"ci",
-		"--ignore-scripts",
-		"--omit=dev",
-		"--include=optional",
-		"--no-fund",
-		"--no-audit",
-		"--loglevel=error",
-		"--progress=false",
-	];
-	const code = await waitForChildProcess(spawnProcess("npm", args, { cwd: stageDir, stdio: "inherit" }));
-	if (code !== 0) throw new Error(`npm ${args.join(" ")} exited with code ${code ?? "unknown"}`);
-}
-
-function verifyManagedRelease(releaseDir: string, expectedVersion: string): void {
-	const binPath = join(
-		releaseDir,
-		"node_modules",
-		".bin",
-		process.platform === "win32" ? `${APP_NAME}.cmd` : APP_NAME,
-	);
-	const result = spawnProcessSync(binPath, ["--version"], {
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-	if (result.error || result.status !== 0) {
-		const reason = result.error?.message || result.stderr.trim() || `exit code ${result.status ?? "unknown"}`;
-		throw new Error(`Could not verify managed Toucan ${expectedVersion}: ${reason}`);
-	}
-	const installedVersion = result.stdout.trim();
-	// `--version` prints a build name (bN), the managed install compares against the numeric release version.
-	if (numericVersion(installedVersion) !== expectedVersion) {
-		throw new Error(`Managed Toucan smoke test returned version ${installedVersion}; expected ${expectedVersion}.`);
-	}
-}
-
-function activateManagedRelease(managedRoot: string, version: string): void {
-	const currentPath = join(managedRoot, "current-version");
-	const temporaryPath = join(managedRoot, `current-version.tmp.${process.pid}-${Date.now()}`);
-	try {
-		writeFileSync(temporaryPath, `${version}\n`);
-		renameSync(temporaryPath, currentPath);
-	} finally {
-		rmSync(temporaryPath, { force: true });
-	}
-}
-
-// Keep the active release and the one running this update, which other open
-// sessions likely still use and which allows rolling back by editing current-version.
-function pruneManagedReleases(managedRoot: string, activeVersion: string): void {
-	const releasesRoot = join(managedRoot, "releases");
-	let entries: string[];
-	try {
-		entries = readdirSync(releasesRoot);
-	} catch {
-		return;
-	}
-	for (const entry of entries) {
-		if (entry === activeVersion || entry === VERSION || !MANAGED_RELEASE_VERSION_RE.test(entry)) continue;
-		try {
-			rmSync(join(releasesRoot, entry), { force: true, recursive: true });
-		} catch {
-			// Files may be in use (e.g. loaded native modules on Windows); retry on the next update.
-		}
-	}
-}
-
-function cleanupManagedStaging(managedRoot: string): void {
-	const stagingRoot = join(managedRoot, "staging");
-	try {
-		for (const entry of readdirSync(stagingRoot)) {
-			if (entry.startsWith("update-")) {
-				rmSync(join(stagingRoot, entry), { force: true, recursive: true });
-			}
-		}
-	} catch {
-		// The staging directory does not exist yet or is not writable.
-	}
-}
-
-export function cleanupManagedInstall(): void {
-	let managedRoot: string | undefined;
-	try {
-		managedRoot = getActiveManagedInstallRoot();
-	} catch {
-		return;
-	}
-	if (!managedRoot) return;
-
-	try {
-		const releaseLock = lockfile.lockSync(join(managedRoot, "update"), { realpath: false });
-		try {
-			cleanupManagedStaging(managedRoot);
-		} finally {
-			releaseLock();
-		}
-	} catch {
-		// A live update owns the staging directory, or cleanup is unavailable.
-	}
-}
-
-async function runManagedSelfUpdate(managedRoot: string, version: string): Promise<void> {
-	if (!MANAGED_RELEASE_VERSION_RE.test(version)) {
-		throw new Error(`Invalid managed release version: ${version}`);
-	}
-
-	let releaseLock: () => Promise<void>;
-	try {
-		releaseLock = await lockfile.lock(join(managedRoot, "update"), { realpath: false });
-	} catch (error: unknown) {
-		if (error instanceof Error && "code" in error && error.code === "ELOCKED") {
-			throw new Error("Another managed Toucan update is already running.");
-		}
-		throw error;
-	}
-
-	let stageDir: string | undefined;
-	try {
-		cleanupManagedStaging(managedRoot);
-		const installerApiBase = (process.env.TOUCAN_INSTALLER_API_BASE?.trim() || DEFAULT_INSTALLER_API_BASE).replace(
-			/\/+$/,
-			"",
-		);
-		const releaseUrl = `${installerApiBase}/${encodeURIComponent(version)}`;
-		const stagingRoot = join(managedRoot, "staging");
-		const releasesRoot = join(managedRoot, "releases");
-		mkdirSync(releasesRoot, { recursive: true });
-		const releaseDir = join(releasesRoot, version);
-		if (existsSync(releaseDir)) {
-			verifyManagedRelease(releaseDir, version);
-			activateManagedRelease(managedRoot, version);
-			pruneManagedReleases(managedRoot, version);
-			return;
-		}
-
-		mkdirSync(stagingRoot, { recursive: true });
-		stageDir = mkdtempSync(join(stagingRoot, "update-"));
-		const [packageJsonContent, packageLockContent] = await Promise.all([
-			fetchInstallerArtifact(`${releaseUrl}/package.json`, "package.json"),
-			fetchInstallerArtifact(`${releaseUrl}/package-lock.json`, "package-lock.json"),
-		]);
-		writeFileSync(join(stageDir, "package.json"), packageJsonContent);
-		writeFileSync(join(stageDir, "package-lock.json"), packageLockContent);
-
-		await runManagedNpmCi(stageDir);
-		verifyManagedRelease(stageDir, version);
-		renameSync(stageDir, releaseDir);
-		activateManagedRelease(managedRoot, version);
-		pruneManagedReleases(managedRoot, version);
-	} finally {
-		if (stageDir) rmSync(stageDir, { force: true, recursive: true });
-		await releaseLock();
-	}
-}
 
 const SELF_UPDATE_NOTE_MARKDOWN_THEME: MarkdownTheme = {
 	heading: (text) => chalk.bold(chalk.yellow(text)),
@@ -304,6 +107,10 @@ function getPackageCommandUsage(command: PackageCommand): string {
 			return `${APP_NAME} update [source|self|toucan] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;
 		case "list":
 			return `${APP_NAME} list [--approve|--no-approve]`;
+		case "channel":
+			return `${APP_NAME} channel [dev|nightly|stable]`;
+		case "launcher":
+			return `${APP_NAME} launcher`;
 	}
 }
 
@@ -401,6 +208,30 @@ Options:
   -na, --no-approve  Ignore project-local files for this command
 `);
 			return;
+
+		case "channel":
+			console.log(`${chalk.bold("Usage:")}
+  ${getPackageCommandUsage("channel")}
+
+Without an argument, list the channel builds under ~/.toucan/builds and mark the
+active one. With a channel name, make it active; the channel is built on demand
+when it is missing. The launcher at ~/.toucan/bin/toucan starts the active channel,
+so new and restarted runs pick the switch up.
+
+Examples:
+  ${APP_NAME} channel             List channel builds
+  ${APP_NAME} channel dev         Use the dev channel
+  ${APP_NAME} channel stable      Use the stable channel
+`);
+			return;
+
+		case "launcher":
+			console.log(`${chalk.bold("Usage:")}
+  ${getPackageCommandUsage("launcher")}
+
+Rewrite the ~/.toucan/bin/toucan launcher for the current ~/.toucan layout.
+`);
+			return;
 	}
 }
 
@@ -409,7 +240,14 @@ function parsePackageCommand(args: string[]): PackageCommandOptions | undefined 
 	let command: PackageCommand | undefined;
 	if (rawCommand === "uninstall") {
 		command = "remove";
-	} else if (rawCommand === "install" || rawCommand === "remove" || rawCommand === "update" || rawCommand === "list") {
+	} else if (
+		rawCommand === "install" ||
+		rawCommand === "remove" ||
+		rawCommand === "update" ||
+		rawCommand === "list" ||
+		rawCommand === "channel" ||
+		rawCommand === "launcher"
+	) {
 		command = rawCommand;
 	}
 	if (!command) {
@@ -950,6 +788,135 @@ export async function handleConfigCommand(
 	process.exit(0);
 }
 
+function rejectWindowsChannels(): void {
+	console.error(chalk.red(`Channel builds are not supported on Windows yet. Install ${APP_NAME} from npm instead.`));
+	process.exitCode = 1;
+}
+
+function formatChannelCommit(commit: string): string {
+	return commit.slice(0, 8);
+}
+
+/** Nudge the user onto the launcher PATH when this installation is not reachable as `toucan`. */
+function printLauncherPathNote(): void {
+	const launcherDir = getChannelLauncherDir();
+	if (!(process.env.PATH ?? "").split(delimiter).includes(launcherDir)) {
+		console.log(chalk.dim(`Add the launcher to PATH for new shells: export PATH="${launcherDir}:$PATH"`));
+	}
+}
+
+function printChannelBuildList(): void {
+	const statuses = listChannelBuilds();
+	if (statuses.length === 0) {
+		console.log(chalk.dim(`No channel builds. Run ${APP_NAME} install toucan:stable.`));
+		return;
+	}
+	for (const { info, active } of statuses) {
+		const marker = active ? chalk.green("*") : " ";
+		console.log(
+			`${marker} ${info.channel.padEnd(8)} ${info.ref.padEnd(10)} ${formatChannelCommit(info.commit)}  built ${info.builtAt.slice(0, 10)}  ${chalk.dim(getChannelBuildDir(info.channel))}`,
+		);
+	}
+	const active = readActiveChannel();
+	if (!active) console.log(chalk.dim('No active channel; run "toucan channel <name>".'));
+}
+
+/**
+ * Run `channel`/`launcher` and `toucan:`-prefixed install/remove. These operate on the
+ * channel state directly, before any settings, project-trust, or package machinery.
+ */
+async function handleChannelCommand(options: PackageCommandOptions): Promise<boolean> {
+	if (process.platform === "win32") {
+		rejectWindowsChannels();
+		return true;
+	}
+	try {
+		switch (options.command) {
+			case "launcher": {
+				console.log(chalk.green(`Launcher written to ${ensureLauncher()}`));
+				printLauncherPathNote();
+				return true;
+			}
+
+			case "channel": {
+				if (!options.source) {
+					printChannelBuildList();
+					return true;
+				}
+				if (!isChannelName(options.source)) {
+					console.error(chalk.red(`Unknown channel "${options.source}". Use dev, nightly, or stable.`));
+					process.exitCode = 1;
+					return true;
+				}
+				const info = await switchChannel(options.source);
+				console.log(
+					chalk.green(`Active channel: ${options.source} (${info.ref} ${formatChannelCommit(info.commit)}).`),
+				);
+				console.log(chalk.dim("New and restarted toucan runs use it."));
+				return true;
+			}
+
+			case "install": {
+				const parsed = parseChannelSource(options.source ?? "");
+				if (!parsed) {
+					console.error(
+						chalk.red(
+							`Invalid channel source "${options.source}". Expected toucan:<dev|nightly|stable>[@<ref>].`,
+						),
+					);
+					process.exitCode = 1;
+					return true;
+				}
+				const result = await installChannel(
+					parsed.channel,
+					parsed.pinnedRef ? { pinnedRef: parsed.pinnedRef } : {},
+				);
+				if (result.kind === "up-to-date") {
+					console.log(
+						chalk.green(
+							`toucan:${parsed.channel} is already up to date (${result.info.ref} ${formatChannelCommit(result.info.commit)}).`,
+						),
+					);
+				} else {
+					console.log(
+						chalk.green(
+							`Installed toucan:${parsed.channel} at ${result.info.ref} (${formatChannelCommit(result.info.commit)}).`,
+						),
+					);
+				}
+				printLauncherPathNote();
+				return true;
+			}
+
+			case "remove": {
+				const parsed = parseChannelSource(options.source ?? "");
+				if (!parsed) {
+					console.error(
+						chalk.red(
+							`Invalid channel source "${options.source}". Expected toucan:<dev|nightly|stable>[@<ref>].`,
+						),
+					);
+					process.exitCode = 1;
+					return true;
+				}
+				const wasActive = readActiveChannel() === parsed.channel;
+				await removeChannel(parsed.channel);
+				console.log(chalk.green(`Removed channel ${parsed.channel}.`));
+				if (wasActive) {
+					console.log(chalk.dim(`No active channel. Run ${APP_NAME} install toucan:<name> to pick one again.`));
+				}
+				return true;
+			}
+		}
+	} catch (error: unknown) {
+		const message = error instanceof Error ? error.message : "Unknown channel command error";
+		console.error(chalk.red(`Error: ${message}`));
+		process.exitCode = 1;
+		return true;
+	}
+	return true;
+}
+
 export async function handlePackageCommand(
 	args: string[],
 	runtimeOptions: PackageCommandRuntimeOptions = {},
@@ -998,6 +965,17 @@ export async function handlePackageCommand(
 		console.error(chalk.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
 		process.exitCode = 1;
 		return true;
+	}
+
+	// Channel operations work on ~/.toucan state directly; no settings, trust, or package machinery.
+	const isChannelOperation =
+		options.command === "channel" ||
+		options.command === "launcher" ||
+		((options.command === "install" || options.command === "remove") &&
+			source !== undefined &&
+			isChannelSource(source));
+	if (isChannelOperation) {
+		return handleChannelCommand(options);
 	}
 
 	if (options.command === "update" && options.updateTarget?.type === "models") {
@@ -1140,15 +1118,28 @@ export async function handlePackageCommand(
 					const configuredSelfUpdateArgv = getConfiguredSelfUpdateArgv(
 						settingsManager.getGlobalSettings().selfUpdateCommand,
 					);
-					// A configured command is explicit user intent, so it replaces the managed install path too.
-					const managedInstallRoot = configuredSelfUpdateArgv ? undefined : getActiveManagedInstallRoot();
-					if (managedInstallRoot && options.force) {
-						console.error(
-							chalk.red(
-								`Managed ${APP_NAME} installations do not support --force; rerun the installer to repair this installation.`,
-							),
-						);
-						process.exitCode = 1;
+					// A configured command is explicit user intent, so it replaces the channel update path too.
+					const channelBuild = configuredSelfUpdateArgv ? undefined : detectChannelInstall();
+					if (channelBuild) {
+						if (process.platform === "win32") {
+							rejectWindowsChannels();
+							return true;
+						}
+						const result = await updateChannel(channelBuild.channel, { force: options.force });
+						if (result.kind === "up-to-date") {
+							console.log(
+								chalk.green(
+									`${APP_NAME} is already up to date (channel ${channelBuild.channel}: ${result.info.ref} ${formatChannelCommit(result.info.commit)}).`,
+								),
+							);
+						} else {
+							console.log(
+								chalk.green(
+									`Updated ${APP_NAME} (channel ${channelBuild.channel}) to ${result.info.ref} (${formatChannelCommit(result.info.commit)}).`,
+								),
+							);
+							console.log(chalk.dim("New and restarted toucan runs use the new build."));
+						}
 						return true;
 					}
 					const selfUpdatePlan = await getSelfUpdatePlan(options.force);
@@ -1157,24 +1148,6 @@ export async function handlePackageCommand(
 					}
 					if (configuredSelfUpdateArgv) {
 						await runConfiguredSelfUpdate(configuredSelfUpdateArgv, selfUpdatePlan);
-						return true;
-					}
-					if (managedInstallRoot) {
-						if (selfUpdatePlan.note) {
-							printSelfUpdateNote(selfUpdatePlan.note);
-						}
-						try {
-							console.log(chalk.dim(`Updating managed ${APP_NAME} installation...`));
-							await runManagedSelfUpdate(managedInstallRoot, selfUpdatePlan.version);
-						} catch (error: unknown) {
-							const message = error instanceof Error ? error.message : "Unknown managed update error";
-							console.error(chalk.red(`Error: ${message}`));
-							process.exitCode = 1;
-							return true;
-						}
-						console.log(
-							chalk.green(`Updated ${APP_NAME} from ${getBuildName()} to ${buildName(selfUpdatePlan.version)}`),
-						);
 						return true;
 					}
 
@@ -1218,19 +1191,6 @@ export async function handlePackageCommand(
 					console.log(
 						chalk.green(`Updated ${APP_NAME} from ${getBuildName()} to ${buildName(selfUpdatePlan.version)}`),
 					);
-					// The pi.dev installer migrates global npm installs to a managed install
-					// that pins all dependencies. It does not migrate pnpm, yarn, or bun installs.
-					if (installMethod === "npm") {
-						const installerCommand =
-							process.platform === "win32"
-								? 'powershell -c "irm https://pi.dev/install.ps1 | iex"'
-								: "curl -fsSL https://pi.dev/install.sh | sh";
-						console.log();
-						console.log(chalk.yellow(`This npm installation of ${APP_NAME} does not pin its dependencies.`));
-						console.log(chalk.yellow("Run the installer to migrate to a managed installation that does:"));
-						console.log();
-						console.log(`  ${chalk.bold(installerCommand)}`);
-					}
 				}
 				return true;
 			}
@@ -1241,4 +1201,6 @@ export async function handlePackageCommand(
 		process.exitCode = 1;
 		return true;
 	}
+	// channel and launcher are dispatched to handleChannelCommand before this switch.
+	return true;
 }
