@@ -221,3 +221,48 @@ describe("QuestionForm tabs and Submit question", () => {
 		expect(text(form)).toContain("Which extras do you want?");
 	});
 });
+
+describe("QuestionForm overflow wrapping", () => {
+	beforeAll(() => {
+		initTheme("dark");
+	});
+
+	const longQuestion: QuestionToolQuestion = {
+		question: "Which storage backend should the cache layer and the session store both use?",
+		header: "Storage",
+		options: [{ label: "A fully managed Postgres instance for everything" }],
+	};
+
+	/** Rendered rows with the background painting stripped, empty rows dropped. */
+	function nonBlankLines(form: QuestionForm, width: number): string[] {
+		return form
+			.render(width)
+			.map(stripAnsi)
+			.filter((line) => /\S/.test(line));
+	}
+
+	it("wraps a too-long question title keeping the indent on every line", () => {
+		const { form } = makeForm([longQuestion]);
+		const lines = nonBlankLines(form, 40);
+		expect(lines.filter((line) => !line.startsWith("  "))).toEqual([]);
+	});
+
+	it("wraps a too-long option label under the option gutter", () => {
+		const { form } = makeForm([longQuestion]);
+		const lines = nonBlankLines(form, 40);
+		const optionLine = lines.find((line) => line.includes("1. A fully managed"));
+		expect(optionLine).toBeDefined();
+		const continuation = lines[lines.indexOf(optionLine!) + 1]!;
+		expect(continuation.startsWith("      ")).toBe(true); // band indent + cursor/box gutter
+		expect(continuation.trim()).toBe("instance for everything");
+	});
+
+	it("wraps long Submit tab rows keeping the indent", () => {
+		const { form } = makeForm([longQuestion, extrasQuestion]);
+		form.handleInput(ENTER); // Storage: the long option, advances to Extras
+		form.handleInput(TAB); // Submit tab
+		const lines = nonBlankLines(form, 40);
+		expect(lines.filter((line) => !line.startsWith("  "))).toEqual([]);
+		expect(lines.some((line) => line.startsWith("  ") && line.includes("instance"))).toBe(true);
+	});
+});

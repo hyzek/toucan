@@ -360,8 +360,21 @@ export class QuestionForm {
 		return parts.join("");
 	}
 
-	private addWrapped(rows: string[], text: string, width: number): void {
-		for (const line of wrapTextWithAnsi(`${INDENT}${text}`, width)) rows.push(line);
+	/** Wrap `text` into `width` and prefix every line, so overflow keeps the gutter indent. */
+	private addWrapped(rows: string[], text: string, width: number, prefix = INDENT): void {
+		for (const line of wrapTextWithAnsi(text, Math.max(1, width - visibleWidth(prefix)))) {
+			rows.push(`${prefix}${line}`);
+		}
+	}
+
+	/** Push one row with a cursor/box gutter; content that overflows wraps under the gutter. */
+	private addGutterRow(rows: string[], gutter: string, content: string, width: number): void {
+		const contentWidth = Math.max(1, width - visibleWidth(INDENT) - visibleWidth(gutter));
+		const lines = wrapTextWithAnsi(content, contentWidth);
+		const pad = " ".repeat(visibleWidth(gutter));
+		for (let i = 0; i < lines.length; i++) {
+			rows.push(i === 0 ? `${INDENT}${gutter}${lines[i]}` : `${INDENT}${pad}${lines[i]}`);
+		}
 	}
 
 	private renderQuestionTab(rows: string[], width: number): void {
@@ -412,9 +425,9 @@ export class QuestionForm {
 					continue;
 				}
 			}
-			rows.push(`${INDENT}${cursor}${box}${labelText}${typedEcho}`);
+			this.addGutterRow(rows, `${cursor}${box}`, `${labelText}${typedEcho}`, width);
 			if (option?.description)
-				this.addWrapped(rows, theme.fg("muted", option.description), width - visibleWidth(INDENT) - 4);
+				this.addWrapped(rows, theme.fg("muted", option.description), width, `${INDENT}${" ".repeat(4)}`);
 		}
 		if (count > window) {
 			rows.push(`${INDENT}${theme.fg("dim", `(${this.optionIndex + 1}/${count})`)}`);
@@ -435,7 +448,7 @@ export class QuestionForm {
 		for (let i = 0; i < this.questions.length; i++) {
 			const question = this.questions[i];
 			if (!this.isAnswered(i)) {
-				rows.push(`${INDENT}${theme.fg("muted", `${question.header}: `)}${theme.fg("warning", "open")}`);
+				this.addWrapped(rows, `${theme.fg("muted", `${question.header}: `)}${theme.fg("warning", "open")}`, width);
 				continue;
 			}
 			const values = this.answerValues(i)
@@ -449,13 +462,16 @@ export class QuestionForm {
 		for (let i = 0; i < options.length; i++) {
 			const isCursor = i === this.optionIndex;
 			const label = `${i + 1}. ${options[i]}`;
-			rows.push(
-				`${INDENT}${isCursor ? theme.fg("accent", "❯ ") : "  "}${theme.fg(isCursor ? "accent" : "text", label)}`,
+			this.addGutterRow(
+				rows,
+				isCursor ? theme.fg("accent", "❯ ") : "  ",
+				theme.fg(isCursor ? "accent" : "text", label),
+				width,
 			);
 		}
 		if (!this.allAnswered()) {
 			const missing = this.questions.filter((_, i) => !this.isAnswered(i)).map((q) => q.header);
-			rows.push(`${INDENT}${theme.fg("warning", `Unanswered: ${missing.join(", ")}`)}`);
+			this.addWrapped(rows, theme.fg("warning", `Unanswered: ${missing.join(", ")}`), width);
 		}
 	}
 
