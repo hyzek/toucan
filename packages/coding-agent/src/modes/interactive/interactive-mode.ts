@@ -362,6 +362,10 @@ const AUTH_TYPE_ORDER = { oauth: 0, api_key: 1 } satisfies Record<AuthSelectorPr
 // leads whenever it is present, then agents, then shortcuts.
 const HOTKEY_HINT_ORDER = { interrupt: 0, agents: 1, shortcuts: 2 } as const;
 
+// How long the `esc again to interrupt` confirmation stays armed. The first Esc shows
+// it, a second Esc inside the window interrupts, and the timeout disarms the hint.
+const INTERRUPT_CONFIRM_MS = 2000;
+
 function createFuzzyAutocompleteItems<T>(
 	items: T[],
 	prefix: string,
@@ -496,6 +500,10 @@ export class InteractiveMode {
 
 	private lastSigintTime = 0;
 	private lastEscapeTime = 0;
+	/** Set while the first Esc press has armed the `esc again to interrupt` confirmation. */
+	private interruptConfirmTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+	/** True while the confirmation owns the footer hint, because no status indicator provides it. */
+	private interruptHintOwned = false;
 	private changelogMarkdown: string | undefined = undefined;
 	private extensionChangelogUpdates: ExtensionChangelogUpdate[] = [];
 	private startupNoticesShown = false;
@@ -2155,14 +2163,56 @@ export class InteractiveMode {
 		return true;
 	}
 
+	/** The footer interrupt hint: `esc to interrupt`, or the armed confirmation in warning color. */
+	private renderInterruptHint(): string {
+		const key = keyText("app.interrupt", { compact: true });
+		if (this.interruptConfirmTimer !== undefined) {
+			return theme.fg("warning", `${key} again to interrupt`);
+		}
+		return footerHint(key, "to interrupt");
+	}
+
+	/**
+	 * Gate a destructive Esc action so an accidental press cannot abort: the first press arms
+	 * the orange `esc again to interrupt` hint, the next press inside the window runs `action`.
+	 */
+	private requestInterrupt(action: () => void): void {
+		if (this.interruptConfirmTimer !== undefined) {
+			this.clearInterruptConfirmation();
+			action();
+			return;
+		}
+		this.interruptConfirmTimer = setTimeout(() => this.clearInterruptConfirmation(), INTERRUPT_CONFIRM_MS);
+		// While a status indicator is shown it owns the hint; with only a running bash
+		// command the confirmation has to bring its own hint and take it away again.
+		this.interruptHintOwned = this.activeStatusIndicator === undefined;
+		this.footerHints.add("interrupt", () => this.renderInterruptHint(), HOTKEY_HINT_ORDER.interrupt, {
+			showWithInput: true,
+		});
+		this.ui.requestRender();
+	}
+
+	/** Disarm a pending interrupt confirmation and restore or remove its footer hint. */
+	private clearInterruptConfirmation(): void {
+		if (this.interruptConfirmTimer === undefined) return;
+		clearTimeout(this.interruptConfirmTimer);
+		this.interruptConfirmTimer = undefined;
+		if (this.interruptHintOwned) {
+			this.footerHints.remove("interrupt");
+			this.interruptHintOwned = false;
+		} else if (this.activeStatusIndicator) {
+			this.footerHints.add("interrupt", () => this.renderInterruptHint(), HOTKEY_HINT_ORDER.interrupt);
+		}
+		this.footerHints.invalidate();
+		this.ui.requestRender();
+	}
+
 	private showStatusIndicator(indicator: StatusIndicator): void {
+		// A new operation replaces whatever interrupt the previous one had armed.
+		this.clearInterruptConfirmation();
 		// Esc has an action while any status indicator is shown (working, compaction,
 		// branch summary, retry), so the interrupt hint tracks indicator visibility.
-		this.footerHints.add(
-			"interrupt",
-			() => footerHint(keyText("app.interrupt", { compact: true }), "to interrupt"),
-			HOTKEY_HINT_ORDER.interrupt,
-		);
+		this.footerHints.add("interrupt", () => this.renderInterruptHint(), HOTKEY_HINT_ORDER.interrupt);
 		this.activeStatusIndicator?.dispose();
 		this.activeStatusIndicator = indicator;
 		this.activeWorkingIndicatorEmbedded = false;
@@ -2179,6 +2229,8 @@ export class InteractiveMode {
 		if (kind && this.activeStatusIndicator?.kind !== kind) {
 			return;
 		}
+		// The operation the confirmation was armed for is over.
+		this.clearInterruptConfirmation();
 		this.footerHints.remove("interrupt");
 		const clearedIndicator = this.activeStatusIndicator;
 		const clearedIndicatorWasEmbedded = this.activeWorkingIndicatorEmbedded;
@@ -2916,14 +2968,17 @@ export class InteractiveMode {
 		// so they work correctly regardless of which editor is active
 		this.defaultEditor.onEscape = () => {
 			if (this.session.isStreaming) {
-				this.restoreQueuedMessagesToEditor({ abort: true });
+				// Two presses to abort a running turn: the first arms the confirmation hint.
+				this.requestInterrupt(() => this.restoreQueuedMessagesToEditor({ abort: true }));
 			} else if (this.session.isBashRunning) {
-				this.session.abortBash();
+				this.requestInterrupt(() => this.session.abortBash());
 			} else if (this.isBashMode) {
+				this.clearInterruptConfirmation();
 				this.editor.setText("");
 				this.isBashMode = false;
 				this.updateEditorBorderColor();
 			} else if (!this.editor.getText().trim()) {
+				this.clearInterruptConfirmation();
 				// Double-escape with empty editor triggers /tree, /fork, or nothing based on setting
 				const action = this.settingsManager.getDoubleEscapeAction();
 				if (action !== "none") {
@@ -3572,9 +3627,7 @@ export class InteractiveMode {
 				}
 				// Keep editor active; submissions are queued during compaction.
 				this.autoCompactionEscapeHandler = this.defaultEditor.onEscape;
-				this.defaultEditor.onEscape = () => {
-					this.session.abortCompaction();
-				};
+				this.defaultEditor.onEscape = () => this.requestInterrupt(() => this.session.abortCompaction());
 				this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason));
 				this.ui.requestRender();
 				break;
@@ -3635,9 +3688,7 @@ export class InteractiveMode {
 			case "auto_retry_start": {
 				// Set up escape to abort retry
 				this.retryEscapeHandler = this.defaultEditor.onEscape;
-				this.defaultEditor.onEscape = () => {
-					this.session.abortRetry();
-				};
+				this.defaultEditor.onEscape = () => this.requestInterrupt(() => this.session.abortRetry());
 				this.showStatusIndicator(
 					new RetryStatusIndicator(this.ui, event.attempt, event.maxAttempts, event.delayMs),
 				);
@@ -5725,9 +5776,7 @@ export class InteractiveMode {
 					const originalOnEscape = this.defaultEditor.onEscape;
 
 					if (wantsSummary) {
-						this.defaultEditor.onEscape = () => {
-							this.session.abortBranchSummary();
-						};
+						this.defaultEditor.onEscape = () => this.requestInterrupt(() => this.session.abortBranchSummary());
 						this.showStatusIndicator(new BranchSummaryStatusIndicator(this.ui));
 						showingSummaryIndicator = true;
 						this.ui.requestRender();

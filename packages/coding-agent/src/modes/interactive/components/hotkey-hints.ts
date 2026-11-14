@@ -3,8 +3,9 @@
  * Items are registered dynamically by id — `add("agents", ...)` — so features
  * contribute hints without this component knowing about them, and each item
  * carries an explicit display order so add/remove timing cannot shuffle the
- * row. Keys sit in bright white; what they do stays dark gray. Hidden, it
- * still takes one line, so the footer bar never moves.
+ * row. Keys sit in bright white; what they do stays dark gray. The row hides
+ * while the prompt has input, unless an item opts out with `showWithInput`;
+ * hidden, it still takes one line, so the footer bar never moves.
  */
 
 import { type Component, truncateToWidth, visibleWidth } from "@hyzek/toucan-tui";
@@ -19,6 +20,8 @@ export function footerHint(key: string, effect: string): string {
 interface HotkeyHintItem {
 	render: () => string;
 	order: number;
+	/** Renders while the prompt has input, unlike the rest of the row. */
+	showWithInput: boolean;
 }
 
 export class HotkeyHints implements Component {
@@ -31,8 +34,8 @@ export class HotkeyHints implements Component {
 	}
 
 	/** Register a hint at a fixed display position; re-adding an id replaces its content in place. */
-	add(id: string, render: () => string, order: number): void {
-		this.items.set(id, { render, order });
+	add(id: string, render: () => string, order: number, options?: { showWithInput?: boolean }): void {
+		this.items.set(id, { render, order, showWithInput: options?.showWithInput ?? false });
 	}
 
 	remove(id: string): void {
@@ -42,8 +45,9 @@ export class HotkeyHints implements Component {
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		if (this.hasInput()) return [""];
+		const showAll = !this.hasInput();
 		const segments = [...this.items.values()]
+			.filter((item) => showAll || item.showWithInput)
 			.sort((a, b) => a.order - b.order)
 			.map((item) => item.render())
 			.filter((segment) => segment.trim() !== "");

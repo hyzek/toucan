@@ -79,4 +79,18 @@ describe("HotkeyHints", () => {
 		hints.add("agents", () => footerHint("\u2190", "for agents"), 1);
 		expect(renderRow(hints)).toEqual([""]);
 	});
+
+	test("showWithInput items stay visible while the prompt has input", () => {
+		const hints = new HotkeyHints(() => true);
+		hints.add("interrupt", () => footerHint("esc", "again to interrupt"), 0, { showWithInput: true });
+		hints.add("agents", () => footerHint("\u2190", "for agents"), 1);
+		expect(renderRow(hints)).toEqual(["  esc again to interrupt"]);
+	});
+
+	test("re-adding an id without showWithInput hides it again while there is input", () => {
+		const hints = new HotkeyHints(() => true);
+		hints.add("interrupt", () => footerHint("esc", "again to interrupt"), 0, { showWithInput: true });
+		hints.add("interrupt", () => footerHint("esc", "to interrupt"), 0);
+		expect(renderRow(hints)).toEqual([""]);
+	});
 });
