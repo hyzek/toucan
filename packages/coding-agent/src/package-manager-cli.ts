@@ -127,7 +127,7 @@ function verifyManagedRelease(releaseDir: string, expectedVersion: string): void
 		throw new Error(`Could not verify managed Toucan ${expectedVersion}: ${reason}`);
 	}
 	const installedVersion = result.stdout.trim();
-	// `--version` prints a build name (b24), the managed install compares against the numeric release version.
+	// `--version` prints a build name (bN), the managed install compares against the numeric release version.
 	if (numericVersion(installedVersion) !== expectedVersion) {
 		throw new Error(`Managed Toucan smoke test returned version ${installedVersion}; expected ${expectedVersion}.`);
 	}

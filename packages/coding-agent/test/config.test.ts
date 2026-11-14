@@ -1,3 +1,4 @@
+import { spawnSync } from "child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { delimiter, join } from "path";
@@ -5,6 +6,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
 	BUILD_NAME,
 	buildName,
+	buildNameFromCheckout,
 	detectInstallChange,
 	detectInstallMethod,
 	findNodePackageDir,
@@ -14,7 +16,6 @@ import {
 	getUpdateInstruction,
 	makeConfiguredSelfUpdateCommand,
 	numericVersion,
-	VERSION,
 } from "../src/config.ts";
 
 const execPathDescriptor = Object.getOwnPropertyDescriptor(process, "execPath");
@@ -153,13 +154,47 @@ function createFakeBunScript(bunBin: string): string {
 	return `#!/bin/sh\nif [ "$1" = "pm" ] && [ "$2" = "bin" ] && [ "$3" = "-g" ]; then\n\tprintf '%s\\n' '${escapedBunBin}'\n\texit 0\nfi\nexit 1\n`;
 }
 
+function runGit(repoDir: string, args: string[]): string {
+	const result = spawnSync("git", args, { cwd: repoDir, encoding: "utf8" });
+	if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+	return result.stdout.trim();
+}
+
+function commitFile(repoDir: string, content: string): void {
+	writeFileSync(join(repoDir, "file.txt"), content);
+	runGit(repoDir, ["add", "file.txt"]);
+	runGit(repoDir, ["commit", "-m", content]);
+}
+
 describe("build naming", () => {
 	test("maps a build version to its name and back", () => {
 		expect(buildName("23.0.0")).toBe("b23");
-		expect(BUILD_NAME).toBe(buildName(VERSION));
+		expect(BUILD_NAME).toMatch(/^b\d+$/);
 		expect(numericVersion("b23")).toBe("23.0.0");
 		// Older releases and prerelease lines are already numeric.
 		expect(numericVersion(" 1.5.0 ")).toBe("1.5.0");
+	});
+
+	test("follows the checkout's commit count and ignores installed projects", () => {
+		tempDir = mkdtempSync(join(tmpdir(), "toucan-build-name-"));
+		const repoDir = tempDir;
+		writeFileSync(join(repoDir, "package.json"), JSON.stringify({ name: "toucan-monorepo" }));
+		runGit(repoDir, ["init", "--initial-branch=main"]);
+		runGit(repoDir, ["config", "user.email", "test@test.com"]);
+		runGit(repoDir, ["config", "user.name", "Test"]);
+
+		commitFile(repoDir, "one");
+		expect(buildNameFromCheckout(join(repoDir, "packages", "coding-agent"))).toBe("b1");
+		commitFile(repoDir, "two");
+		expect(buildNameFromCheckout(join(repoDir, "packages", "coding-agent"))).toBe("b2");
+
+		// A project that installed Toucan has its own git history; its commits are not build numbers.
+		const projectDir = join(repoDir, "project");
+		mkdirSync(join(projectDir, "src"), { recursive: true });
+		writeFileSync(join(projectDir, "package.json"), JSON.stringify({ name: "user-project" }));
+		runGit(projectDir, ["init", "--initial-branch=main"]);
+		expect(buildNameFromCheckout(join(projectDir, "src", "toucan"))).toBeUndefined();
+		expect(buildNameFromCheckout(join(projectDir, "node_modules", "@hyzek", "toucan-coding-agent"))).toBeUndefined();
 	});
 });
 

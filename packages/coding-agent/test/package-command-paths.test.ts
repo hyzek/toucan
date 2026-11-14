@@ -1032,7 +1032,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 			expect(recordedArgs).toContain(`${PACKAGE_NAME}@${VERSION}`);
 			expect(recordedArgs).not.toContain(PACKAGE_NAME);
 			expect(recordedArgs).not.toContain(projectPrefix);
-			expect(stdout).toContain(`Updated toucan from ${BUILD_NAME} to ${BUILD_NAME}`);
+			expect(stdout).toContain(`Updated toucan from ${BUILD_NAME} to ${buildName(VERSION)}`);
 		} finally {
 			logSpy.mockRestore();
 			errorSpy.mockRestore();

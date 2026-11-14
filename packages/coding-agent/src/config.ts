@@ -615,8 +615,46 @@ export function buildName(version: string): string {
 	return `b${version.split(".")[0]}`;
 }
 
-/** Build name of this checkout, e.g. `b23`. */
-export const BUILD_NAME: string = buildName(VERSION);
+/**
+ * Build name of a source checkout, which follows the latest commit: `b23` when `HEAD` is the 23rd
+ * commit. Returns undefined outside the toucan monorepo, where the package version names the build.
+ */
+export function buildNameFromCheckout(packageDir: string): string | undefined {
+	// An installed copy sits under node_modules; walking up would find the project that installed
+	// Toucan and count its commits.
+	const normalizedPackageDir = packageDir.replace(/\\/g, "/");
+	if (normalizedPackageDir.split("/").includes("node_modules")) return undefined;
+
+	let dir = packageDir;
+	for (;;) {
+		if (existsSync(join(dir, ".git"))) {
+			let rootPackage: PackageJson;
+			try {
+				rootPackage = JSON.parse(stripBom(readFileSync(join(dir, "package.json"), "utf-8"))) as PackageJson;
+			} catch {
+				return undefined;
+			}
+			if (rootPackage.name !== "toucan-monorepo") return undefined;
+			const result = spawnProcessSync("git", ["--no-optional-locks", "rev-list", "--count", "HEAD"], {
+				cwd: dir,
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "ignore"],
+			});
+			if (result.status !== 0) return undefined;
+			const count = Number.parseInt(result.stdout, 10);
+			return Number.isSafeInteger(count) && count > 0 ? `b${count}` : undefined;
+		}
+		const parent = dirname(dir);
+		if (parent === dir) return undefined;
+		dir = parent;
+	}
+}
+
+/**
+ * Build name of this process, e.g. `b23`. A source checkout follows its commit count; an installed
+ * release uses its package version, which the release script sets to the release commit's position.
+ */
+export const BUILD_NAME: string = buildNameFromCheckout(getPackageDir()) ?? buildName(VERSION);
 
 /**
  * Turns a version string back into the numeric form npm and settings compare. `toucan --version`
