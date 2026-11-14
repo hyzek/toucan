@@ -486,7 +486,7 @@ None.
 
 ## 11. Recommendations and roadmap
 
-Ordered by value; R1–R2 restore signal, R3–R5 prevent recurrence.
+Ordered by value; R1–R2 restore signal, R3–R5 prevent recurrence, R8 is forward-looking design.
 
 1. **R1 — Make `main` green again (small, mechanical).** Fixes H1–H5: extend the interactive-tui
    fake host (or switch it to `test/suite/harness.ts`); update the three default-tool fixtures;
@@ -511,6 +511,13 @@ Ordered by value; R1–R2 restore signal, R3–R5 prevent recurrence.
    zlib ratio (M5).
 7. **R7 — Housekeeping:** README plan-mode sentence (L8), autocomplete dead API removal or
    wiring (L4), and a `.gitignore` rule for exported transcripts (L10).
+ 8. **R8 — Design a proper installer and install manager.** Installation today is a patchwork:
+    `npm install -g` with `--ignore-scripts`, a `curl … install.sh` line, a nix profile, and a
+    generated per-release `install-lock/` bundle — four paths with no shared contract for Node
+    version, platform natives, or upgrade/uninstall. Needs a design doc before code: what the
+    installer guarantees (self-update? pinned toolchains? rollback?), how the install manager
+    reconciles the npm path vs standalone bundles, and how built-in extensions (pi-web-access,
+    M2) are delivered across all of them. Decide the supported matrix first; the rest follows.
 
 ---
 
