@@ -4,12 +4,12 @@ import { tmpdir } from "os";
 import { delimiter, join } from "path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
-	BUILD_NAME,
 	buildName,
 	buildNameFromCheckout,
 	detectInstallChange,
 	detectInstallMethod,
 	findNodePackageDir,
+	getBuildName,
 	getConfiguredSelfUpdateArgv,
 	getSelfUpdateCommand,
 	getSelfUpdateUnavailableInstruction,
@@ -169,7 +169,7 @@ function commitFile(repoDir: string, content: string): void {
 describe("build naming", () => {
 	test("maps a build version to its name and back", () => {
 		expect(buildName("23.0.0")).toBe("b23");
-		expect(BUILD_NAME).toMatch(/^b\d+$/);
+		expect(getBuildName()).toMatch(/^b\d+$/);
 		expect(numericVersion("b23")).toBe("23.0.0");
 		// Older releases and prerelease lines are already numeric.
 		expect(numericVersion(" 1.5.0 ")).toBe("1.5.0");

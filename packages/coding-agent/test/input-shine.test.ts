@@ -1,3 +1,4 @@
+import { setCapabilityOverrides } from "@hyzek/toucan-tui";
 import { describe, expect, it } from "vitest";
 import {
 	createInputShine,
@@ -6,6 +7,10 @@ import {
 	shouldPlayMaxShine,
 } from "../src/modes/interactive/theme/input-shine.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
+
+// The shine factories emit truecolor escapes only when the terminal reports truecolor; CI runners
+// report 256 colors. Pin the capability so these assertions run on every machine.
+setCapabilityOverrides({ trueColor: true });
 
 const TRUECOLOR_BG = /^\x1b\[48;2;(\d+);(\d+);(\d+)m$/;
 

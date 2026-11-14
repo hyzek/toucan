@@ -653,8 +653,16 @@ export function buildNameFromCheckout(packageDir: string): string | undefined {
 /**
  * Build name of this process, e.g. `b23`. A source checkout follows its commit count; an installed
  * release uses its package version, which the release script sets to the release commit's position.
+ * Computed on first use: in a source checkout this spawns git, and doing that at module load breaks
+ * test files that mock `child_process` before importing anything that reaches `config.ts`.
  */
-export const BUILD_NAME: string = buildNameFromCheckout(getPackageDir()) ?? buildName(VERSION);
+let cachedBuildName: string | undefined;
+export function getBuildName(): string {
+	if (cachedBuildName === undefined) {
+		cachedBuildName = buildNameFromCheckout(getPackageDir()) ?? buildName(VERSION);
+	}
+	return cachedBuildName;
+}
 
 /**
  * Turns a version string back into the numeric form npm and settings compare. `toucan --version`

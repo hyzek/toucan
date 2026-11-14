@@ -16,12 +16,12 @@ import { selectConfig } from "./cli/config-selector.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import {
 	APP_NAME,
-	BUILD_NAME,
 	buildName,
 	CONFIG_DIR_NAME,
 	detectInstallChange,
 	detectInstallMethod,
 	getAgentDir,
+	getBuildName,
 	getConfiguredSelfUpdateArgv,
 	getPackageDir,
 	getSelfUpdateCommand,
@@ -719,7 +719,7 @@ async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
 		};
 	}
 
-	console.log(chalk.green(`${APP_NAME} is already up to date (${BUILD_NAME})`));
+	console.log(chalk.green(`${APP_NAME} is already up to date (${getBuildName()})`));
 	return { packageName, installSpec, version: latestRelease.version, shouldRun: false };
 }
 
@@ -766,7 +766,7 @@ async function runConfiguredSelfUpdate(argv: string[], plan: SelfUpdatePlan): Pr
 	const installedVersion =
 		change?.kind === "updated" && change.version === plan.version ? change.version : readVersionOnPath();
 	if (installedVersion && numericVersion(installedVersion) === plan.version) {
-		console.log(chalk.green(`Updated ${APP_NAME} from ${BUILD_NAME} to ${buildName(plan.version)}`));
+		console.log(chalk.green(`Updated ${APP_NAME} from ${getBuildName()} to ${buildName(plan.version)}`));
 		return;
 	}
 	console.log(
@@ -1173,7 +1173,7 @@ export async function handlePackageCommand(
 							return true;
 						}
 						console.log(
-							chalk.green(`Updated ${APP_NAME} from ${BUILD_NAME} to ${buildName(selfUpdatePlan.version)}`),
+							chalk.green(`Updated ${APP_NAME} from ${getBuildName()} to ${buildName(selfUpdatePlan.version)}`),
 						);
 						return true;
 					}
@@ -1216,7 +1216,7 @@ export async function handlePackageCommand(
 						return true;
 					}
 					console.log(
-						chalk.green(`Updated ${APP_NAME} from ${BUILD_NAME} to ${buildName(selfUpdatePlan.version)}`),
+						chalk.green(`Updated ${APP_NAME} from ${getBuildName()} to ${buildName(selfUpdatePlan.version)}`),
 					);
 					// The pi.dev installer migrates global npm installs to a managed install
 					// that pins all dependencies. It does not migrate pnpm, yarn, or bun installs.

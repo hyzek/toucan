@@ -392,6 +392,8 @@ type ClearStatusContext = {
 	ui: { getClearOnShrink: () => boolean };
 	idleStatus: Component;
 	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
+	clearInterruptConfirmation(): void;
+	renderInterruptHint(): string;
 };
 
 type InteractiveModePrototype = {
@@ -423,6 +425,8 @@ describe("clear-on-shrink status spacing", () => {
 			ui: { getClearOnShrink: () => true },
 			idleStatus: new Text("", 0, 0),
 			setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
+			clearInterruptConfirmation: () => {},
+			renderInterruptHint: () => "esc to interrupt",
 		};
 		const indicators = [
 			new WorkingStatusIndicator(tui, "Working"),
@@ -468,6 +472,8 @@ describe("clear-on-shrink status spacing", () => {
 				ui: { getClearOnShrink: () => true },
 				idleStatus: new Text("", 0, 0),
 				setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
+				clearInterruptConfirmation: () => {},
+				renderInterruptHint: () => "esc to interrupt",
 			};
 
 			interactiveModePrototype.clearStatusIndicator.call(context);
@@ -499,6 +505,8 @@ describe("clear-on-shrink status spacing", () => {
 				ui: { getClearOnShrink: () => true },
 				idleStatus: new Text("", 0, 0),
 				setEditorWorkingStatusIndicator: interactiveModePrototype.setEditorWorkingStatusIndicator,
+				clearInterruptConfirmation: () => {},
+				renderInterruptHint: () => "esc to interrupt",
 			};
 
 			interactiveModePrototype.clearStatusIndicator.call(context);

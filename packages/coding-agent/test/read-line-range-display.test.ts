@@ -132,7 +132,8 @@ describe("read line range display", () => {
 			{ requestRender() {} } as TUI,
 			tempDir,
 		);
-		expect(stripVTControlCharacters(tool.render(120).join("\n"))).toContain("Read notes.txt:25-37");
+		// The TUI call row shows raw args; the session tree and HTML export keep the short line range.
+		expect(stripVTControlCharacters(tool.render(120).join("\n"))).toContain("Read notes.txt (offset=25, limit=13)");
 
 		const tree = new TreeSelectorComponent(
 			SessionManager.open(sessionPath).getTree(),

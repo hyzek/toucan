@@ -56,12 +56,12 @@ import { spawn } from "child_process";
 import {
 	APP_NAME,
 	APP_TITLE,
-	BUILD_NAME,
 	buildName,
 	CONFIG_DIR_NAME,
 	detectInstallChange,
 	getAgentDir,
 	getAuthPath,
+	getBuildName,
 	getDebugLogPath,
 	getDocsPath,
 	VERSION,
@@ -917,7 +917,7 @@ export class InteractiveMode {
 		if (this.changelogMarkdown) {
 			if (this.settingsManager.getCollapseChangelog()) {
 				const versionMatch = this.changelogMarkdown.match(/##\s+\[?(\d+)\.\d+\.\d+\]?/);
-				const latestBuild = versionMatch ? `b${versionMatch[1]}` : BUILD_NAME;
+				const latestBuild = versionMatch ? `b${versionMatch[1]}` : getBuildName();
 				const condensedText = `Updated to ${latestBuild}. Use ${theme.bold("/changelog")} to view full changelog.`;
 				notice.addChild(new Text(condensedText, 1, 0));
 			} else {
@@ -1120,7 +1120,7 @@ export class InteractiveMode {
 					`Toucan can explain its own features and look up its docs. Ask it how to use or extend Toucan.`,
 				);
 			const header = new LaunchPanel({
-				version: BUILD_NAME,
+				version: getBuildName(),
 				welcome: () => (this.sessionManager.hasConversation() ? "Welcome back!" : "Welcome!"),
 				model: () => {
 					const model = this.session.model;
@@ -2039,7 +2039,7 @@ export class InteractiveMode {
 		this.installChangeWarningShown = true;
 		const cause =
 			change.kind === "updated"
-				? `${APP_NAME} was updated to ${buildName(change.version)} while this session was running (${BUILD_NAME})`
+				? `${APP_NAME} was updated to ${buildName(change.version)} while this session was running (${getBuildName()})`
 				: `The ${APP_NAME} installation this session runs from was removed or replaced`;
 		const resumeCommand = formatResumeCommand(this.sessionManager);
 		const restart = resumeCommand

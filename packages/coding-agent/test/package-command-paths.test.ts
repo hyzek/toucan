@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BUILD_NAME, buildName, ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";
+import { buildName, ENV_AGENT_DIR, getBuildName, PACKAGE_NAME, VERSION } from "../src/config.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { DefaultPackageManager, type ResolvedPaths } from "../src/core/package-manager.ts";
 import { InMemorySettingsStorage, SettingsManager } from "../src/core/settings-manager.ts";
@@ -144,6 +144,9 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 		mkdirSync(agentDir, { recursive: true });
 		mkdirSync(projectDir, { recursive: true });
 		mkdirSync(packageDir, { recursive: true });
+		// Resource discovery scans ~/.agents/skills; point HOME at the temp dir so a developer's
+		// personal skills cannot shift the resource lists these tests assert on.
+		vi.stubEnv("HOME", tempDir);
 
 		originalCwd = process.cwd();
 		originalAgentDir = process.env[ENV_AGENT_DIR];
@@ -680,7 +683,7 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 
 			expect(fetchMock).toHaveBeenCalledOnce();
 			expect(logSpy.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-				`toucan is already up to date (${BUILD_NAME})`,
+				`toucan is already up to date (${getBuildName()})`,
 			);
 			expect(errorSpy).not.toHaveBeenCalled();
 			expect(process.exitCode).toBeUndefined();
@@ -740,7 +743,7 @@ if (process.platform !== "win32") fs.chmodSync(toucanPath, 0o755);
 			expect.arrayContaining(["ci", "--ignore-scripts"]),
 		);
 		expect(logSpy.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-			`Updated toucan from ${BUILD_NAME} to ${buildName(targetVersion)}`,
+			`Updated toucan from ${getBuildName()} to ${buildName(targetVersion)}`,
 		);
 		expect(errorSpy).not.toHaveBeenCalled();
 		expect(process.exitCode).toBeUndefined();
@@ -885,7 +888,7 @@ process.exit(${exitCode});
 		const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
 		expect(stdout).toContain("Read me");
 		// Like mise, the command leaves this installation untouched; the toucan on PATH reports the new version.
-		expect(stdout).toContain(`Updated toucan from ${BUILD_NAME} to ${buildName(targetVersion)}`);
+		expect(stdout).toContain(`Updated toucan from ${getBuildName()} to ${buildName(targetVersion)}`);
 		expect(errorSpy).not.toHaveBeenCalled();
 		expect(process.exitCode).toBeUndefined();
 	});
@@ -912,7 +915,7 @@ process.exit(${exitCode});
 		await expect(runPackageCommandDirectly(["update", "--self"])).resolves.toBeUndefined();
 		expect(existsSync(recordPath)).toBe(false);
 		expect(logSpy.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-			`toucan is already up to date (${BUILD_NAME})`,
+			`toucan is already up to date (${getBuildName()})`,
 		);
 
 		fetchMock.mockImplementation(async () => Response.json({ version: targetVersion }));
@@ -1032,7 +1035,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 			expect(recordedArgs).toContain(`${PACKAGE_NAME}@${VERSION}`);
 			expect(recordedArgs).not.toContain(PACKAGE_NAME);
 			expect(recordedArgs).not.toContain(projectPrefix);
-			expect(stdout).toContain(`Updated toucan from ${BUILD_NAME} to ${buildName(VERSION)}`);
+			expect(stdout).toContain(`Updated toucan from ${getBuildName()} to ${buildName(VERSION)}`);
 		} finally {
 			logSpy.mockRestore();
 			errorSpy.mockRestore();
@@ -1078,7 +1081,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 			const recordedArgs = JSON.parse(readFileSync(recordPath, "utf-8")) as string[];
 			expect(recordedArgs).toContain(`${PACKAGE_NAME}@${targetVersion}`);
 			expect(recordedArgs).not.toContain(PACKAGE_NAME);
-			expect(stdout).toContain(`Updated toucan from ${BUILD_NAME} to ${buildName(targetVersion)}`);
+			expect(stdout).toContain(`Updated toucan from ${getBuildName()} to ${buildName(targetVersion)}`);
 		} finally {
 			logSpy.mockRestore();
 			errorSpy.mockRestore();
