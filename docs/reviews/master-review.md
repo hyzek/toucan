@@ -421,9 +421,19 @@ None.
 - **H4. `read-line-range-display.test.ts` — format change without test update.** `924b0ff73`
   changed read rows to `(offset=25, limit=13)`; test still asserts `:25-37`. Fix: update the
   assertion (and the HTML/session-tree variants the same test covers).
-- **H5. Release tooling breaks doc-quote fixtures — `61-tutorial` fails.** `bd44dc001`/`df41ccb58`
-  rewrote fixture `package.json` versions quoted verbatim in `book.md`. Fix: exempt
-  doc-quoted fixture files from version sync (explicit ignore list), or regenerate the quote.
+- **H5. Release tooling breaks doc-quote fixtures — `61-tutorial` fails.** Two independent
+  mechanisms rewrite fixture `package.json` files quoted verbatim in `book.md`:
+  (1) `applyVersion`'s `npm version --workspaces` (release.mjs:171) — npm resolves workspaces
+  from the root `workspaces` array, which explicitly lists `packages/chord/test/examples/61-tutorial`,
+  so every release bump rewrites the fixture (confirmed: `df41ccb58` set it 23.0.0→24.0.0);
+  (2) the `findPackageDirectories()` traversal (changelog/publish paths). Fixed in `dev`
+  (`033e041ae`): traversal now skips `test/` dirs and the fixture version was restored,
+  but (1) is still open — the next release re-breaks `tutorial.test.ts`. Remaining options:
+  re-pin doc-quoted fixture versions in `applyVersion` after `npm version`; drop the fixture
+  from the root `workspaces` array (verify the tutorial's imports still resolve — chord comes
+  in via relative paths and `@todo/app` self-references, so this may be clean, but the entry
+  predates the fork and its purpose is untested); or normalize the `"version"` line out of
+  the quote comparison. See roadmap R1b.
 
 ### Medium
 
@@ -492,26 +502,33 @@ Ordered by value; R1–R2 restore signal, R3–R5 prevent recurrence, R8 is forw
    fake host (or switch it to `test/suite/harness.ts`); update the three default-tool fixtures;
    update `read-line-range-display` to the `(offset=, limit=)` format; exempt the 61-tutorial
    fixture from version sync. Risk: none — tests and fixture data only. Confidence: high.
-2. **R2 — `BUILD_NAME` lazy.** Replace the module-level const with a memoized
+2. **R1b — Close the H5 bump mechanism before the next release cut.** `033e041ae` fixed the
+   fixture and the `findPackageDirectories` paths, but `npm version --workspaces` still targets
+   the fixture through the root `workspaces` array, so b25 will re-break `tutorial.test.ts`.
+   Preferred: drop `packages/chord/test/examples/61-tutorial` from the root `workspaces` array
+   after verifying the tutorial still resolves its imports (needs a lockfile change).
+   Fallbacks: re-pin the fixture version in `applyVersion` after `npm version`, or normalize
+   the version line in the quote check.
+3. **R2 — `BUILD_NAME` lazy.** Replace the module-level const with a memoized
    `getBuildName()`. Removes the import-time spawn (H2) and its mock-interaction class of bug.
    Touches `config.ts` consumers (~few call sites). Risk: low.
-3. **R3 — Split `interactive-mode.ts` along existing seams, incrementally.** Natural first
+4. **R3 — Split `interactive-mode.ts` along existing seams, incrementally.** Natural first
    extractions: interrupt handling (the double-Esc state machine), slash-command handlers,
    status/hint-row coordination. Each extraction should replace an `Object.create` fake host
    with a real component test. Do not big-bang; one seam per change. Benefit: H1-class silent
    breakage stops being cheap to reproduce.
-4. **R4 — Single source for default active tools.** Export `DEFAULT_ACTIVE_TOOLS` from
+5. **R4 — Single source for default active tools.** Export `DEFAULT_ACTIVE_TOOLS` from
    `plan-mode`-sibling module and assert fixtures against it (with the dynamic additions
    explicit). Eliminates recurrence of H3.
-5. **R5 — Plan-mode wording or enforcement.** Decide guardrail vs sandbox (M1). Minimum
+6. **R5 — Plan-mode wording or enforcement.** Decide guardrail vs sandbox (M1). Minimum
    concrete change: reject `| sh|bash|zsh|python…`, `-delete`, and `-i`/`--in-place` flags, and
    state the actual guarantee ("discourages writes; not a sandbox") in docs and the prompt section.
-6. **R6 — CI hygiene:** fix mcp-conformance failure propagation (M6); gate or env-provide
+7. **R6 — CI hygiene:** fix mcp-conformance failure propagation (M6); gate or env-provide
    truecolor for tui tests (M4); decouple the chord compression-bomb assertion from Node's
    zlib ratio (M5).
-7. **R7 — Housekeeping:** README plan-mode sentence (L8), autocomplete dead API removal or
+8. **R7 — Housekeeping:** README plan-mode sentence (L8), autocomplete dead API removal or
    wiring (L4), and a `.gitignore` rule for exported transcripts (L10).
- 8. **R8 — Design a proper installer and install manager.** Installation today is a patchwork:
+ 9. **R8 — Design a proper installer and install manager.** Installation today is a patchwork:
     `npm install -g` with `--ignore-scripts`, a `curl … install.sh` line, a nix profile, and a
     generated per-release `install-lock/` bundle — four paths with no shared contract for Node
     version, platform natives, or upgrade/uninstall. Needs a design doc before code: what the
