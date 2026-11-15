@@ -2,6 +2,7 @@ import { visibleWidth } from "@hyzek/toucan-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
+import type { FooterStats } from "../src/core/footer-stats.ts";
 import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -103,7 +104,8 @@ describe("FooterComponent width handling", () => {
 			routedModel: { model: { id: "gpt-5.6-luna", name: "GPT-5.6 Luna" }, thinkingLevel: "medium" },
 		});
 
-		expect(renderFooter(session, 120)).toContain("auto \u00b7 high \u2192 GPT-5.6 Luna \u00b7 medium");
+		// The routed model follows the model that routed to it; the thinking level is its own block.
+		expect(renderFooter(session, 120)).toContain("auto \u2192 GPT-5.6 Luna \u00b7 medium \u00b7 high");
 	});
 
 	it("shows the catalog display name instead of the API id", () => {
@@ -132,12 +134,43 @@ describe("FooterComponent width handling", () => {
 		expect(renderFooter(session, 120)).toBe("  test-model \u00b7 high \u00b7 /tmp/project");
 	});
 
-	it("shows no token, cost, or context stats in the bar", () => {
+	it("shows no token, cost, or context stats with the default blocks", () => {
 		const session = createSession({ sessionName: "layout test" });
 		const bar = renderFooter(session, 120);
 
 		expect(bar).not.toContain("$");
 		expect(bar).not.toContain("%");
 		expect(bar).not.toContain("(auto)");
+	});
+
+	it("shows the blocks configured in footer.items, in that order", () => {
+		const session = createSession({ sessionName: "layout test" });
+		const stats: FooterStats = {
+			read: () => ({
+				totals: { input: 12000, output: 640, cacheRead: 90_000, cacheWrite: 1000, cost: 0.42 },
+				contextTokens: 86_000,
+				contextPercent: 43,
+				cacheHitPercent: 87,
+			}),
+			noteEvent: () => {},
+			setSession: () => {},
+		};
+		const footer = new FooterComponent(session, createFooterData(), {
+			items: () => ["cost", "directory", "cache", "context", "tokens"],
+			stats,
+		});
+
+		expect(stripAnsi(footer.render(120)[0]!)).toBe(
+			"  $0.42 \u00b7 /tmp/project \u00b7 87% \u00b7 86K (43%) \u00b7 \u2191103K \u2193640",
+		);
+	});
+
+	it("drops the rightmost block while the bar does not fit", () => {
+		const session = createSession({ sessionName: "layout test" });
+		const footer = new FooterComponent(session, createFooterData(), {
+			items: () => ["model", "session", "directory", "cost"],
+		});
+
+		expect(stripAnsi(footer.render(40)[0]!)).toBe("  test-model \u00b7 layout test");
 	});
 });

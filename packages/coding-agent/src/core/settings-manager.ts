@@ -8,6 +8,8 @@ import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
+import type { FooterItemId } from "./footer-items.ts";
+import { resolveFooterItems } from "./footer-items.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import type {
@@ -1008,6 +1010,20 @@ export class SettingsManager {
 	setShowCacheMissNotices(show: boolean): void {
 		this.globalSettings.showCacheMissNotices = show;
 		this.markModified("showCacheMissNotices");
+		this.save();
+	}
+
+	/** Info bar blocks, left to right. Unset or unusable values give the default bar. */
+	getFooterItems(): readonly FooterItemId[] {
+		return resolveFooterItems(this.settings.footer?.items);
+	}
+
+	setFooterItems(items: readonly FooterItemId[]): void {
+		if (!this.globalSettings.footer) {
+			this.globalSettings.footer = {};
+		}
+		this.globalSettings.footer.items = [...items];
+		this.markModified("footer", "items");
 		this.save();
 	}
 

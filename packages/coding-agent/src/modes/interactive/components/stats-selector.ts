@@ -1,9 +1,9 @@
 import { Container, type Focusable, getKeybindings, Text } from "@hyzek/toucan-tui";
 import type { UsageReport } from "../../../core/usage-stats.ts";
 import { totalTokens } from "../../../core/usage-stats.ts";
+import { formatTokens } from "../../../utils/tokens.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { formatTokens } from "./footer.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
 import { ThemedText } from "./themed-text.ts";
 

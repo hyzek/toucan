@@ -269,6 +269,7 @@ describe("InteractiveMode extension dialogs", () => {
 			clearExtensionWidgets: vi.fn(),
 			footerDataProvider: { clearExtensionStatuses: vi.fn() },
 			footer: { invalidate: vi.fn() },
+			footerStats: { noteEvent: vi.fn() },
 			setCustomEditorComponent: vi.fn(),
 			setupAutocompleteProvider: vi.fn(),
 			defaultEditor: {},

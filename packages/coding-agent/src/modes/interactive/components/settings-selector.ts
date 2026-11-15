@@ -12,6 +12,7 @@ import {
 	Text,
 	type WheelScrollLines,
 } from "@hyzek/toucan-tui";
+import { type FooterItemId, footerItemsSummary } from "../../../core/footer-items.ts";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import {
@@ -33,6 +34,7 @@ import {
 	theme,
 } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
+import { FooterEditorComponent } from "./footer-editor.ts";
 import { keyDisplayText } from "./keybinding-hints.ts";
 import { SelectSubmenu, SteppedSubmenu, type SteppedSubmenuStep } from "./settings-submenu.ts";
 
@@ -79,6 +81,7 @@ export interface SettingsConfig {
 	availableThinkingLevels: ThinkingLevel[];
 	modelThinkingLevels: Record<string, ThinkingLevel>;
 	currentTheme: string;
+	footerItems: readonly FooterItemId[];
 	terminalTheme: TerminalTheme;
 	availableThemes: string[];
 	hideThinkingBlock: boolean;
@@ -121,6 +124,7 @@ export interface SettingsCallbacks {
 	onModelThinkingLevelChange: (provider: string, modelId: string, level: ThinkingLevel) => void;
 	onModelThinkingLevelRemove: (provider: string, modelId: string) => void;
 	onThemeChange: (theme: string) => void;
+	onFooterItemsChange: (items: readonly FooterItemId[]) => void;
 	onThemePreview?: (theme: string) => void;
 	onHideThinkingBlockChange: (hidden: boolean) => void;
 	onMermaidRenderingModeChange: (mode: MermaidRenderingMode) => void;
@@ -766,6 +770,20 @@ export class SettingsSelectorComponent extends Container {
 				currentValue: config.currentTheme,
 				submenu: (currentValue, done) =>
 					new ThemeSubmenu(currentValue, config.terminalTheme, config.availableThemes, callbacks, done),
+			},
+			{
+				id: "info-bar",
+				label: "Info bar",
+				description: "Blocks shown in the bar under the input, and their order. Same as /footer",
+				currentValue: footerItemsSummary(config.footerItems),
+				submenu: (_currentValue, done) =>
+					new FooterEditorComponent(config.footerItems, {
+						onItemsChanged: (items) => {
+							callbacks.onFooterItemsChange(items);
+							this.settingsList.updateValue("info-bar", footerItemsSummary(items));
+						},
+						onCancel: () => done(),
+					}),
 			},
 		];
 

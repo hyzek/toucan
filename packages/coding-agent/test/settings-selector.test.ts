@@ -38,6 +38,7 @@ describe("SettingsSelectorComponent", () => {
 			availableDefaultModels: [],
 			availableThinkingLevels: [],
 			modelThinkingLevels: {},
+			footerItems: [],
 			availableThemes: [],
 		} as unknown as SettingsConfig;
 		const callbacks = {
@@ -73,6 +74,7 @@ describe("SettingsSelectorComponent", () => {
 			availableDefaultModels: [],
 			availableThinkingLevels: [],
 			modelThinkingLevels: {},
+			footerItems: [],
 			availableThemes: [],
 		} as unknown as SettingsConfig;
 		const callbacks = {
@@ -94,6 +96,7 @@ describe("SettingsSelectorComponent", () => {
 			currentTheme: "dark",
 			terminalTheme: "dark",
 			availableThemes: ["system", "dark", "light"],
+			footerItems: [],
 			warnings: {},
 		} as unknown as SettingsConfig;
 		const callbacks = { onThemePreview: vi.fn(), onCancel: () => {} } as unknown as SettingsCallbacks;
@@ -121,6 +124,7 @@ describe("SettingsSelectorComponent", () => {
 			currentTheme: "light/dark",
 			terminalTheme: "dark",
 			availableThemes: ["dark", "light", "other"],
+			footerItems: [],
 			warnings: {},
 		} as unknown as SettingsConfig;
 		const callbacks = { onThemePreview: vi.fn(), onCancel: () => {} } as unknown as SettingsCallbacks;
@@ -149,6 +153,7 @@ describe("SettingsSelectorComponent", () => {
 			availableDefaultModels: [model],
 			thinkingLevel: "high",
 			modelThinkingLevels: { [modelKey]: "medium" },
+			footerItems: [],
 		} as unknown as SettingsConfig;
 		const callbacks = { onCancel: () => {} } as unknown as SettingsCallbacks;
 		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
@@ -165,6 +170,46 @@ describe("SettingsSelectorComponent", () => {
 		output = stripAnsi(list.render(120).join("\n"));
 		expect(output).toContain("  ✓ medium");
 		expect(output).toContain("→   high");
+	});
+
+	it("shows the info bar blocks and applies edits made in its editor", () => {
+		const onFooterItemsChange = vi.fn();
+		const config = {
+			footerItems: ["model", "thinking", "session", "directory"],
+			currentTheme: "dark",
+			terminalTheme: "dark",
+			steeringMode: "all",
+			followUpMode: "one-at-a-time",
+			transport: "auto",
+			sessionShareDestination: "auto",
+			cacheWarmingMode: "off",
+			mermaidRenderingMode: "text",
+			doubleEscapeAction: "none",
+			treeFilterMode: "default",
+			tuiMode: "normal",
+			fullscreenExitOutput: "transcript",
+			fullscreenScrollbar: "auto",
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = { onFooterItemsChange } as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+		list.selectItem("info-bar");
+
+		expect(stripAnsi(list.render(120).join("\n"))).toContain("Info bar");
+		expect(stripAnsi(list.render(120).join("\n"))).toContain("Model, Thinking +2");
+
+		list.handleInput("\r"); // open the info bar editor
+		list.handleInput("\r"); // hide the block the editor selected first
+
+		expect(onFooterItemsChange.mock.calls.at(-1)![0]).toEqual(["thinking", "session", "directory"]);
+
+		list.handleInput("\x1b"); // close the editor; the row shows what the bar now holds
+		expect(stripAnsi(list.render(120).join("\n"))).toContain("Thinking, Session name +1");
 	});
 
 	it("pages a searchable submenu with selection page keys (#7629)", () => {

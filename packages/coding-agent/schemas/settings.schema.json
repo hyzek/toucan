@@ -122,6 +122,64 @@
     "theme": {
       "type": "string"
     },
+    "footer": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "model"
+              },
+              {
+                "type": "string",
+                "const": "model-id"
+              },
+              {
+                "type": "string",
+                "const": "thinking"
+              },
+              {
+                "type": "string",
+                "const": "session"
+              },
+              {
+                "type": "string",
+                "const": "directory"
+              },
+              {
+                "type": "string",
+                "const": "branch"
+              },
+              {
+                "type": "string",
+                "const": "context"
+              },
+              {
+                "type": "string",
+                "const": "tokens"
+              },
+              {
+                "type": "string",
+                "const": "cache"
+              },
+              {
+                "type": "string",
+                "const": "cost"
+              }
+            ]
+          },
+          "description": "Info bar blocks, left to right. Omitted blocks are hidden. Defaults to model, thinking, directory.",
+          "default": [
+            "model",
+            "thinking",
+            "directory"
+          ]
+        }
+      }
+    },
     "compaction": {
       "type": "object",
       "properties": {

@@ -1,12 +1,22 @@
+// The info bar: one line under the input showing the blocks the user picked (model, thinking,
+// directory, usage, ...), the mode badges, and any statuses extensions set below it.
+
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import type { Model } from "@hyzek/toucan-ai";
 import { type Component, truncateToWidth, visibleWidth } from "@hyzek/toucan-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
+import type { FooterItemId } from "../../../core/footer-items.ts";
+import { FOOTER_ITEMS_DEFAULT } from "../../../core/footer-items.ts";
+import type { FooterStats } from "../../../core/footer-stats.ts";
+import { createUsageTotals } from "../../../core/usage-totals.ts";
 import { theme } from "../theme/theme.ts";
 import { INPUT_PROMPT } from "./custom-editor.ts";
+import { type FooterRenderContext, renderFooterBlocks } from "./footer-blocks.ts";
+
+const SEPARATOR = " \u00b7 ";
+const NO_USAGE = createUsageTotals();
 
 /**
  * Sanitize text for display in a single-line status.
@@ -18,17 +28,6 @@ function sanitizeStatusText(text: string): string {
 		.replace(/[\r\n\t]/g, " ")
 		.replace(/ +/g, " ")
 		.trim();
-}
-
-/**
- * Format token counts compactly for status output.
- */
-export function formatTokens(count: number): string {
-	if (count < 1000) return count.toString();
-	if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
-	if (count < 1000000) return `${Math.round(count / 1000)}k`;
-	if (count < 10000000) return `${(count / 1000000).toFixed(1)}M`;
-	return `${Math.round(count / 1000000)}M`;
 }
 
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
@@ -45,80 +44,64 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
 }
 
-/**
- * The name shown in the bar: the catalog display name ("Claude Sonnet 4.5"), falling back to the
- * API id for models declared without one.
- */
-function modelDisplayName(model: Model<any> | undefined): string {
-	return model?.name || model?.id || "no-model";
+export interface FooterComponentOptions {
+	/** Block order, read per render so `/footer` takes effect without rebuilding the component. */
+	items?: () => readonly FooterItemId[];
+	/** Session usage numbers. Omitted, the usage blocks have nothing to show. */
+	stats?: FooterStats;
 }
 
 /**
- * Footer bar showing model and thinking level, session name, and the working directory.
- * Extension statuses come from the provider.
+ * The info bar. Blocks come from `footer.items`; `plan` and the experimental marker are mode
+ * badges rather than blocks: they report a state the user is in, so they appear on their own
+ * terms and never take a slot in the configured order.
  */
 export class FooterComponent implements Component {
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
+	private options: FooterComponentOptions;
 
-	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
+	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider, options: FooterComponentOptions = {}) {
 		this.session = session;
 		this.footerData = footerData;
+		this.options = options;
 	}
 
 	setSession(session: AgentSession): void {
 		this.session = session;
+		this.options.stats?.setSession(session);
 	}
 
-	/**
-	 * No-op: git branch caching now handled by provider.
-	 * Kept for compatibility with existing call sites in interactive-mode.
-	 */
 	invalidate(): void {
-		// No-op: git branch is cached/invalidated by provider
+		// No-op: git branch is cached/invalidated by provider, usage refreshes on session events.
 	}
 
-	/**
-	 * Clean up resources.
-	 * Git watcher cleanup now handled by provider.
-	 */
-	dispose(): void {
-		// Git watcher cleanup handled by provider
-	}
+	/** Git branch caching and the extension statuses live in the provider, which owns their cleanup. */
+	dispose(): void {}
 
 	render(width: number): string[] {
-		const state = this.session.state;
+		const items = this.options.items?.() ?? FOOTER_ITEMS_DEFAULT;
+		const segments = renderFooterBlocks(items, this.renderContext());
+		if (areExperimentalFeaturesEnabled()) {
+			segments.push(theme.fg("dim", theme.bold(theme.fg("warning", "xp"))));
+		}
 
-		// The session name is an optional part of the bar.
-		const sessionName = this.session.sessionManager.getSessionName();
-		const directory = formatCwdForFooter(this.session.sessionManager.getCwd(), homedir());
-
-		// One bar like the reference design: model and thinking level lead the bar, indented by
-		// one cell to line up under the input caret, then the session name, and the directory.
-		const modelName = modelDisplayName(state.model);
-		let left = modelName;
-		if (state.model?.reasoning) {
-			const thinkingLevel = state.thinkingLevel || "off";
-			left = thinkingLevel === "off" ? `${modelName} · thinking off` : `${modelName} · ${thinkingLevel}`;
-		}
-		// A virtual model routes each request; show where the latest response went.
-		const routed = this.session.routedModel;
-		if (routed) {
-			const level = routed.thinkingLevel ? ` · ${routed.thinkingLevel}` : "";
-			left += ` → ${modelDisplayName(routed.model)}${level}`;
-		}
-		if (sessionName) {
-			left = `${left} · ${sessionName}`;
-		}
 		// Indent to the caret column of the input band above (the prompt cell width).
 		const indent = " ".repeat(visibleWidth(INPUT_PROMPT));
-		let bar = `${indent}${left} · ${theme.fg("success", directory)}`;
-		if (areExperimentalFeaturesEnabled()) {
-			bar += ` · ${theme.bold(theme.fg("warning", "xp"))}`;
+		// When the bar does not fit, the rightmost block goes first: the order is the user's, so
+		// what they put last is what they chose to lose. Only the block still standing truncates.
+		while (segments.length > 1 && visibleWidth(`${indent}${segments.join(SEPARATOR)}`) > width) {
+			segments.pop();
 		}
+		// Dim per segment, not the whole line: a block's own color closes with a foreground
+		// reset, and one line-wide dim before it would leave everything after that block in the
+		// terminal default color.
+		const dimSeparator = theme.fg("dim", SEPARATOR);
+		let bar = `${indent}${segments.map((segment) => theme.fg("dim", segment)).join(dimSeparator)}`;
+
 		// Plan mode badge, right-aligned on the same bar. Dropped when the width is tight.
 		if (this.session.planMode) {
-			const badge = theme.fg("planMode", "◇ Plan mode");
+			const badge = theme.fg("planMode", "\u25c7 Plan mode");
 			const gap = width - visibleWidth(bar) - visibleWidth(badge);
 			if (gap >= 2) bar += " ".repeat(gap) + badge;
 		}
@@ -126,7 +109,7 @@ export class FooterComponent implements Component {
 			bar = truncateToWidth(bar, width, theme.fg("dim", "..."));
 		}
 
-		const lines: string[] = [theme.fg("dim", bar)];
+		const lines: string[] = [bar];
 
 		// Add extension statuses on a single line, sorted by key alphabetically
 		const extensionStatuses = this.footerData.getExtensionStatuses();
@@ -140,5 +123,22 @@ export class FooterComponent implements Component {
 		}
 
 		return lines;
+	}
+
+	private renderContext(): FooterRenderContext {
+		const state = this.session.state;
+		const snapshot = this.options.stats?.read();
+		return {
+			model: state.model,
+			thinkingLevel: state.thinkingLevel,
+			routedModel: this.session.routedModel,
+			sessionName: this.session.sessionManager.getSessionName() ?? "",
+			directory: formatCwdForFooter(this.session.sessionManager.getCwd(), homedir()),
+			gitBranch: this.footerData.getGitBranch(),
+			usage: snapshot?.totals ?? NO_USAGE,
+			contextTokens: snapshot?.contextTokens,
+			contextPercent: snapshot?.contextPercent,
+			cacheHitPercent: snapshot?.cacheHitPercent,
+		};
 	}
 }

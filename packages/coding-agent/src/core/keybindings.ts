@@ -160,6 +160,18 @@ const APP_KEYBINDINGS = {
 		defaultKeys: "alt+down",
 		description: "Move model down in order",
 	},
+	"app.footer.reorderUp": {
+		defaultKeys: "alt+up",
+		description: "Info bar setup: move the block one place earlier",
+	},
+	"app.footer.reorderDown": {
+		defaultKeys: "alt+down",
+		description: "Info bar setup: move the block one place later",
+	},
+	"app.footer.reset": {
+		defaultKeys: "r",
+		description: "Info bar setup: restore the default blocks and order",
+	},
 	"app.tree.filter.default": {
 		defaultKeys: "ctrl+d",
 		description: "Tree filter: default view",

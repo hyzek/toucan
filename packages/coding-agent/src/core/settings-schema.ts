@@ -1,4 +1,5 @@
-import { type Static, type TSchemaOptions, Type } from "typebox";
+import { type Static, type TLiteral, type TSchemaOptions, type TUnion, Type } from "typebox";
+import { FOOTER_ITEM_IDS, FOOTER_ITEMS_DEFAULT, type FooterItemId } from "./footer-items.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import { ModelThinkingLevelSchema } from "./toucan-ai-schemas.ts";
 
@@ -22,6 +23,21 @@ const CompactionSettingsSchema = Type.Object({
 	modelOverrides: Type.Optional(
 		Type.Record(Type.String(), CompactionModelOverrideSchema, {
 			description: 'Per-model overrides keyed by exact "provider/modelId" strings.',
+		}),
+	),
+});
+
+// The block ids are a runtime array, so TypeScript cannot infer the literal union from the map;
+// FOOTER_ITEM_IDS is the list this schema accepts.
+const FooterItemIdSchema = Type.Union(FOOTER_ITEM_IDS.map((id) => Type.Literal(id))) as TUnion<
+	[TLiteral<FooterItemId>, ...TLiteral<FooterItemId>[]]
+>;
+
+const FooterSettingsSchema = Type.Object({
+	items: Type.Optional(
+		Type.Array(FooterItemIdSchema, {
+			description: `Info bar blocks, left to right. Omitted blocks are hidden. Defaults to ${FOOTER_ITEMS_DEFAULT.join(", ")}.`,
+			default: [...FOOTER_ITEMS_DEFAULT],
 		}),
 	),
 });
@@ -262,6 +278,7 @@ export const SettingsSchema = Type.Object(
 			}),
 		),
 		theme: Type.Optional(Type.String()),
+		footer: Type.Optional(FooterSettingsSchema),
 		compaction: Type.Optional(CompactionSettingsSchema),
 		branchSummary: Type.Optional(BranchSummarySettingsSchema),
 		retry: Type.Optional(RetrySettingsSchema),

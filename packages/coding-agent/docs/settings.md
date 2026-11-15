@@ -119,6 +119,38 @@ See [Compaction Reference](compaction.md) for trigger, summarization, and valida
 
 See [Themes](themes.md) and [Terminal Setup](terminal-setup.md) for format and platform details.
 
+### Info bar
+
+`footer.items` lists the blocks shown in the one-line bar under the input, left to right. It defaults to
+`model`, `thinking`, `directory`. `/footer` and `/settings` → Info bar edit the same list and preview
+every change in the bar itself.
+
+| Block | Shows |
+|---|---|
+| `model` | Model display name. When a request was routed to another physical model, the route follows it: `auto → GPT-5.6 Luna · medium`. |
+| `model-id` | Model id as the API names it. |
+| `thinking` | Reasoning level, or `thinking off`. Hidden for models that cannot reason. |
+| `session` | Session name, set with `/name`. |
+| `directory` | Working directory, abbreviated under the home directory. |
+| `branch` | Git branch, `detached` for a detached HEAD. Hidden outside a repository. |
+| `context` | Tokens in context and the share of the window they fill, such as `134.8K (70%)`. Turns yellow at 70%, red at 85%. |
+| `tokens` | Tokens this session has sent (`↑`, prompt tokens including cache reads and writes) and received (`↓`), such as `↑103K ↓640`. |
+| `cache` | Share of this session's prompt tokens served from cache, such as `87%`. |
+| `cost` | What this session has cost, as billed. |
+
+```json
+{
+  "footer": {
+    "items": ["model", "thinking", "context", "cache", "cost"]
+  }
+}
+```
+
+Blocks the list omits stay hidden, and a list that is empty or names only unknown blocks falls back to
+the default bar, so a hand-edited file cannot leave the bar blank. A block with nothing to show hides
+itself rather than printing an empty slot, and a bar that does not fit drops its rightmost block first:
+the order is also the order things are lost in. The usage blocks count the whole session.
+
 ## Network and retries
 
 | Setting | Type | Default | Description |

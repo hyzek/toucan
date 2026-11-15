@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FOOTER_ITEMS_DEFAULT } from "../src/core/footer-items.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS } from "../src/core/http-dispatcher.ts";
 import { type Settings, SettingsManager } from "../src/core/settings-manager.ts";
 
@@ -805,6 +806,59 @@ describe("SettingsManager", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ shellPath: "~" }));
 			const manager = SettingsManager.create(projectDir, agentDir);
 			expect(manager.getShellPath()).toBe(homedir());
+		});
+	});
+
+	describe("footer items", () => {
+		it("should give the default bar when nothing is configured", () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getFooterItems()).toEqual([...FOOTER_ITEMS_DEFAULT]);
+		});
+
+		it("should read the order from settings.json", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ footer: { items: ["cost", "model"] } }));
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getFooterItems()).toEqual(["cost", "model"]);
+		});
+
+		it("should drop ids from a hand-edited file that this build does not know", () => {
+			writeFileSync(
+				join(agentDir, "settings.json"),
+				JSON.stringify({ footer: { items: ["cost", "total-cost", "model"] } }),
+			);
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getFooterItems()).toEqual(["cost", "model"]);
+		});
+
+		it("should fall back to the default when the configured list has nothing usable", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ footer: { items: [] } }));
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getFooterItems()).toEqual([...FOOTER_ITEMS_DEFAULT]);
+		});
+
+		it("should persist a new order without dropping sibling settings", async () => {
+			writeFileSync(
+				join(agentDir, "settings.json"),
+				JSON.stringify({ theme: "dark", footer: { items: ["cost"], keepMe: true } }),
+			);
+			const manager = SettingsManager.create(projectDir, agentDir);
+
+			manager.setFooterItems(["directory", "cost"]);
+			await manager.flush();
+
+			const saved = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8"));
+			expect(saved.footer.items).toEqual(["directory", "cost"]);
+			// A key written by a newer build survives an edit from this one.
+			expect(saved.footer.keepMe).toBe(true);
+			expect(saved.theme).toBe("dark");
+		});
+
+		it("should read the written order back with a new manager", async () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			manager.setFooterItems(["context", "model"]);
+			await manager.flush();
+
+			expect(SettingsManager.create(projectDir, agentDir).getFooterItems()).toEqual(["context", "model"]);
 		});
 	});
 });

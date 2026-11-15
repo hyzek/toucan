@@ -95,6 +95,7 @@ import type {
 	WorkingIndicatorOptions,
 } from "../../core/extensions/index.ts";
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.ts";
+import { createFooterStats, type FooterStats } from "../../core/footer-stats.ts";
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/http-dispatcher.ts";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.ts";
 import { createCompactionSummaryMessage, createCustomMessage } from "../../core/messages.ts";
@@ -135,6 +136,7 @@ import { shortenHomePath } from "../../utils/paths.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { loadAllHighlightLanguages } from "../../utils/syntax-highlight.ts";
 import { stripBom } from "../../utils/text.ts";
+import { formatTokens } from "../../utils/tokens.ts";
 import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
 import { getToucanUserAgent } from "../../utils/toucan-user-agent.ts";
 import { reportBug } from "./bug-report.ts";
@@ -155,7 +157,8 @@ import { playArmin3d, playToucanLogo3d } from "./components/easter-egg-3d.lazy.t
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
-import { FooterComponent, formatCwdForFooter, formatTokens } from "./components/footer.ts";
+import { FooterComponent, formatCwdForFooter } from "./components/footer.ts";
+import { FooterEditorComponent } from "./components/footer-editor.ts";
 import { footerHint, HotkeyHints } from "./components/hotkey-hints.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LaunchPanel } from "./components/launch-panel.ts";
@@ -478,6 +481,7 @@ export class InteractiveMode {
 	private activeSelectorToken?: object;
 	private activeSelectorDispose?: () => void;
 	private footer: FooterComponent;
+	private footerStats: FooterStats;
 	private footerContainer: Container;
 	private hintsContainer: Container;
 	/** The hint row under the footer bar; features add and remove hints by id. */
@@ -713,7 +717,11 @@ export class InteractiveMode {
 			),
 		);
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
-		this.footer = new FooterComponent(this.session, this.footerDataProvider);
+		this.footerStats = createFooterStats(this.session);
+		this.footer = new FooterComponent(this.session, this.footerDataProvider, {
+			items: () => this.settingsManager.getFooterItems(),
+			stats: this.footerStats,
+		});
 		this.footerContainer = new Container();
 		this.footerContainer.addChild(this.footer);
 		this.hintsContainer = new Container();
@@ -3126,6 +3134,11 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/footer") {
+				this.showFooterEditor();
+				this.editor.setText("");
+				return;
+			}
 			if (text === "/scoped-models") {
 				this.editor.setText("");
 				await this.showModelsSelector();
@@ -3375,6 +3388,7 @@ export class InteractiveMode {
 		}
 
 		this.footer.invalidate();
+		this.footerStats.noteEvent(event);
 		this.programStatus.handleEvent(event);
 
 		switch (event.type) {
@@ -5104,6 +5118,7 @@ export class InteractiveMode {
 					availableThinkingLevels: [...THINKING_LEVEL_OPTIONS],
 					modelThinkingLevels: this.settingsManager.getAllModelThinkingLevels(),
 					currentTheme: this.themeController.getThemeSelection() || SYSTEM_THEME_NAME,
+					footerItems: this.settingsManager.getFooterItems(),
 					terminalTheme: this.themeController.getTerminalTheme(),
 					availableThemes: getAvailableThemes(),
 					hideThinkingBlock: this.hideThinkingBlock,
@@ -5209,6 +5224,10 @@ export class InteractiveMode {
 						this.themeController.setThemeSetting(themeSetting);
 					},
 					onThemePreview: (themeName) => this.themeController.preview(themeName),
+					onFooterItemsChange: (items) => {
+						this.settingsManager.setFooterItems(items);
+						this.ui.requestRender();
+					},
 					onHideThinkingBlockChange: (hidden) => {
 						this.hideThinkingBlock = hidden;
 						this.settingsManager.setHideThinkingBlock(hidden);
@@ -5316,6 +5335,26 @@ export class InteractiveMode {
 				},
 			);
 			return { component: selector, focus: selector.getSettingsList() };
+		});
+	}
+
+	/**
+	 * The info bar menu: which blocks the bar under the input shows, and in what order. Changes
+	 * are written through as they are made, so the bar itself previews them.
+	 */
+	private showFooterEditor(): void {
+		this.showSelector((done) => {
+			const editor = new FooterEditorComponent(this.settingsManager.getFooterItems(), {
+				onItemsChanged: (items) => {
+					this.settingsManager.setFooterItems(items);
+					this.ui.requestRender();
+				},
+				onCancel: () => {
+					done();
+					this.ui.requestRender();
+				},
+			});
+			return { component: editor, focus: editor };
 		});
 	}
 

@@ -359,6 +359,18 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Move model down in order"
     },
+    "app.footer.reorderUp": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Info bar setup: move the block one place earlier"
+    },
+    "app.footer.reorderDown": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Info bar setup: move the block one place later"
+    },
+    "app.footer.reset": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Info bar setup: restore the default blocks and order"
+    },
     "app.tree.filter.default": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Tree filter: default view"

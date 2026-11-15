@@ -12,6 +12,7 @@ Extensions, prompt templates, and skills can add commands. The command menu in T
 | `/model [provider/model]` | Select a model |
 | `/effort [level]` | Select the reasoning effort |
 | `/scoped-models` | Configure the models used by interactive cycling |
+| `/footer` | Choose which blocks the info bar under the input shows, and their order |
 | `/login [provider]` | Add provider authentication |
 | `/logout` | Remove provider authentication |
 | `/llama` | Manage models on the configured llama.cpp router |
