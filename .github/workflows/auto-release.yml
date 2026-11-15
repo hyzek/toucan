@@ -1,12 +1,16 @@
 name: Auto release
 
-# Every push to main is a build release: the build number is the commit's position
-# on main (`git rev-list --count HEAD`), so the tag `bN` matches the build name
-# `toucan --version` derives from the same checkout. The `b*` tag then feeds the
-# existing release pipelines (build-binaries.yml for assets/npm, nix.yml for the
-# stable branch), which all trigger on `b*` tags.
+# Every push to main is a build release. The job appends a version-bump commit
+# ("Release bN (vN.0.0)") that sets every workspace package to N.0.0 in lockstep
+# (scripts/bump-build-versions.mjs), tags that commit bN, and opens the GitHub
+# release. N is the bump commit's own position on main (`git rev-list --count`
+# after appending it), so package version, tag, and the build name
+# `toucan --version` derives from the checkout all agree on one number.
 #
-# The tag also drives the stable channel: `install.sh stable` and
+# The bump is pushed with the workflow token, which does not re-trigger this
+# workflow. The `b*` tag then feeds the existing release pipelines
+# (build-binaries.yml for assets/npm, nix.yml for the stable branch), which all
+# trigger on `b*` tags, and drives the stable channel: `install.sh stable` and
 # `toucan install toucan:stable` resolve the highest `b<N>` tag.
 
 on:
@@ -28,24 +32,39 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Tag and release this build
+      - name: Bump, tag, and release this build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          N="$(git rev-list --count HEAD)"
-          TAG="b$N"
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists (re-run or rewritten history); leaving it alone."
-            exit 0
-          fi
+          if git log -1 --format=%s | grep -q '^Release b[0-9][0-9]* (v'; then
+            # Re-run safety: HEAD is already the bump commit of a failed earlier run.
+            N="$(git rev-list --count HEAD)"
+          else
+            N=$(( $(git rev-list --count HEAD) + 1 ))
+            TAG="b$N"
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "$TAG already exists but HEAD is not its release commit (rewritten history?); leaving it alone." >&2
+              exit 1
+            fi
 
-          git tag "$TAG"
-          git push origin "refs/tags/$TAG"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+            node scripts/bump-build-versions.mjs "$N"
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+            node scripts/generate-coding-agent-install-lock.mjs
+            git add package-lock.json packages apps
+            git commit -m "Release b${N} (v${N}.0.0)"
+            git push origin "HEAD:${{ github.ref_name }}"
+            git tag "$TAG"
+            git push origin "refs/tags/$TAG"
+          fi
 
           # Mark latest only when this build is the highest b<N>; a rerun of an older
           # commit must not steal the latest slot.
+          TAG="b$N"
           MAX="$(git ls-remote --tags origin 'refs/tags/b*' | sed -n 's|.*refs/tags/b\([0-9][0-9]*\)$|\1|p' | sort -n | tail -n 1)"
           LATEST=()
           if [ "$N" -ge "${MAX:-0}" ]; then LATEST=(--latest); fi
