@@ -15,9 +15,8 @@ const answer = {
 	question: "Which direction should I take the energy?",
 	answers: [
 		{
-			title: "Compiler is unhinged, not coherent",
-			subtitle:
-				"Keep the technical essay but strip its logic: tsc's rulings become arbitrary, self-contradicting, unexplained. It bans things it cannot name.",
+			title: "Compiler is unhinged, not coherent: keep the technical essay but strip its logic, tsc's rulings become arbitrary, self-contradicting, unexplained",
+			subtitle: "Subtitles must not appear on answer rows.",
 		},
 	],
 	typed: false,
@@ -59,6 +58,7 @@ describe("questionRenderers.renderResult", () => {
 		const lines = renderAnswerLines(1);
 		expect(lines.length).toBeGreaterThan(1); // the answer must wrap to exercise this
 		for (const line of lines) expect(line.startsWith(" ")).toBe(false);
+		expect(lines.join(" ")).not.toContain("Subtitles must not appear");
 	});
 });
 
@@ -92,5 +92,6 @@ describe("question answer rows in the tool execution shell", () => {
 		const answerLines = lines.filter((line) => /Compiler is unhinged|self-contradicting/.test(line));
 		expect(answerLines.length).toBeGreaterThan(1); // the answer wrapped
 		for (const line of answerLines) expect(line.startsWith(" ")).toBe(true);
+		expect(lines.join(" ")).not.toContain("Subtitles must not appear");
 	});
 });

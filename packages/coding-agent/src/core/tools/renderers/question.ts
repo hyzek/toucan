@@ -21,13 +21,9 @@ function formatQuestionCall(args: { questions?: QuestionToolQuestion[] } | undef
 }
 
 function answerValueText(answer: QuestionToolAnswer, theme: Theme): string {
-	return answer.answers
-		.map((value) =>
-			value.subtitle
-				? `${theme.fg("text", value.title)}${theme.fg("muted", ` — ${value.subtitle}`)}`
-				: theme.fg("text", value.title),
-		)
-		.join("; ");
+	// Title only: the option's subtitle (description) would make answer rows wrap
+	// around the screen; it stays in the tool result text the model sees.
+	return answer.answers.map((value) => theme.fg("text", value.title)).join("; ");
 }
 
 function answerLine(answer: QuestionToolAnswer, theme: Theme): string {

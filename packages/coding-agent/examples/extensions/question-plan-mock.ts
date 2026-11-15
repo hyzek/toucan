@@ -35,14 +35,30 @@ const mockQuestions: {
 		question: "Which storage backend should the plan assume?",
 		header: "Storage",
 		options: [
-			{ label: "SQLite", description: "embedded, single file" },
-			{ label: "Redis", description: "external server" },
+			{
+				label: "SQLite with WAL and a migration runner",
+				description:
+					"Embedded, single file, zero ops. WAL mode keeps reads fast during writes, and a migration runner keeps the schema honest across releases of the tool itself.",
+			},
+			{
+				label: "Redis",
+				description: "External server, more moving parts but shared state across processes.",
+			},
+			{
+				label: "Postgres",
+				description:
+					"Full relational power with JSONB escape hatches, but every contributor now needs a local instance or a docker compose step before their first test run.",
+			},
 		],
 	},
 	{
 		question: "Which interfaces should the plan cover?",
 		header: "Interfaces",
-		options: [{ label: "CLI" }, { label: "Web UI" }, { label: "SDK" }],
+		options: [
+			{ label: "CLI", description: "Must ship first; the mock and all automation drive it directly." },
+			{ label: "Web UI", description: "Nice for demos, expensive to keep in sync with the CLI." },
+			{ label: "SDK" },
+		],
 		multiple: true,
 	},
 ];
