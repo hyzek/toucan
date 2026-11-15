@@ -4,7 +4,7 @@
 //
 //   pack        Point internal dependencies at this commit's builds, then `npm pack` every public package.
 //               Runs in the regular CI job after the build.
-//   publish     Upload the packed tarballs and move refs (main, pr-1234), or release a tag (v1.2.3) and move `latest`.
+//   publish     Upload the packed tarballs and move refs (main, pr-1234), or release a tag (b123) and move `latest`.
 //               Runs in the trusted workflow_run job and authenticates with the job's GitHub OIDC token
 //               (`permissions: id-token: write`). A release keeps the packages for good under the tag.
 //   delete-ref  Remove a ref, e.g. pr-1234 when the PR closes.
@@ -17,8 +17,8 @@ import { getPublicWorkspacePackages } from "./release-packages.mjs";
 
 const BASE_URL = "https://pkg.earendil.com";
 const FULL_SHA = /^[0-9a-f]{40}$/;
-// Release tags as CI builds them (v*.*.*); a suffix marks a pre-release (v1.2.3-rc.1).
-const RELEASE_TAG = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
+// Release tags as CI builds them (bN); a suffix marks a pre-release (b123-rc.1).
+const RELEASE_TAG = /^b\d+(-[0-9A-Za-z.]+)?$/;
 // Its daemon binaries are cross-compiled only by the release workflow; previews would ship without them.
 const EXCLUDED = new Set(["@hyzek/toucan-env"]);
 
@@ -104,7 +104,7 @@ function github(path) {
 /**
  * Decides what a CI push run publishes: `main`, a release tag with `latest` (without it for a pre-release), or nothing
  * for any other name. A tag push's branch is the tag's name, and a branch or tag can carry its own copy of CI, so a
- * tag named `main` or `v1.2.3` on an unreviewed commit would pass a name check: the commit must also be on main, and a
+ * tag named `main` or `b123` on an unreviewed commit would pass a name check: the commit must also be on main, and a
  * release tag must point at it.
  */
 async function pushTarget({ branch, sha, conclusion }) {

@@ -611,12 +611,16 @@ export const REPO_CLONE_URL = "https://github.com/hyzek/toucan.git";
 export const RELEASE_FEED_URL = "https://api.github.com/repos/hyzek/toucan/releases/latest";
 
 /**
- * Toucan's version is a build number: package version `23.0.0` is announced as `b23`. The numeric
- * form stays in package.json, npm, and the model-catalog User-Agent because those compare semver;
- * this is the name shown to users. scripts/build-name.mjs applies the same mapping in release tooling.
+ * Toucan's version is a build number: package version `1.23.0` (and the historical `23.0.0`) is
+ * announced as `b23`. The numeric form stays in package.json, npm, and the model-catalog User-Agent
+ * because those compare semver; this is the name shown to users. scripts/build-name.mjs applies the
+ * same mapping in release tooling.
  */
 export function buildName(version: string): string {
-	return `b${version.split(".")[0]}`;
+	const build = /^1\.(\d+)\.0$/.exec(version);
+	// "1.0.0" is not build 0 (builds start at 1); fall through and read it as the legacy build 1.
+	if (build && build[1] !== "0") return `b${build[1]}`;
+	return `b${version.split(".")[0]}`; // Legacy N.0.0 builds; unknown versions keep the major segment.
 }
 
 /**
@@ -675,7 +679,7 @@ export function getBuildName(): string {
  */
 export function numericVersion(version: string): string {
 	const build = /^b(\d+)$/.exec(version.trim());
-	return build ? `${build[1]}.0.0` : version.trim();
+	return build ? `1.${build[1]}.0` : version.trim();
 }
 
 // e.g., TOUCAN_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR

@@ -168,11 +168,13 @@ function commitFile(repoDir: string, content: string): void {
 
 describe("build naming", () => {
 	test("maps a build version to its name and back", () => {
+		expect(buildName("1.23.0")).toBe("b23");
+		// Releases before the 1.N.0 scheme carried N.0.0 and name the same build.
 		expect(buildName("23.0.0")).toBe("b23");
 		expect(getBuildName()).toMatch(/^b\d+$/);
-		expect(numericVersion("b23")).toBe("23.0.0");
-		// Older releases and prerelease lines are already numeric.
-		expect(numericVersion(" 1.5.0 ")).toBe("1.5.0");
+		expect(numericVersion("b23")).toBe("1.23.0");
+		// Versions that name no build (prereleases, dev bumps) stay numeric as given.
+		expect(numericVersion(" 1.5.2 ")).toBe("1.5.2");
 	});
 
 	test("follows the checkout's commit count and ignores installed projects", () => {

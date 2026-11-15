@@ -1,4 +1,4 @@
-// Set every workspace package to build version N.0.0 in lockstep (usage:
+// Set every workspace package to build version 1.N.0 in lockstep (usage:
 // node scripts/bump-build-versions.mjs <N>). Called by the auto-release
 // workflow on each push to main; the bumped commit is the bN release commit.
 // The workspace set comes from the root package.json ("workspaces"), including
@@ -15,7 +15,7 @@ if (!Number.isSafeInteger(buildNumber) || buildNumber <= 0) {
 	process.exit(1);
 }
 
-const version = `${buildNumber}.0.0`;
+const version = `1.${buildNumber}.0`;
 const dependencyFields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 
 function workspaceDirs(rootPackageJsonPath = "package.json") {

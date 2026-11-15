@@ -174,17 +174,17 @@ test("publish decides what a push run publishes", async (t) => {
 	const latest = ["/_/refs", { sha, refs: ["latest"], run: 7 }];
 	const nested = {
 		...onMain(),
-		"git/ref/tags/v1.2.3": { object: { type: "tag", sha: "t1" } },
+		"git/ref/tags/b123": { object: { type: "tag", sha: "t1" } },
 		"git/tags/t1": { object: { type: "tag", sha: "t2" } },
 		"git/tags/t2": { object: { type: "commit", sha } },
 	};
 	const cases = [
 		["main", onMain("identical"), [["/_/refs", { sha, refs: ["main"], run: 7 }]]],
-		["v1.2.3", released("v1.2.3"), [release("v1.2.3"), latest]],
+		["b123", released("b123"), [release("b123"), latest]],
 		// An annotated tag can point at another annotated tag before the commit.
-		["v1.2.3", nested, [release("v1.2.3"), latest]],
+		["b123", nested, [release("b123"), latest]],
 		// A pre-release is kept under its tag, but `latest` stays on the newest release.
-		["v1.2.3-beta.1", released("v1.2.3-beta.1"), [release("v1.2.3-beta.1")]],
+		["b123-beta.1", released("b123-beta.1"), [release("b123-beta.1")]],
 	];
 	for (const [branch, github, expected] of cases) {
 		const server = await startServer(t, { github });
@@ -196,7 +196,7 @@ test("publish decides what a push run publishes", async (t) => {
 });
 
 test("publish uploads nothing for push runs of other names", async (t) => {
-	for (const branch of ["vfoo", "v1.2", "v1.2.3.4", "release-v1.2.3", "v1.2.3-"]) {
+	for (const branch of ["bfoo", "b", "b123.4", "release-b123", "b123-"]) {
 		const server = await startServer(t, { github: released(branch) });
 		const dir = join(temporaryDirectory(t), "artifact");
 		writeArtifact(dir);
@@ -207,14 +207,14 @@ test("publish uploads nothing for push runs of other names", async (t) => {
 });
 
 test("publish refuses push runs off main, of other commits or with failing CI", async (t) => {
-	const otherCommit = { ...onMain(), "git/ref/tags/v1.2.3": { object: { type: "commit", sha: newerSha } } };
+	const otherCommit = { ...onMain(), "git/ref/tags/b123": { object: { type: "commit", sha: newerSha } } };
 	const cases = [
 		// A tag named main on an unreviewed commit: a bare `main` in compare would resolve to the tag.
 		["tag named main", "main", "success", { ...onMain("diverged"), [`compare/main...${sha}`]: { status: "identical" } }],
-		["release tag off main", "v1.2.3", "success", { ...released("v1.2.3"), ...onMain("ahead") }],
-		["tag of another commit", "v1.2.3", "success", otherCommit],
-		["missing tag", "v1.2.3", "success", onMain()],
-		["failing CI", "v1.2.3", "failure", released("v1.2.3")],
+		["release tag off main", "b123", "success", { ...released("b123"), ...onMain("ahead") }],
+		["tag of another commit", "b123", "success", otherCommit],
+		["missing tag", "b123", "success", onMain()],
+		["failing CI", "b123", "failure", released("b123")],
 	];
 	for (const [label, branch, conclusion, github] of cases) {
 		const server = await startServer(t, { github });
@@ -226,20 +226,20 @@ test("publish refuses push runs off main, of other commits or with failing CI", 
 	}
 });
 
-const RELEASE_RUN = pushRun("v1.2.3");
+const RELEASE_RUN = pushRun("b123");
 
 test("publish prints the release's install commands", async (t) => {
-	const server = await startServer(t, { github: released("v1.2.3") });
+	const server = await startServer(t, { github: released("b123") });
 	const dir = join(temporaryDirectory(t), "artifact");
 	writeArtifact(dir);
 
 	const { stdout } = await publish(server, dir, RELEASE_RUN);
-	assert.match(stdout, new RegExp(`npm i ${server.url}/@scope/a@v1\\.2\\.3`));
+	assert.match(stdout, new RegExp(`npm i ${server.url}/@scope/a@b123`));
 	assert.match(stdout, new RegExp(`npm i ${server.url}/@scope/a@latest`));
 });
 
 test("publish moves no refs when the release fails", async (t) => {
-	const server = await startServer(t, { releaseStatus: 409, github: released("v1.2.3") });
+	const server = await startServer(t, { releaseStatus: 409, github: released("b123") });
 	const dir = join(temporaryDirectory(t), "artifact");
 	writeArtifact(dir);
 
@@ -248,11 +248,11 @@ test("publish moves no refs when the release fails", async (t) => {
 });
 
 test("publish still prints the release when a newer release owns latest", async (t) => {
-	const server = await startServer(t, { refsSha: newerSha, github: released("v1.2.3") });
+	const server = await startServer(t, { refsSha: newerSha, github: released("b123") });
 	const dir = join(temporaryDirectory(t), "artifact");
 	writeArtifact(dir);
 
 	const { stdout } = await publish(server, dir, RELEASE_RUN);
-	assert.match(stdout, /@scope\/a@v1\.2\.3/);
+	assert.match(stdout, /@scope\/a@b123/);
 	assert.doesNotMatch(stdout, /@latest/);
 });

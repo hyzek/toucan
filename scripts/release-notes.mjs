@@ -22,7 +22,7 @@ Commands:
 
 extract options:
   --version <x.y.z>    Version to extract
-  --tag <vX.Y.Z>       Release tag used for repository links (defaults to v<version>)
+  --tag <tag>          Release tag used for repository links, e.g. b23 (defaults to v<version>)
   --changelog <path>   Changelog path (default: ${DEFAULT_CHANGELOG})
   --out <path>         Output file (default: stdout)
   --repo <owner/repo>  GitHub repository for generated links (default: ${DEFAULT_REPO})
@@ -106,7 +106,8 @@ function normalizeTag(tagOrVersion) {
 	if (!tagOrVersion) {
 		return undefined;
 	}
-	return tagOrVersion.startsWith("v") ? tagOrVersion : `v${tagOrVersion}`;
+	// Release tags are bN and historical tags are vN.0.0; a bare version gets the historical v prefix.
+	return /^[bv]/.test(tagOrVersion) ? tagOrVersion : `v${tagOrVersion}`;
 }
 
 function versionFromTag(tag) {

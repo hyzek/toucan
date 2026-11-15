@@ -3,11 +3,11 @@ name: Build Binaries
 on:
   push:
     tags:
-      - 'v*'
+      - 'b*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (e.g., v0.12.0)'
+        description: 'Tag to build (e.g., b123)'
         required: true
         type: string
       source_ref:
@@ -56,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION="${RELEASE_TAG#v}"
+          VERSION="1.${RELEASE_TAG#b}.0"
           mkdir -p release-assets
           ./scripts/create-source-archive.sh \
             --version "${VERSION}" \
@@ -67,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION="${RELEASE_TAG#v}"
+          VERSION="1.${RELEASE_TAG#b}.0"
           build_root="$(mktemp -d)"
           trap 'rm -rf "${build_root}"' EXIT
           tar -xzf "release-assets/toucan-${VERSION}-source.tar.gz" -C "${build_root}"
@@ -81,8 +81,7 @@ jobs:
 
           mkdir -p release-assets
 
-          VERSION="${RELEASE_TAG}"
-          VERSION="${VERSION#v}"  # Remove 'v' prefix
+          VERSION="1.${RELEASE_TAG#b}.0"
           node scripts/release-notes.mjs extract --version "${VERSION}" --tag "${RELEASE_TAG}" --out release-assets/RELEASE_NOTES.md
           node scripts/generate-coding-agent-install-lock.mjs --check
           cp packages/coding-agent/install-lock/package.json release-assets/toucan-coding-agent-install-package.json
@@ -231,7 +230,7 @@ jobs:
 
           cd release-assets
 
-          VERSION="${RELEASE_TAG#v}"
+          VERSION="1.${RELEASE_TAG#b}.0"
           source_asset="toucan-${VERSION}-source.tar.gz"
           expected_assets=(
             "${source_asset}"
@@ -261,7 +260,7 @@ jobs:
 
           cd release-assets
 
-          VERSION="${RELEASE_TAG#v}"
+          VERSION="1.${RELEASE_TAG#b}.0"
           source_asset="toucan-${VERSION}-source.tar.gz"
           release_assets=(
             "${source_asset}"
@@ -288,7 +287,7 @@ jobs:
           gh release create "${RELEASE_TAG}" \
             --verify-tag \
             --draft \
-            --title "b${VERSION%%.*}" \
+            --title "${RELEASE_TAG}" \
             --notes-file RELEASE_NOTES.md \
             "${release_assets[@]}"
 
@@ -421,7 +420,7 @@ jobs:
       - name: Announce verified release on pi.dev
         run: |
           node scripts/publish-release-announcement.mjs \
-            --version "${RELEASE_TAG#v}" \
+            --version "1.${RELEASE_TAG#b}.0" \
             --bucket toucan-artifacts \
             --endpoint "$R2_ENDPOINT" \
             --installer-package-json packages/coding-agent/install-lock/package.json \

@@ -16,7 +16,7 @@ name: Nix
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'b*'
   pull_request:
     branches: [main]
     paths:
@@ -130,9 +130,8 @@ jobs:
           ./result/bin/toucan --version
           ./result/bin/toucan --help > /dev/null
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            # Release tags are vN.0.0; the binary reports the build name bN.
-            release_version="${GITHUB_REF_NAME#v}"
-            test "$(./result/bin/toucan --version)" = "b${release_version%%.*}"
+            # Release tags are the build name bN, and so is what the binary reports.
+            test "$(./result/bin/toucan --version)" = "${GITHUB_REF_NAME}"
           fi
 
   update-stable:

@@ -1,7 +1,7 @@
 name: Auto release
 
 # Every push to main is a build release. The job appends a version-bump commit
-# ("Release bN (vN.0.0)") that sets every workspace package to N.0.0 in lockstep
+# ("Release bN (1.N.0)") that sets every workspace package to 1.N.0 in lockstep
 # (scripts/bump-build-versions.mjs), tags that commit bN, and opens the GitHub
 # release. N is the bump commit's own position on main (`git rev-list --count`
 # after appending it), so package version, tag, and the build name
@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git log -1 --format=%s | grep -q '^Release b[0-9][0-9]* (v'; then
+          if git log -1 --format=%s | grep -q '^Release b[0-9][0-9]*'; then
             # Re-run safety: HEAD is already the bump commit of a failed earlier run.
             N="$(git rev-list --count HEAD)"
           else
@@ -56,7 +56,7 @@ jobs:
             npm install --package-lock-only --ignore-scripts --no-audit --no-fund
             node scripts/generate-coding-agent-install-lock.mjs
             git add package-lock.json packages apps
-            git commit -m "Release b${N} (v${N}.0.0)"
+            git commit -m "Release b${N} (1.${N}.0)"
             git push origin "HEAD:${{ github.ref_name }}"
             git tag "$TAG"
             git push origin "refs/tags/$TAG"

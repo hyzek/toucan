@@ -6,14 +6,14 @@
  *   node scripts/release.mjs                # cut the build numbered by the release commit
  *   node scripts/release.mjs <build-number> # override, only for release recovery
  *
- * Versions are build numbers: build N is package version N.0.0, tagged vN.0.0, announced as bN.
+ * Versions are build numbers: build N is package version 1.N.0 (npm only accepts semver) and tag bN.
  * See scripts/build-name.mjs.
  *
  * Steps:
  * 1. Check for uncommitted changes
  * 2. Resolve the build number and verify every public workspace package is registered on npm,
  *    pin the newest model catalog for Nix, and build with it
- * 3. Set the version to <build>.0.0
+ * 3. Set the version to 1.<build>.0
  * 4. Update CHANGELOG.md files: [Unreleased] -> [version] - date
  * 5. Regenerate release artifacts
  * 6. Run checks and tests
@@ -142,8 +142,8 @@ function resolveBuildNumber(currentVersion) {
 	const currentBuild = buildNumberFromVersion(currentVersion);
 	if (currentBuild === undefined) {
 		console.error(
-			`Error: current version ${currentVersion} is not a build version (N.0.0). Migrate the checkout first:\n` +
-				"  npm version <N>.0.0 --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.js",
+			`Error: current version ${currentVersion} is not a build version (1.N.0 or legacy N.0.0). Migrate the checkout first:\n` +
+				"  npm version <version> --workspaces --no-git-tag-version --no-workspaces-update && node scripts/sync-versions.js",
 		);
 		process.exit(1);
 	}
@@ -327,8 +327,8 @@ console.log();
 // 7. Commit and tag
 console.log("Committing and tagging...");
 stageChangedFiles();
-run(`git commit -m "Release ${buildName} (v${version})"`);
-run(`git tag v${version}`);
+run(`git commit -m "Release ${buildName}"`);
+run(`git tag ${buildName}`);
 console.log();
 
 // 8. Add new [Unreleased] sections
@@ -345,9 +345,9 @@ console.log();
 // 10. Push
 console.log("Pushing to remote...");
 run("git push origin main");
-run(`git push origin v${version}`);
+run(`git push origin ${buildName}`);
 console.log();
 
 console.log(
-	`=== Prepared ${buildName} (v${version}); CI publication and pi.dev announcement start after the tag push ===`,
+	`=== Prepared ${buildName} (package version ${version}); CI publication and pi.dev announcement start after the tag push ===`,
 );

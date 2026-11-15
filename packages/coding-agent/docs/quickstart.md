@@ -30,7 +30,7 @@ With Nix on macOS or Linux, install the latest release from Toucan's flake. Nix 
 nix profile add github:hyzek/toucan/stable
 ```
 
-Older Nix versions use `nix profile install` instead. Update with `nix profile upgrade toucan`; `toucan update` cannot update a Nix installation. To pin a release, use a tag such as `github:hyzek/toucan/v1.0.0`.
+Older Nix versions use `nix profile install` instead. Update with `nix profile upgrade toucan`; `toucan update` cannot update a Nix installation. To pin a release, use a tag such as `github:hyzek/toucan/b23`.
 
 Verify the installation:
 
