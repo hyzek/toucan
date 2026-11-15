@@ -48,7 +48,7 @@ function createFakeProcess(options: FakeOptions = {}) {
 		async run(command, args, { cwd }) {
 			runCalls.push({ command, args, cwd });
 			if (command === "git" && args[0] === "clone") {
-				const target = args[6];
+				const target = args[5];
 				mkdirSync(target, { recursive: true });
 				writeFileSync(
 					join(target, "package.json"),
@@ -169,10 +169,9 @@ describe("channel manager", () => {
 
 			expect(result.kind).toBe("built");
 			expect(runCalls[0]?.command).toBe("git");
-			expect(runCalls[0]?.args.slice(0, 6)).toEqual([
+			expect(runCalls[0]?.args.slice(0, 5)).toEqual([
 				"clone",
-				"--depth",
-				"1",
+				"--filter=tree:0",
 				"--branch",
 				"dev",
 				"https://git.test/repo.git",

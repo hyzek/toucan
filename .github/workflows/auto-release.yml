@@ -1,0 +1,57 @@
+name: Auto release
+
+# Every push to main is a build release: the build number is the commit's position
+# on main (`git rev-list --count HEAD`), so the tag `bN` matches the build name
+# `toucan --version` derives from the same checkout. The `b*` tag then feeds the
+# existing release pipelines (build-binaries.yml for assets/npm, nix.yml for the
+# stable branch), which all trigger on `b*` tags.
+#
+# The tag also drives the stable channel: `install.sh stable` and
+# `toucan install toucan:stable` resolve the highest `b<N>` tag.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Tag and release this build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          N="$(git rev-list --count HEAD)"
+          TAG="b$N"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists (re-run or rewritten history); leaving it alone."
+            exit 0
+          fi
+
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+
+          # Mark latest only when this build is the highest b<N>; a rerun of an older
+          # commit must not steal the latest slot.
+          MAX="$(git ls-remote --tags origin 'refs/tags/b*' | sed -n 's|.*refs/tags/b\([0-9][0-9]*\)$|\1|p' | sort -n | tail -n 1)"
+          LATEST=()
+          if [ "$N" -ge "${MAX:-0}" ]; then LATEST=(--latest); fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving it alone."
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes "${LATEST[@]}"
+          fi

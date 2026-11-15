@@ -66,7 +66,9 @@ OLD_DIR="$BUILD_DIR.old-installer"
 COMMIT=""
 
 echo "Cloning $REF into $BUILD_DIR..."
-git clone --depth 1 --branch "$REF" "$REPO_URL" "$STAGE_DIR"
+# --filter=tree:0 keeps the full commit graph (no tree/blob data): toucan derives
+# its build name from `git rev-list --count HEAD`, and a --depth 1 clone would answer 1.
+git clone --filter=tree:0 --branch "$REF" "$REPO_URL" "$STAGE_DIR"
 
 REQUIRED_NODE="$(sed -n 's/.*"node": *">=\([0-9][0-9.]*\)".*/\1/p' "$STAGE_DIR/package.json" | head -n 1)"
 CURRENT_NODE="$(node -p 'process.version.slice(1)')"

@@ -252,7 +252,7 @@ export function checkNodeEngine(requirement: string | undefined, nodeVersion: st
 	return { kind: "ok" };
 }
 
-/** Install or rebuild a channel: shallow clone, engine check, npm ci, bundle build, swap. */
+/** Install or rebuild a channel: commit-graph clone, engine check, npm ci, bundle build, swap. */
 export async function installChannel(
 	channel: ChannelName,
 	options: ChannelOperationOptions = {},
@@ -274,7 +274,11 @@ export async function installChannel(
 
 		const staging = mkdtempSync(join(buildsDir, STAGING_DIR_NAME, `${channel}-`));
 		try {
-			await childProcess.run("git", ["clone", "--depth", "1", "--branch", ref, repoUrl, staging], {
+			// --filter=tree:0 downloads the full commit graph but no tree/blob data. A
+			// --depth 1 clone would break the build name: toucan derives it from
+			// `git rev-list --count HEAD` (config.ts buildNameFromCheckout), which a
+			// shallow clone answers with 1.
+			await childProcess.run("git", ["clone", "--filter=tree:0", "--branch", ref, repoUrl, staging], {
 				cwd: buildsDir,
 			});
 			const info = await buildChannelBuild(childProcess, staging, channel, ref, repoUrl, options.pinnedRef);

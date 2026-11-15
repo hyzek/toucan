@@ -307,7 +307,7 @@ Channel builds run Toucan from GitHub checkouts under `~/.toucan` instead of npm
 | Update the running channel build | `toucan update` |
 | Remove a channel build | `toucan remove toucan:<name>` |
 
-Channels: `dev` and `nightly` track those branches; `stable` tracks the newest `b<N>` release tag. `@<ref>` pins the build to a branch, tag, or ref, e.g. `toucan install toucan:stable@b24`; a pinned build keeps updating on its pin.
+Channels: `dev` and `nightly` track those branches; `stable` tracks the newest `b<N>` release tag. Every push to `main` is released automatically: it is tagged `bN` (N is the commit's position on `main`, the same number `toucan --version` reports) and gets a GitHub release, so `stable` advances with each merged change. `@<ref>` pins the build to a branch, tag, or ref, e.g. `toucan install toucan:stable@b24`; a pinned build keeps updating on its pin.
 
 `toucan install` clones the ref, checks the Node version against the build's `engines.node`, runs `npm ci --ignore-scripts`, builds the workspace, and swaps the finished build into `~/.toucan/builds/<name>` only on success. `toucan update` rebuilds the channel the running build belongs to when the remote commit moved (add `--force` to rebuild anyway). `toucan channel <name>` switches the active channel and builds it on demand.
 
