@@ -7,11 +7,11 @@ name: Auto release
 # after appending it), so package version, tag, and the build name
 # `toucan --version` derives from the checkout all agree on one number.
 #
-# The bump is pushed with the workflow token, which does not re-trigger this
-# workflow. The `b*` tag then feeds the existing release pipelines
-# (build-binaries.yml for assets/npm, nix.yml for the stable branch), which all
-# trigger on `b*` tags, and drives the stable channel: `install.sh stable` and
-# `toucan install toucan:stable` resolve the highest `b<N>` tag.
+# The bump is pushed with the workflow token, which cannot trigger any workflow
+# run, not even on a `b*` tag. So after pushing the tag, this job dispatches
+# the release pipelines itself (build-binaries.yml for assets/npm, nix.yml for
+# the stable branch). The tag drives the stable channel: `install.sh stable`
+# and `toucan install toucan:stable` resolve the highest `b<N>` tag.
 
 on:
   push:
@@ -19,6 +19,8 @@ on:
 
 permissions:
   contents: write
+  # To dispatch the release pipelines (gh workflow run) after the token push.
+  actions: write
 
 concurrency:
   group: auto-release-main
@@ -74,3 +76,9 @@ jobs:
           else
             gh release create "$TAG" --title "$TAG" --generate-notes "${LATEST[@]}"
           fi
+
+          # The token push above cannot trigger workflows, so start the release
+          # pipelines explicitly. Dispatching a workflow that also runs on this
+          # event is safe: the runs would be redundant but concurrency groups merge them.
+          gh workflow run build-binaries.yml --ref "${{ github.ref_name }}" -f "tag=$TAG" -f "source_ref=$TAG"
+          gh workflow run nix.yml --ref "$TAG"
