@@ -7,7 +7,7 @@
 // own version; it is never published.
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const buildNumber = Number.parseInt(process.argv[2] ?? "", 10);
 if (!Number.isSafeInteger(buildNumber) || buildNumber <= 0) {
@@ -64,3 +64,15 @@ for (const { path, json } of packageJsons) {
 }
 
 console.log(changed === 0 ? `All packages already at ${version}.` : `Bumped ${changed} packages to ${version}.`);
+
+// toucan-ai reports its version in the User-Agent without reading package.json; keep the constant
+// in sync here as well, or the release commit fails its own identity test.
+const aiPackage = packageJsons.find(({ json }) => json.name === "@hyzek/toucan-ai");
+const aiVersionPath = aiPackage && join(dirname(aiPackage.path), "src", "utils", "version.ts");
+if (aiVersionPath && existsSync(aiVersionPath)) {
+	const content = `// The @hyzek/toucan-ai package version. scripts/sync-versions.js keeps it in sync with package.json.\nexport const TOUCAN_AI_VERSION = ${JSON.stringify(version)};\n`;
+	if (readFileSync(aiVersionPath, "utf8") !== content) {
+		writeFileSync(aiVersionPath, content);
+		console.log(`${aiVersionPath} -> ${version}`);
+	}
+}
