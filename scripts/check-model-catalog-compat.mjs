@@ -15,8 +15,9 @@
 // against it. toucan-ai's types tie each provider to the APIs it implements, so a
 // model with an API its provider lacks is a type error.
 //
-// Only the latest release on npm is checked. If it is older than
-// MINIMUM_PI_VERSION, no released toucan receives the catalog, and the check is skipped.
+// Only the latest release on npm is checked. If the package is not published on
+// npm yet, or the latest release is older than MINIMUM_PI_VERSION, no released
+// toucan receives the catalog, and the check is skipped.
 //
 // Usage: node scripts/check-model-catalog-compat.mjs [--catalog <file>]
 //   --catalog <file>  catalog to check (default: .artifacts/model-catalog/models.all.json,
@@ -76,7 +77,18 @@ function main() {
 	const { values } = parseArgs({ options: { catalog: { type: "string" } } });
 	const catalogPath = resolve(values.catalog ?? join(root, ".artifacts/model-catalog/models.all.json"));
 
-	const release = run("npm", ["view", TOUCAN_AI_PACKAGE, "version"], root).trim();
+	let release;
+	try {
+		release = run("npm", ["view", TOUCAN_AI_PACKAGE, "version"], root).trim();
+	} catch (error) {
+		// While the package has never been published, no npm-installed toucan exists, so there is
+		// no release to be compatible with. Git-channel installs always run current main.
+		if (/code E404|404 Not Found/.test(error instanceof Error ? error.message : String(error))) {
+			console.log(`Skipped: ${TOUCAN_AI_PACKAGE} is not published on npm, so no released client receives this catalog.`);
+			return;
+		}
+		throw error;
+	}
 	if (compareModelCatalogToucanVersions(release, MINIMUM_PI_VERSION) < 0) {
 		console.log(
 			`Skipped: the latest release ${release} is older than MINIMUM_PI_VERSION ${MINIMUM_PI_VERSION}, so no released toucan receives this catalog.`,
