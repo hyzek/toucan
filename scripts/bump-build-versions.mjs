@@ -1,6 +1,8 @@
 // Set every workspace package to build version 1.N.0 in lockstep (usage:
 // node scripts/bump-build-versions.mjs <N>). Called by the auto-release
 // workflow on each push to main; the bumped commit is the bN release commit.
+// The bump commit also names the version in each CHANGELOG's release heading,
+// because the GitHub release notes are extracted from the tagged commit.
 // The workspace set comes from the root package.json ("workspaces"), including
 // apps and the example packages, because their exact pins of unpublished
 // workspace packages must resolve locally. The private root package keeps its
@@ -76,3 +78,21 @@ if (aiVersionPath && existsSync(aiVersionPath)) {
 		console.log(`${aiVersionPath} -> ${version}`);
 	}
 }
+
+// Names this build in each CHANGELOG's release heading and reopens [Unreleased] for the next
+// build, in the same shape scripts/release.mjs leaves it: the extract step in build-binaries.yml
+// reads the section for this version out of the tagged commit, and finds nothing without it.
+function releaseChangelogs(version) {
+	const date = new Date().toISOString().slice(0, 10);
+	for (const directory of new Set(packageJsons.map(({ path }) => dirname(path)))) {
+		const path = join(directory, "CHANGELOG.md");
+		if (!existsSync(path)) continue;
+		const content = readFileSync(path, "utf8");
+		if (!content.includes("## [Unreleased]")) continue;
+		const released = content.replace("## [Unreleased]", `## [${version}] - ${date}`);
+		writeFileSync(path, released.replace(/^(# Changelog\n\n)/, "$1## [Unreleased]\n\n"));
+		console.log(`${path} -> ## [${version}] - ${date}`);
+	}
+}
+
+releaseChangelogs(version);

@@ -2,16 +2,23 @@ name: Auto release
 
 # Every push to main is a build release. The job appends a version-bump commit
 # ("Release bN (1.N.0)") that sets every workspace package to 1.N.0 in lockstep
-# (scripts/bump-build-versions.mjs), tags that commit bN, and opens the GitHub
-# release. N is the bump commit's own position on main (`git rev-list --count`
-# after appending it), so package version, tag, and the build name
-# `toucan --version` derives from the checkout all agree on one number.
+# and moves each CHANGELOG's [Unreleased] section to [1.N.0] - date
+# (scripts/bump-build-versions.mjs), then tags that commit bN. N is the bump
+# commit's own position on main (`git rev-list --count` after appending it), so
+# package version, tag, and the build name `toucan --version` derives from the
+# checkout all agree on one number.
+#
+# This job does not create the GitHub release: build-binaries.yml stages it as a
+# draft with the release notes and the platform assets, then publishes it. A
+# release created here would already be public, and staging refuses to mutate a
+# published release.
 #
 # The bump is pushed with the workflow token, which cannot trigger any workflow
 # run, not even on a `b*` tag. So after pushing the tag, this job dispatches
-# the release pipelines itself (build-binaries.yml for assets/npm, nix.yml for
-# the stable branch). The tag drives the stable channel: `install.sh stable`
-# and `toucan install toucan:stable` resolve the highest `b<N>` tag.
+# the release pipelines itself (build-binaries.yml for the release assets,
+# nix.yml for the stable branch). The tag drives the stable channel:
+# `install.sh stable` and `toucan install toucan:stable` resolve the highest
+# `b<N>` tag.
 
 on:
   push:
@@ -45,9 +52,8 @@ jobs:
             N="$(git rev-list --count HEAD)"
           else
             N=$(( $(git rev-list --count HEAD) + 1 ))
-            TAG="b$N"
-            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-              echo "$TAG already exists but HEAD is not its release commit (rewritten history?); leaving it alone." >&2
+            if git ls-remote --exit-code --tags origin "refs/tags/b$N" >/dev/null 2>&1; then
+              echo "b$N already exists but HEAD is not its release commit (rewritten history?); leaving it alone." >&2
               exit 1
             fi
 
@@ -60,21 +66,13 @@ jobs:
             git add package-lock.json packages apps
             git commit -m "Release b${N} (1.${N}.0)"
             git push origin "HEAD:${{ github.ref_name }}"
-            git tag "$TAG"
-            git push origin "refs/tags/$TAG"
           fi
 
-          # Mark latest only when this build is the highest b<N>; a rerun of an older
-          # commit must not steal the latest slot.
           TAG="b$N"
-          MAX="$(git ls-remote --tags origin 'refs/tags/b*' | sed -n 's|.*refs/tags/b\([0-9][0-9]*\)$|\1|p' | sort -n | tail -n 1)"
-          LATEST=()
-          if [ "$N" -ge "${MAX:-0}" ]; then LATEST=(--latest); fi
-
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; leaving it alone."
-          else
-            gh release create "$TAG" --title "$TAG" --generate-notes "${LATEST[@]}"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            # Covers a re-run whose earlier attempt died between pushing the commit and the tag.
+            git tag "$TAG"
+            git push origin "refs/tags/$TAG"
           fi
 
           # The token push above cannot trigger workflows, so start the release
