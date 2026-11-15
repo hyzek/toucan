@@ -33,6 +33,14 @@ npm install -g --ignore-scripts @hyzek/toucan-coding-agent
 
 On macOS and Linux, Nix users can install the latest release with `nix profile add github:hyzek/toucan/stable`.
 
+Instead of npm, you can install a channel build with the installer (macOS and Linux). It builds Toucan from GitHub into `~/.toucan`, installs the launcher at `~/.toucan/bin/toucan`, and adds it to your `PATH`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hyzek/toucan/main/scripts/install.sh | sh
+```
+
+The script takes one optional argument, the channel to install: `stable` (default, the newest release tag), `nightly`, or `dev`. It reads two environment variables: `TOUCAN_HOME` (state root, default `~/.toucan`) and `TOUCAN_REPO_URL` (repository to clone, default the GitHub repository). It requires `git`, `npm`, and Node.js 22.19 or newer; re-run the same command to repair or update an installation. Afterward, channels update themselves with `toucan update` and you switch between them with `toucan channel` — see [Channel builds](packages/coding-agent/docs/cli.md#channel-builds).
+
 Start it in the directory you want it to work in, run `/login` to connect a provider, and give it a task:
 
 ```bash

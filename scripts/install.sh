@@ -45,6 +45,8 @@ if [ -e "$LOCK_DIR" ]; then
 	exit 1
 fi
 mkdir "$LOCK_DIR"
+STAGE_DIR=""
+OLD_DIR=""
 trap 'rm -rf "$LOCK_DIR" "$STAGE_DIR" "$OLD_DIR" 2>/dev/null || true' EXIT
 
 echo "Fetching refs from $REPO_URL..."
