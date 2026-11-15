@@ -39,6 +39,7 @@ type RenderSessionContextThis = {
 	toolGroups: WeakMap<ToolExecutionComponent, ToolGroupComponent>;
 	chatContainer: Container;
 	footer: { invalidate(): void };
+	footerStats: { noteEvent(event: unknown): void };
 	programStatus: { handleEvent(): void };
 	ui: TUI;
 	settingsManager: {
@@ -75,6 +76,7 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 		toolGroups: new WeakMap<ToolExecutionComponent, ToolGroupComponent>(),
 		chatContainer,
 		footer: { invalidate: vi.fn() },
+		footerStats: { noteEvent: vi.fn() },
 		programStatus: { handleEvent: vi.fn() },
 		ui: { requestRender: vi.fn() } as unknown as TUI,
 		settingsManager: {

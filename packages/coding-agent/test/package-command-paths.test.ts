@@ -27,8 +27,16 @@ describe("package commands", () => {
 
 	// Releases are builds: 23.0.0 → 24.0.0, so the numeric version and the build name round-trip.
 	function getNewerBuildVersion(): string {
-		const [major = "0"] = VERSION.split(".");
-		return `${Number.parseInt(major, 10) + 1}.0.0`;
+		const build = /^1\.(\d+)\.0$/.exec(VERSION);
+		if (!build) throw new Error(`expected a 1.N.0 package version, got ${VERSION}`);
+		return `1.${Number.parseInt(build[1], 10) + 100}.0`;
+	}
+
+	/** Feed response naming a build version; the update check's feed answers with bN tags. */
+	function feedRelease(version: string, extra?: Record<string, unknown>): Response {
+		const build = /^1\.(\d+)\.0$/.exec(version);
+		if (!build) throw new Error(`expected a 1.N.0 package version, got ${version}`);
+		return Response.json({ tag_name: `b${build[1]}`, ...extra });
 	}
 
 	async function runPackageCommandDirectly(args: string[]): Promise<void> {
@@ -591,7 +599,7 @@ describe("package commands", () => {
 	it("allows explicit self-update checks when automatic version checks are disabled", async () => {
 		const previousSkipVersionCheck = process.env.TOUCAN_SKIP_VERSION_CHECK;
 		process.env.TOUCAN_SKIP_VERSION_CHECK = "1";
-		const fetchMock = vi.fn(async () => Response.json({ version: VERSION }));
+		const fetchMock = vi.fn(async () => feedRelease(VERSION));
 		vi.stubGlobal("fetch", fetchMock);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -621,7 +629,7 @@ describe("package commands", () => {
 			.fn()
 			.mockRejectedValueOnce(new Error("fetch failed"))
 			.mockRejectedValueOnce(new Error("fetch failed"))
-			.mockResolvedValueOnce(Response.json({ version: VERSION }));
+			.mockResolvedValueOnce(feedRelease(VERSION));
 		vi.stubGlobal("fetch", fetchMock);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -681,9 +689,7 @@ process.exit(${exitCode});
 		vi.stubEnv("TOUCAN_SELF_UPDATE_COMMAND", "toucan-wrapper upgrade {installSpec} {version}");
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () =>
-				Response.json({ packageName: "@new-scope/toucan", version: targetVersion, note: "Read me" }),
-			),
+			vi.fn(async () => feedRelease(targetVersion, { body: "Read me" })),
 		);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -692,7 +698,7 @@ process.exit(${exitCode});
 
 		expect(JSON.parse(readFileSync(recordPath, "utf8")) as string[]).toEqual([
 			"upgrade",
-			`@new-scope/toucan@${targetVersion}`,
+			`${PACKAGE_NAME}@${targetVersion}`,
 			targetVersion,
 		]);
 		const stdout = logSpy.mock.calls.map(([message]) => String(message)).join("\n");
@@ -717,7 +723,7 @@ process.exit(${exitCode});
 			JSON.stringify({ selfUpdateCommand: [originalExecPath, scriptPath, projectRecordPath] }),
 		);
 		vi.stubEnv("TOUCAN_SELF_UPDATE_COMMAND", "");
-		const fetchMock = vi.fn(async () => Response.json({ version: VERSION }));
+		const fetchMock = vi.fn(async () => feedRelease(VERSION));
 		vi.stubGlobal("fetch", fetchMock);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
@@ -728,7 +734,7 @@ process.exit(${exitCode});
 			`toucan is already up to date (${getBuildName()})`,
 		);
 
-		fetchMock.mockImplementation(async () => Response.json({ version: targetVersion }));
+		fetchMock.mockImplementation(async () => feedRelease(targetVersion));
 		await expect(runPackageCommandDirectly(["update", "--self"])).resolves.toBeUndefined();
 		expect(JSON.parse(readFileSync(recordPath, "utf8")) as string[]).toEqual([PACKAGE_NAME]);
 		expect(process.exitCode).toBeUndefined();
@@ -740,7 +746,7 @@ process.exit(${exitCode});
 		vi.stubEnv("TOUCAN_SELF_UPDATE_COMMAND", "toucan-wrapper upgrade");
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => Response.json({ version: targetVersion })),
+			vi.fn(async () => feedRelease(targetVersion)),
 		);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
@@ -759,7 +765,7 @@ process.exit(${exitCode});
 		vi.stubEnv("TOUCAN_SELF_UPDATE_COMMAND", "toucan-wrapper upgrade");
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => Response.json({ version: getNewerBuildVersion() })),
+			vi.fn(async () => feedRelease(getNewerBuildVersion())),
 		);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -773,7 +779,7 @@ process.exit(${exitCode});
 		expect(process.exitCode).toBe(1);
 	});
 
-	it("uses the current package name when the update check omits packageName", async () => {
+	it("self-updates the current package name", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
 		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@mariozechner", "toucan-coding-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm.cjs");
@@ -796,7 +802,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 			configurable: true,
 		});
 		const targetVersion = getNewerBuildVersion();
-		const fetchMock = vi.fn(async () => Response.json({ version: targetVersion }));
+		const fetchMock = vi.fn(async () => feedRelease(targetVersion));
 		vi.stubGlobal("fetch", fetchMock);
 
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -819,7 +825,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 		}
 	});
 
-	it("installs the active package name from the update check during self-update", async () => {
+	it("self-updates the current package name even when the feed names another package", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
 		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@mariozechner", "toucan-coding-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm.cjs");
@@ -848,7 +854,7 @@ else {
 		const activePackageName = PACKAGE_NAME === "@new-scope/toucan" ? "@newer-scope/toucan" : "@new-scope/toucan";
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => Response.json({ packageName: activePackageName, version: "0.73.0" })),
+			vi.fn(async () => feedRelease(getNewerBuildVersion(), { packageName: activePackageName })),
 		);
 
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -861,8 +867,7 @@ else {
 			expect(errorSpy).not.toHaveBeenCalled();
 			const recordedCalls = JSON.parse(readFileSync(recordPath, "utf-8")) as string[][];
 			expect(recordedCalls).toEqual([
-				expect.arrayContaining(["uninstall", "-g", PACKAGE_NAME]),
-				expect.arrayContaining(["install", "-g", `${activePackageName}@0.73.0`]),
+				expect.arrayContaining(["install", "-g", `${PACKAGE_NAME}@${getNewerBuildVersion()}`]),
 			]);
 		} finally {
 			logSpy.mockRestore();
@@ -892,7 +897,7 @@ else {
 		});
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => Response.json({ version: getNewerBuildVersion() })),
+			vi.fn(async () => feedRelease(getNewerBuildVersion())),
 		);
 
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -914,7 +919,7 @@ else {
 		}
 	});
 
-	it("fails self-update when renamed npm package installation fails", async () => {
+	it("fails self-update when the npm package installation fails", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
 		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@mariozechner", "toucan-coding-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm-fail.cjs");
@@ -945,7 +950,7 @@ if(args.includes("install")) process.exit(23);
 		const activePackageName = PACKAGE_NAME === "@new-scope/toucan" ? "@newer-scope/toucan" : "@new-scope/toucan";
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => Response.json({ packageName: activePackageName, version: "0.73.0" })),
+			vi.fn(async () => feedRelease(getNewerBuildVersion(), { packageName: activePackageName })),
 		);
 
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -961,8 +966,7 @@ if(args.includes("install")) process.exit(23);
 			expect(stderr).toContain("exited with code 23");
 			const recordedCalls = JSON.parse(readFileSync(recordPath, "utf-8")) as string[][];
 			expect(recordedCalls).toEqual([
-				expect.arrayContaining(["uninstall", "-g", PACKAGE_NAME]),
-				expect.arrayContaining(["install", "-g", `${activePackageName}@0.73.0`]),
+				expect.arrayContaining(["install", "-g", `${PACKAGE_NAME}@${getNewerBuildVersion()}`]),
 			]);
 		} finally {
 			logSpy.mockRestore();

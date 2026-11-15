@@ -32,7 +32,7 @@ describe("version checks", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(getLatestToucanRelease("61.0.0")).resolves.toEqual({
-			version: "70.0.0",
+			version: "1.70.0",
 			packageName: PACKAGE_NAME,
 		});
 	});
@@ -58,7 +58,7 @@ describe("version checks", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(getLatestToucanRelease("61.0.0")).resolves.toEqual({
-			version: "70.0.0",
+			version: "1.70.0",
 			packageName: PACKAGE_NAME,
 			note: "**Read this**",
 		});
@@ -95,7 +95,7 @@ describe("version checks", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(getLatestToucanRelease("61.0.0", { retry: true })).resolves.toEqual({
-			version: "70.0.0",
+			version: "1.70.0",
 			packageName: PACKAGE_NAME,
 		});
 		expect(fetchMock).toHaveBeenCalledTimes(3);
