@@ -366,6 +366,13 @@ const HOTKEY_HINT_ORDER = { interrupt: 0, agents: 1, shortcuts: 2 } as const;
 // it, a second Esc inside the window interrupts, and the timeout disarms the hint.
 const INTERRUPT_CONFIRM_MS = 2000;
 
+// /uhm's one-shot rephrase prompt: intent-preserving reformulation, nothing else.
+const UHM_REFORMULATE_SYSTEM_PROMPT = `You reformulate a user's rambling idea dump into one clear task prompt for a coding agent.
+Resolve self-corrections and hedges into the settled intent ("maybe 2 guns actually" -> two guns).
+Strip filler. Keep every real requirement and any specific names. Phrase it as a direct task.
+Never add scope, requirements, or assumptions the dump does not contain. Never ask questions.
+Reply with only the reformulated prompt: no preamble, no quotes, no markdown.`;
+
 function createFuzzyAutocompleteItems<T>(
 	items: T[],
 	prefix: string,
@@ -564,6 +571,10 @@ export class InteractiveMode {
 
 	// Auto-compaction state
 	private autoCompactionEscapeHandler?: () => void;
+
+	/** Armed by /uhm: the next submitted text (possibly edited) is handed to a fresh session. */
+	private uhmHandoffArmed = false;
+	private uhmEscapeHandler?: () => void;
 
 	// Auto-retry state
 	private retryEscapeHandler?: () => void;
@@ -3218,6 +3229,12 @@ export class InteractiveMode {
 				await this.handleClearCommand();
 				return;
 			}
+			if (text === "/uhm" || text.startsWith("/uhm ")) {
+				const dump = text.slice(5).trim();
+				this.editor.setText("");
+				await this.handleUhmCommand(dump);
+				return;
+			}
 			if (text === "/plan") {
 				this.editor.setText("");
 				this.togglePlanMode();
@@ -3297,6 +3314,13 @@ export class InteractiveMode {
 				}
 			}
 
+			// Armed /uhm handoff while the agent is working: neither this session nor
+			// a fresh one should receive the text right now; keep it in the editor.
+			if (this.uhmHandoffArmed && (this.session.isStreaming || this.session.isCompacting)) {
+				this.showStatus("Agent is working — wait to start the fresh session, or press Esc to discard");
+				return;
+			}
+
 			// Queue input during compaction (extension commands execute immediately)
 			if (this.session.isCompacting) {
 				if (this.isExtensionCommand(text)) {
@@ -3317,6 +3341,11 @@ export class InteractiveMode {
 				await this.session.prompt(text, { streamingBehavior: "steer" });
 				this.updatePendingMessagesDisplay();
 				this.ui.requestRender();
+				return;
+			}
+
+			if (this.uhmHandoffArmed) {
+				await this.submitUhmHandoff(text);
 				return;
 			}
 
@@ -7114,12 +7143,12 @@ ${extensionShortcutRows.join("\n")}
 		this.ui.requestRender();
 	}
 
-	private async handleClearCommand(): Promise<void> {
+	private async handleClearCommand(): Promise<boolean> {
 		this.clearStatusIndicator();
 		try {
 			const result = await this.runtimeHost.newSession();
 			if (result.cancelled) {
-				return;
+				return false;
 			}
 			// A notice, not conversation: /new starts blank, so the launch tip returns under it.
 			const notice = new ChatNotice();
@@ -7127,9 +7156,93 @@ ${extensionShortcutRows.join("\n")}
 			notice.addChild(new ThemedText(() => theme.fg("accent", "✓ New session started"), 1, 1));
 			this.chatContainer.addChild(notice);
 			this.ui.requestRender();
+			return true;
 		} catch (error: unknown) {
 			await this.handleFatalRuntimeError("Failed to create session", error);
+			return false;
 		}
+	}
+
+	// /uhm: a thinkslop dump in, one clean intent out. Rephrase only: the model
+	// resolves self-corrections and hedges but never adds scope or asks questions.
+	private async handleUhmCommand(dump: string): Promise<void> {
+		if (!dump) {
+			this.showStatus("Usage: /uhm <fuzzy idea dump>");
+			return;
+		}
+		if (this.session.isStreaming || this.session.isCompacting) {
+			this.showStatus("/uhm needs the agent idle — wait for the current turn to finish");
+			return;
+		}
+		const model = this.session.model;
+		if (!model) {
+			this.showError("No model configured. Run /login first.");
+			return;
+		}
+		this.showStatus("uhmm…");
+		try {
+			const response = await this.session.modelRuntime
+				.streamSimple(
+					model,
+					{
+						systemPrompt: UHM_REFORMULATE_SYSTEM_PROMPT,
+						messages: [{ role: "user", content: dump, timestamp: Date.now() }],
+					},
+					{ maxTokens: 200 },
+				)
+				.result();
+			const refined = response.content
+				.filter((block) => block.type === "text")
+				.map((block) => block.text)
+				.join(" ")
+				.trim();
+			if (!refined || response.stopReason === "error") {
+				this.showError("The model did not return a reformulation. Try /uhm again.");
+				return;
+			}
+			this.armUhmHandoff(refined);
+		} catch (error: unknown) {
+			this.showError(`/uhm failed: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/** Put the reformulation in the input and arm the fresh-session handoff. */
+	private armUhmHandoff(prompt: string): void {
+		this.uhmHandoffArmed = true;
+		this.uhmEscapeHandler = this.defaultEditor.onEscape;
+		this.defaultEditor.onEscape = () => this.disarmUhmHandoff();
+		this.editor.setText(prompt);
+		this.showStatus("Enter starts a fresh session with this prompt · Esc discards");
+	}
+
+	/** Submit an armed /uhm handoff: the text starts a fresh session instead of joining this one. */
+	private async submitUhmHandoff(text: string): Promise<void> {
+		this.clearUhmArmed();
+		this.editor.addToHistory?.(text);
+		this.editor.setText("");
+		const started = await this.handleClearCommand();
+		if (started) {
+			await this.session.prompt(text);
+		} else {
+			this.editor.setText(text);
+			this.showStatus("Handoff cancelled — prompt restored to the editor");
+		}
+		this.ui.requestRender();
+	}
+
+	/** Undo the arm and the Esc override; used by the Esc key and after a handoff fires. */
+	private clearUhmArmed(): void {
+		this.uhmHandoffArmed = false;
+		this.defaultEditor.onEscape = this.uhmEscapeHandler;
+		this.uhmEscapeHandler = undefined;
+	}
+
+	/** Esc while armed: drop the reformulation and go back to the normal editor behaviour. */
+	private disarmUhmHandoff(): void {
+		if (!this.uhmHandoffArmed) return;
+		this.clearUhmArmed();
+		this.editor.setText("");
+		this.showStatus("Handoff discarded");
 	}
 
 	private handleDebugCommand(): void {

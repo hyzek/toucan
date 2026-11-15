@@ -38,6 +38,11 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "login", description: "Configure provider authentication", argumentHint: "<provider>" },
 	{ name: "logout", description: "Remove provider authentication" },
 	{ name: "new", description: "Start a new session" },
+	{
+		name: "uhm",
+		description: "Reformulate a fuzzy idea into one clear prompt, then hand it to a fresh session",
+		argumentHint: "<fuzzy idea>",
+	},
 	{ name: "plan", description: "Toggle plan mode (read-only research and planning)" },
 	{ name: "compact", description: "Manually compact the session context" },
 	{ name: "resume", description: "Resume another session" },

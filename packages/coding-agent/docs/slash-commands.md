@@ -28,6 +28,9 @@ Extensions, prompt templates, and skills can add commands. The command menu in T
 | `/tree` | Navigate the session tree |
 | `/fork` | Create a new session from an earlier user message |
 | `/clone` | Duplicate the current session at its current position |
+| `/uhm <idea>` | Reformulate a rambling idea into one clear prompt, then hand it to a fresh session |
+
+`/uhm` sends the idea dump to the current model for a single rephrase: self-corrections and hedges are resolved into one task prompt, nothing is added. The result lands in the editor, where you can edit it first. Enter starts a new session and submits it; Esc discards it and leaves the current session untouched. The dump itself is never sent, so the new session sees only the reformulated prompt.
 | `/compact [instructions]` | Compact the current context, optionally with custom instructions |
 | `/import <path>` | Import a JSONL session, preserving its ID and working directory |
 
