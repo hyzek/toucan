@@ -10,7 +10,7 @@
 import { createRequire } from "node:module";
 import type { Static, TSchema } from "typebox";
 import { getAgentDir } from "../../config.ts";
-import { loadExternalExtensionFactory } from "../../core/extensions/loader.ts";
+import { loadExternalExtensionFactory, usesEmbeddedModules } from "../../core/extensions/loader.ts";
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory, ToolDefinition } from "../../core/extensions/types.ts";
 import { toucanWebRenderersFor } from "./renderers.ts";
 
@@ -111,7 +111,10 @@ const toucanWebExtension: ExtensionFactory = async (toucan) => {
 	process.env.PI_CODING_AGENT_DIR ??= getAgentDir();
 
 	try {
-		const entry = require.resolve(`${UPSTREAM_PACKAGE}/dist/index.js`);
+		// Embedded runtimes serve the package from jiti's virtual-module registry, which is keyed
+		// by the bare specifier; other runtimes load the installed file from disk.
+		const specifier = `${UPSTREAM_PACKAGE}/dist/index.js`;
+		const entry = usesEmbeddedModules ? specifier : require.resolve(specifier);
 		const factory = await loadExternalExtensionFactory(entry);
 		if (!factory) {
 			throw new Error(`Toucan Web has no extension factory: ${entry}`);

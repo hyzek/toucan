@@ -45,7 +45,8 @@ const isNodeSeaBinary =
 	("sea" in process.features && process.features.sea === true) ||
 	process.getBuiltinModule("node:sea")?.isSea() === true;
 const isTypeScriptSourceRuntime = !isBunBinary && path.extname(fileURLToPath(import.meta.url)) === ".ts";
-const usesEmbeddedModules = isBunBinary || isNodeSeaBinary || isBundledNode;
+/** Runtimes where extension modules come from the bundle instead of the file system. */
+export const usesEmbeddedModules = isBunBinary || isNodeSeaBinary || isBundledNode;
 
 let createJitiPromise: Promise<typeof createJiti> | undefined;
 
@@ -59,7 +60,16 @@ function getCreateJiti(): Promise<typeof createJiti> {
 let virtualModulesPromise: Promise<Record<string, unknown>> | undefined;
 
 function getVirtualModules(): Promise<Record<string, unknown>> {
-	virtualModulesPromise ??= import("./virtual-modules.ts").then((module) => module.VIRTUAL_MODULES);
+	// Embedded runtimes also register the pi-web-access package: the Toucan Web built-in imports
+	// it by bare specifier there, because no file system module is reachable from the bundle.
+	virtualModulesPromise ??= usesEmbeddedModules
+		? Promise.all([import("./virtual-modules.ts"), import("./pi-web-access-module.ts")]).then(
+				([module, piWebAccessModule]) => ({
+					...module.VIRTUAL_MODULES,
+					"pi-web-access/dist/index.js": piWebAccessModule.PI_WEB_ACCESS_MODULE,
+				}),
+			)
+		: import("./virtual-modules.ts").then((module) => module.VIRTUAL_MODULES);
 	return virtualModulesPromise;
 }
 

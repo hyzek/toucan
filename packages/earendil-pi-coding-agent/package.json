@@ -1,0 +1,11 @@
+{
+	"name": "@earendil-works/pi-coding-agent",
+	"version": "1.79.0",
+	"description": "Private shim so bundlers resolve Pi 1.0 peer names to Toucan's own packages; never published (runtime runs use the module aliases in core/extensions/loader.ts).",
+	"private": true,
+	"type": "module",
+	"main": "index.js",
+	"dependencies": {
+		"@hyzek/toucan-coding-agent": "1.79.0"
+	}
+}

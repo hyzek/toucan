@@ -18,6 +18,9 @@ const banner = {
 const allowedExternalPackages = new Set([
 	"@silvia-odwyer/photon-node",
 	"jiti",
+	// linkedom's optional canvas accelerator (pi-web-access -> defuddle -> linkedom). It resolves
+	// to linkedom's shim at runtime when absent, and an unbuilt native install would break bundling.
+	"canvas",
 	// Optional native accelerators. Their callers fall back to JavaScript when absent.
 	"bufferutil",
 	"utf-8-validate",
@@ -81,7 +84,7 @@ function commonBuildOptions() {
 		banner,
 		bundle: true,
 		define: { TOUCAN_BUNDLED_NODE: "true" },
-		external: ["@silvia-odwyer/photon-node"],
+		external: ["@silvia-odwyer/photon-node", "canvas"],
 		format: "esm",
 		legalComments: "none",
 		logLevel: "warning",
