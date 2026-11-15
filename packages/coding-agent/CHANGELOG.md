@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.94.0] - 2026-11-15
+
 ### Removed
 
 - The startup "What's New" block. Toucan's changelog is read on demand with `/changelog`; the startup notice now only reports updated extensions, and `collapseChangelog` only condenses that notice
