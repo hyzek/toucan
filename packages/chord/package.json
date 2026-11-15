@@ -1,6 +1,6 @@
 {
 	"name": "@hyzek/chord",
-	"version": "56.0.0",
+	"version": "58.0.0",
 	"description": "Object runtime for apps across processes: contracts, documents, a store, links, plugins with hot reload, HTTP, workers, web and terminal clients",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -155,8 +155,8 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@hyzek/toucan-schema": "56.0.0",
-		"@hyzek/toucan-telemetry": "56.0.0"
+		"@hyzek/toucan-schema": "58.0.0",
+		"@hyzek/toucan-telemetry": "58.0.0"
 	},
 	"peerDependencies": {
 		"esbuild": "0.28.2",
