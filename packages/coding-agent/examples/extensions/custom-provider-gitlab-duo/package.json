@@ -1,16 +1,16 @@
 {
-  "name": "toucan-extension-custom-provider-gitlab-duo",
-  "private": true,
-  "version": "24.0.0",
-  "type": "module",
-  "scripts": {
-    "clean": "echo 'nothing to clean'",
-    "build": "echo 'nothing to build'",
-    "check": "echo 'nothing to check'"
-  },
-  "toucan": {
-    "extensions": [
-      "./index.ts"
-    ]
-  }
+	"name": "toucan-extension-custom-provider-gitlab-duo",
+	"private": true,
+	"version": "56.0.0",
+	"type": "module",
+	"scripts": {
+		"clean": "echo 'nothing to clean'",
+		"build": "echo 'nothing to build'",
+		"check": "echo 'nothing to check'"
+	},
+	"toucan": {
+		"extensions": [
+			"./index.ts"
+		]
+	}
 }

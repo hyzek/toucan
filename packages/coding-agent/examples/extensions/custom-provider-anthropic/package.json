@@ -1,19 +1,19 @@
 {
-  "name": "toucan-extension-custom-provider-anthropic",
-  "private": true,
-  "version": "24.0.0",
-  "type": "module",
-  "scripts": {
-    "clean": "echo 'nothing to clean'",
-    "build": "echo 'nothing to build'",
-    "check": "echo 'nothing to check'"
-  },
-  "toucan": {
-    "extensions": [
-      "./index.ts"
-    ]
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "0.52.0"
-  }
+	"name": "toucan-extension-custom-provider-anthropic",
+	"private": true,
+	"version": "56.0.0",
+	"type": "module",
+	"scripts": {
+		"clean": "echo 'nothing to clean'",
+		"build": "echo 'nothing to build'",
+		"check": "echo 'nothing to check'"
+	},
+	"toucan": {
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"dependencies": {
+		"@anthropic-ai/sdk": "0.52.0"
+	}
 }
