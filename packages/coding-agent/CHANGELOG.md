@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.88.0] - 2026-11-15
+
 ### Breaking Changes
 
 - An explicit model or effort change is now the new default immediately: `Enter` in the model and thinking selectors, `/model <name>`, `/effort <level>`, and the model and thinking cycle keys all persist. The selectors lose their `Ctrl+S` set-as-default key and bottom hint rows, the `app.thinking.save` keybinding is removed, and `app.models.save` now only saves the model scope in the scoped models selector
