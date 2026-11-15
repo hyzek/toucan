@@ -4,7 +4,7 @@
   <img alt="A toco toucan (Ramphastos toco)" src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/Toco_toucan_%28Ramphastos_toco%29_close-up.jpg/1280px-Toco_toucan_%28Ramphastos_toco%29_close-up.jpg" width="100%">
 </p>
 
-Toucan is a minimal, extensible agent harness and the set of packages it is built from. The centerpiece is [Toucan Coding Agent](packages/coding-agent/README.md): a terminal coding agent you make your own with extensions, skills, prompt templates, and themes, shared as packages over npm or git. It ships with powerful defaults including built-in subagents but skips features like plan mode; you adapt Toucan to your workflows, not the other way around.
+Toucan is a minimal, extensible agent harness and the set of packages it is built from. The centerpiece is [Toucan Coding Agent](packages/coding-agent/README.md): a terminal coding agent you make your own with extensions, skills, prompt templates, and themes, shared as packages over npm or git. It ships with powerful defaults — subagents, plan mode, web access, a question tool — and you adapt Toucan to your workflows, not the other way around.
 
 This repository is the monorepo for the whole stack, from the model API up to the terminal UI:
 
@@ -22,6 +22,27 @@ This repository is the monorepo for the whole stack, from the model API up to th
 | [`schema`](packages/schema/README.md) | JSON Schema builders and validation without `eval` |
 | [`telemetry`](packages/telemetry/README.md) | Vendor-neutral telemetry contracts |
 | [`evals`](packages/evals/README.md) | Behavioral evals for the coding agent |
+
+## What Toucan adds over [Pi](https://github.com/earendil-works/pi)
+
+Toucan is a fork of Pi and keeps Pi's core: the extension model (extensions, skills, prompt templates, themes, packages), the session model, and the CLI, RPC, and SDK surfaces. Everything below was added in this repository after the fork.
+
+| Addition | Description |
+| --- | --- |
+| [Subagents and the agent command center](packages/coding-agent/docs/subagents.md) | The `subagent` tool runs a task in an isolated child session and reports back. Three types ship built in (`general-purpose`, `explore`, `plan`) and more are markdown files in `.toucan/agents/`. Runs are background by default, with live status, steering, and resume; `/agents` opens a command center listing this session's agents and their transcripts. Opt in with `subagents.enabled`. |
+| Plan mode | `shift+tab` or `/plan` switches to read-only research: `edit`, `write`, and `subagent` are deactivated, `bash` is limited to an allowlist, the system prompt gains a plan-mode section, and the footer shows the mode. It persists in the session. |
+| `question` tool | The model asks one or more questions as a single form drawn in the input band: numbered options, a free-text row each, multi-select where allowed, and a Yes/No submit that recaps every answer before sending the set in one go. |
+| `handoff` tool | At a decision point the model presents a menu of next steps and waits for one pick. The option marked as starting implementation turns plan mode off, so planning ends with your approval rather than an assumption. |
+| [Toucan Web](packages/coding-agent/docs/toucan-web.md) | Built-in `web_search`, `fetch_content`, `source_check`, and `get_search_content`, plus `/search` and `/google-account`. The default search path needs no API key. |
+| `/uhm <idea>` | Reformulates a rambling idea dump into one clear task prompt with the session's model, prefills it in the editor for an edit, and hands it to a fresh session on Enter. |
+| Transcript rendering | Tool calls are marker-led rows that fold consecutive calls into one sentence (`Read 1 file, ran 3 shell commands`). Diffs are syntax-coloured with word-level changes, named hunks, folding, and a side-by-side layout in wide terminals; writes and shell commands that rewrite one file render as diffs too. A thinking run streams inline, then collapses to `Thought for 3s`. |
+| Working status | A fading-dot indicator with a swept label, full token counts, and an elapsed timer. Compaction and branch summaries use the same indicator and collapse to one expandable row instead of full-width panels. |
+| Input band, menus, footer | Redesigned start screen and composer. The `/` menu and the selectors open above the input on a solid selection bar, and the footer bar reads `model · effort · name · directory` with model display names. |
+| `/stats` | Token usage as bold counts for this project and for every session on the machine, above a 7-day strip. |
+| `/skills` and `/context` | Every loaded skill and `AGENTS.md` context file as a tree grouped by where it loads from; `/context` leads with the estimated context use. |
+| Two-press interrupt | The first `Esc` swaps the hint row to `esc again to interrupt` for two seconds, so one stray keypress cannot kill a running turn. |
+| [Channel builds](packages/coding-agent/docs/cli.md#channel-builds) | `scripts/install.sh` clones a channel (`stable`, `nightly`, `dev`) into `~/.toucan`, builds it from source behind a memory preflight, and links a launcher into your `PATH`. `toucan update` refreshes the current channel, `toucan channel` switches between them. |
+| Continuous releases | Every commit to `main` becomes a build. The build number is the commit count, so `toucan --version`, the `bN` tag, and the npm version `N.0.0` all agree, and a fix is installable minutes after it lands. |
 
 ## Getting started
 
