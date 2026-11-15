@@ -43,20 +43,23 @@ export const questionRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "r
 	renderResult(result, _options, theme, context) {
 		const container = (context.lastComponent as Container | undefined) ?? new Container();
 		container.clear();
+		// Answer rows sit one cell right of the tool row's box padding so they start under
+		// the call line's header text; the dot marker's ink hangs right of its cell, and
+		// padding alone made these rows look shifted left of the marker.
 		if (context.isError) {
-			container.addChild(new Text(theme.fg("error", getTextOutput(result, false).trim() || "Failed"), 0, 0));
+			container.addChild(new Text(theme.fg("error", getTextOutput(result, false).trim() || "Failed"), 1, 0));
 			return container;
 		}
 		const details = result.details as QuestionToolDetails | undefined;
 		if (details?.dismissed) {
-			container.addChild(new Text(theme.fg("warning", "Questions dismissed, no answers"), 0, 0));
+			container.addChild(new Text(theme.fg("warning", "Questions dismissed, no answers"), 1, 0));
 			return container;
 		}
 		if (context.isPartial || !details?.answers) {
-			container.addChild(new Text(theme.fg("muted", "Waiting for answers\u2026"), 0, 0));
+			container.addChild(new Text(theme.fg("muted", "Waiting for answers\u2026"), 1, 0));
 			return container;
 		}
-		container.addChild(new Text(details.answers.map((answer) => answerLine(answer, theme)).join("\n"), 0, 0));
+		container.addChild(new Text(details.answers.map((answer) => answerLine(answer, theme)).join("\n"), 1, 0));
 		return container;
 	},
 };

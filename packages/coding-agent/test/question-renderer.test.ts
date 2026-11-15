@@ -54,10 +54,10 @@ describe("questionRenderers.renderResult", () => {
 		initTheme("dark");
 	});
 
-	it("emits unpadded lines; the tool row's box owns the indent", () => {
+	it("indents answer rows one cell past the tool row box, on wrapped lines too", () => {
 		const lines = renderAnswerLines(1);
 		expect(lines.length).toBeGreaterThan(1); // the answer must wrap to exercise this
-		for (const line of lines) expect(line.startsWith(" ")).toBe(false);
+		for (const line of lines) expect(line.startsWith(" ")).toBe(true);
 		expect(lines.join(" ")).not.toContain("Subtitles must not appear");
 	});
 });
@@ -91,7 +91,7 @@ describe("question answer rows in the tool execution shell", () => {
 			.filter((line) => /\S/.test(line));
 		const answerLines = lines.filter((line) => /Compiler is unhinged|self-contradicting/.test(line));
 		expect(answerLines.length).toBeGreaterThan(1); // the answer wrapped
-		for (const line of answerLines) expect(line.startsWith(" ")).toBe(true);
+		for (const line of answerLines) expect(line.startsWith("  ")).toBe(true);
 		expect(lines.join(" ")).not.toContain("Subtitles must not appear");
 	});
 });
