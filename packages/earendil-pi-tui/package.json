@@ -1,11 +1,11 @@
 {
 	"name": "@earendil-works/pi-tui",
-	"version": "1.79.0",
+	"version": "1.85.0",
 	"description": "Private shim so bundlers resolve Pi 1.0 peer names to Toucan's own packages; never published (runtime runs use the module aliases in core/extensions/loader.ts).",
 	"private": true,
 	"type": "module",
 	"main": "index.js",
 	"dependencies": {
-		"@hyzek/toucan-tui": "1.79.0"
+		"@hyzek/toucan-tui": "1.85.0"
 	}
 }
