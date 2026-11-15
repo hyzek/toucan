@@ -389,12 +389,21 @@ export class QuestionForm {
 		this.viewStart = Math.max(0, Math.min(this.viewStart, count - window));
 
 		const withDescriptions = question.options.some((option) => option.description) && width >= 60;
-		const primaryWidth = withDescriptions
-			? Math.min(
-					Math.max(10, ...question.options.map((option) => visibleWidth(`${option.label}`))) + 4,
-					Math.floor(width * 0.55),
-				)
-			: 0;
+		// One label column for the whole list: as wide as the longest rendered label (numbering
+		// and the free-text row included) plus a two-space gutter, capped so the description
+		// column cannot collapse. Every row pads to this same width, so the descriptions form
+		// one straight column instead of starting after each row's own label.
+		const longestLabel = Math.max(
+			10,
+			visibleWidth(`${question.options.length}. ${OTHER_LABEL}`),
+			...question.options.map((option, i) => visibleWidth(`${i + 1}. ${option.label}`)),
+		);
+		const labelColumnWidth = withDescriptions ? Math.min(longestLabel + 2, Math.floor(width * 0.55)) : 0;
+		// The description column's position. The cursor and box gutters are each two cells and
+		// counted as such: measuring them per row would let the styled cursor glyph shift the
+		// cursor row away from the other rows.
+		const columnStart = visibleWidth(INDENT) + 4 + labelColumnWidth;
+		const columnPad = " ".repeat(columnStart);
 
 		for (let i = this.viewStart; i < this.viewStart + window; i++) {
 			const option = i < question.options.length ? question.options[i] : undefined;
@@ -415,18 +424,19 @@ export class QuestionForm {
 					? theme.fg("muted", `: ${this.answers.get(this.currentTab)!.typed}`)
 					: "";
 
-			if (option?.description && primaryWidth > 0) {
+			if (option?.description && labelColumnWidth > 0) {
 				// Two-column row: label left, description right, and the description wraps into
 				// its own column instead of being cut at the screen edge.
-				const gap = Math.max(1, primaryWidth - visibleWidth(label));
-				const columnStart = visibleWidth(INDENT) + visibleWidth(cursor) + visibleWidth(box) + primaryWidth + gap;
+				const gutter = `${INDENT}${cursor}${box}`;
 				const descWidth = width - columnStart;
 				if (descWidth > 8) {
-					const columnPad = " ".repeat(columnStart);
+					// Truncate two cells under the column width so even an over-long label keeps
+					// its two-space gap to the description column.
+					const shownLabel = truncateToWidth(labelText, Math.max(1, labelColumnWidth - 2), "");
+					// Pad to the exact end of the shared label column.
+					const labelPad = " ".repeat(Math.max(0, labelColumnWidth - visibleWidth(shownLabel)));
 					const descLines = wrapTextWithAnsi(theme.fg("muted", option.description), descWidth);
-					rows.push(
-						`${INDENT}${cursor}${box}${truncateToWidth(labelText, primaryWidth, "")}${" ".repeat(gap)}${descLines[0]}`,
-					);
+					rows.push(`${gutter}${shownLabel}${labelPad}${descLines[0]}`);
 					for (const line of descLines.slice(1)) rows.push(`${columnPad}${line}`);
 					continue;
 				}

@@ -1,13 +1,16 @@
 // Question tool renderer: the chat rows an answered form leaves behind.
 
+import { TuiMainScreen } from "@hyzek/toucan-tui";
 import { beforeAll, describe, expect, it } from "vitest";
+import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { ToolRenderContext, ToolRenderResultOptions } from "../src/core/extensions/types.ts";
-import type { QuestionToolAnswer } from "../src/core/tools/question.ts";
+import { createQuestionToolDefinition } from "../src/core/tools/question.ts";
 import { questionRenderers } from "../src/core/tools/renderers/question.ts";
+import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
-const answer: QuestionToolAnswer = {
+const answer = {
 	header: "Angle",
 	question: "Which direction should I take the energy?",
 	answers: [
@@ -18,7 +21,7 @@ const answer: QuestionToolAnswer = {
 		},
 	],
 	typed: false,
-};
+} as const;
 
 function context(outputPad: number): ToolRenderContext {
 	return {
@@ -52,13 +55,42 @@ describe("questionRenderers.renderResult", () => {
 		initTheme("dark");
 	});
 
-	it("indents every line of a wrapped answer by the tool row padding", () => {
+	it("emits unpadded lines; the tool row's box owns the indent", () => {
 		const lines = renderAnswerLines(1);
 		expect(lines.length).toBeGreaterThan(1); // the answer must wrap to exercise this
-		for (const line of lines) expect(line.startsWith(" ")).toBe(true);
+		for (const line of lines) expect(line.startsWith(" ")).toBe(false);
+	});
+});
+
+describe("question answer rows in the tool execution shell", () => {
+	beforeAll(() => {
+		initTheme("dark");
 	});
 
-	it("honours zero output padding by starting every line at the left edge", () => {
-		for (const line of renderAnswerLines(0)) expect(line.startsWith(" ")).toBe(false);
+	it("keeps wrapped answer lines at the tool row indent, never at column 0", () => {
+		const ui = new TuiMainScreen(new VirtualTerminal(100, 24));
+		const definition = { ...createQuestionToolDefinition(), ...questionRenderers };
+		const component = new ToolExecutionComponent(
+			"question",
+			"q1",
+			{ questions: [{ question: "Which direction?", header: "Angle", options: [{ label: "a" }] }] },
+			{ outputPad: 1 },
+			definition as never,
+			ui,
+			"/",
+		);
+		component.updateResult({
+			content: [{ type: "text", text: "ok" }],
+			isError: false,
+			details: { questions: [], answers: [{ ...answer, answers: [...answer.answers] }], dismissed: false },
+		} as never);
+
+		const lines = component
+			.render(100)
+			.map((line) => stripAnsi(line).replace(/\s+$/, ""))
+			.filter((line) => /\S/.test(line));
+		const answerLines = lines.filter((line) => /Compiler is unhinged|self-contradicting/.test(line));
+		expect(answerLines.length).toBeGreaterThan(1); // the answer wrapped
+		for (const line of answerLines) expect(line.startsWith(" ")).toBe(true);
 	});
 });

@@ -60,11 +60,7 @@ export const questionRenderers: Pick<ToolDefinition<any, any>, "renderCall" | "r
 			container.addChild(new Text(theme.fg("muted", "Waiting for answers\u2026"), 0, 0));
 			return container;
 		}
-		// Padding, not indent 0: the row sits in the tool row's padded box, and a wrapped answer
-		// line must restart under that padding instead of at the terminal's left edge.
-		container.addChild(
-			new Text(details.answers.map((answer) => answerLine(answer, theme)).join("\n"), context.outputPad, 0),
-		);
+		container.addChild(new Text(details.answers.map((answer) => answerLine(answer, theme)).join("\n"), 0, 0));
 		return container;
 	},
 };

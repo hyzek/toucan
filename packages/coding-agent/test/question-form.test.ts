@@ -288,4 +288,24 @@ describe("QuestionForm overflow wrapping", () => {
 		expect(continuation.length).toBeGreaterThan(column);
 		expect(continuation.startsWith(" ".repeat(column))).toBe(true);
 	});
+
+	it("keeps one straight description column for options with different label lengths", () => {
+		const { form } = makeForm([
+			{
+				question: "Which?",
+				header: "Pick",
+				options: [
+					{ label: "A much longer option label than the others", description: "first description text" },
+					{ label: "Short", description: "second description text" },
+				],
+			},
+		]);
+		const lines = nonBlankLines(form, 80);
+		const first = lines.find((line) => line.includes("first description text"))!;
+		const second = lines.find((line) => line.includes("second description text"))!;
+		const column = first.indexOf("first description text");
+		expect(second.indexOf("second description text")).toBe(column);
+		// The label column leaves a real gutter, so the two columns never touch.
+		expect(first.slice(0, column).endsWith("  ")).toBe(true);
+	});
 });
