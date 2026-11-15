@@ -1,6 +1,6 @@
 {
 	"name": "@todo/app",
-	"version": "69.0.0",
+	"version": "1.79.0",
 	"private": true,
 	"description": "The tutorial's todo app: its API (v1 and its per-kind modules), base code and built-in plugins",
 	"type": "module",
