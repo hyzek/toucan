@@ -10,6 +10,8 @@
 
 - The startup build update notice no longer repeats a release older than the running build and no longer goes quiet about a newer one. `update-check.json` answers were shared by every build on the machine, so after `toucan update` the previous build's cached answer either announced an older tag ("Build b69 is available (you are on b79)") or suppressed the newer release until the cache aged out. Each cached answer now names the build that wrote it, and release tags compare by build number before anything else
 
+## [1.91.0] - 2026-11-15
+
 ## [1.88.0] - 2026-11-15
 
 ### Breaking Changes
