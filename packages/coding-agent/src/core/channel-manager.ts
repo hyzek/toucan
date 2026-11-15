@@ -35,8 +35,6 @@ const LAUNCHER_FILE_NAME = "toucan";
 // Builds (npm ci + tsc + bundle) outlive a crashed process's lock; a lock untouched for
 // this long is broken so the next operation can take over.
 const LOCK_STALE_MS = 30 * 60_000;
-// Dependency packages built before the CLI bundle, mirroring the build:binary script order.
-const WORKSPACE_BUILD_PACKAGES = ["tui", "telemetry", "ai", "agent"] as const;
 const REF_NAME_RE = /^[A-Za-z0-9._/-]+$/;
 const BUILD_TAG_RE = /^b\d+$/;
 
@@ -76,7 +74,7 @@ export interface ChannelStatus {
 
 /** Process seams so tests can exercise channel operations without git or npm. */
 export interface ChannelProcess {
-	run(command: string, args: string[], options: { cwd: string }): Promise<void>;
+	run(command: string, args: string[], options: { cwd: string; env?: NodeJS.ProcessEnv }): Promise<void>;
 	capture(command: string, args: string[], options?: { cwd?: string }): string;
 }
 
@@ -90,7 +88,8 @@ const defaultProcess: ChannelProcess = {
 	async run(command, args, options) {
 		const code = await waitForChildProcess(spawnProcess(command, args, { ...options, stdio: "inherit" }));
 		if (code !== 0) {
-			throw new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}`);
+			const oom = code === 137 ? " (killed — likely out of memory; add swap or use a larger machine)" : "";
+			throw new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}${oom}`);
 		}
 	},
 	capture(command, args, options) {
@@ -428,6 +427,57 @@ function resolveRemoteCommit(childProcess: ChannelProcess, repoUrl: string, ref:
 	return commit;
 }
 
+/**
+ * MemAvailable + SwapFree in MB from /proc/meminfo text. Undefined where the
+ * fields do not exist (non-Linux), so callers skip the memory precheck there.
+ * Only a real /dev/ swap device counts toward the budget: zram is compressed
+ * RAM and cannot hold the build's peak. For that, /proc/swaps text is passed.
+ */
+export function memoryBudgetMB(meminfoText: string | undefined, swapsText: string | undefined): number | undefined {
+	if (meminfoText === undefined) return undefined;
+	const fieldKB = (field: string) => {
+		const match = new RegExp(`^${field}:\\s+(\\d+) kB$`, "m").exec(meminfoText);
+		return match ? Number.parseInt(match[1], 10) : undefined;
+	};
+	const availableKB = fieldKB("MemAvailable");
+	if (availableKB === undefined) return undefined;
+	// Only a real /dev/ swap device (not zram) counts as able to hold the peak.
+	const usableSwap = swapsText !== undefined && /^\s*\/dev\/(?!zram)\S+/m.test(swapsText);
+	const swapFreeKB = usableSwap ? (fieldKB("SwapFree") ?? 0) : 0;
+	return Math.floor((availableKB + swapFreeKB) / 1024);
+}
+
+// A source build of the monorepo peaks around 700 MB (coding-agent's tsc); below
+// this budget the build only OOM-kills the machine, so the channel builder refuses.
+const MIN_BUILD_BUDGET_MB = 768;
+
+/**
+ * NODE_OPTIONS capping the build children's Node heap to the machine's budget.
+ * Node defaults its heap to the machine's total RAM; on small boxes the children
+ * then overcommit and the OOM killer fires before swap can help.
+ */
+export function buildNodeOptions(budgetMB: number | undefined): string | undefined {
+	if (budgetMB === undefined || budgetMB >= 3072) return undefined;
+	const capMB = Math.min(1536, Math.max(256, Math.floor(budgetMB * 0.6)));
+	return `--max-old-space-size=${capMB}`;
+}
+
+function readMeminfo(): string | undefined {
+	try {
+		return readFileSync("/proc/meminfo", "utf8");
+	} catch {
+		return undefined;
+	}
+}
+
+function readSwaps(): string | undefined {
+	try {
+		return readFileSync("/proc/swaps", "utf8");
+	} catch {
+		return undefined;
+	}
+}
+
 async function buildChannelBuild(
 	childProcess: ChannelProcess,
 	staging: string,
@@ -442,11 +492,21 @@ async function buildChannelBuild(
 			`This ${channel} build requires Node ${engine.required}, but this is ${process.version}. Install a newer Node and retry.`,
 		);
 	}
-	await childProcess.run("npm", ["ci", "--ignore-scripts"], { cwd: staging });
-	for (const buildPackage of WORKSPACE_BUILD_PACKAGES) {
-		await childProcess.run("npm", ["--prefix", `packages/${buildPackage}`, "run", "build"], { cwd: staging });
+	const budgetMB = memoryBudgetMB(readMeminfo(), readSwaps());
+	if (budgetMB !== undefined && budgetMB < MIN_BUILD_BUDGET_MB) {
+		throw new Error(
+			`Building toucan from source needs about ${MIN_BUILD_BUDGET_MB} MB of free memory and swap, but this machine has ${budgetMB} MB. Add swap or run the build on a larger machine.`,
+		);
 	}
-	await childProcess.run("npm", ["run", "build"], { cwd: join(staging, "packages", "coding-agent") });
+	const env: NodeJS.ProcessEnv = { ...process.env };
+	const nodeOptions = buildNodeOptions(budgetMB);
+	if (nodeOptions) {
+		env.NODE_OPTIONS = env.NODE_OPTIONS ? `${env.NODE_OPTIONS} ${nodeOptions}` : nodeOptions;
+	}
+	await childProcess.run("npm", ["ci", "--ignore-scripts"], { cwd: staging, env });
+	// The monorepo's root build carries the canonical workspace order, so channel
+	// builds pick up new packages without a second list to keep in sync.
+	await childProcess.run("npm", ["run", "build"], { cwd: staging, env });
 	if (!existsSync(join(staging, "packages", "coding-agent", "dist", "bundle", "cli.js"))) {
 		throw new Error("The build finished but packages/coding-agent/dist/bundle/cli.js is missing.");
 	}

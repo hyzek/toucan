@@ -8,6 +8,7 @@ import { join } from "node:path";
 import lockfile from "proper-lockfile";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	buildNodeOptions,
 	type ChannelProcess,
 	checkNodeEngine,
 	detectChannelInstall,
@@ -18,6 +19,7 @@ import {
 	getToucanHome,
 	installChannel,
 	listChannelBuilds,
+	memoryBudgetMB,
 	parseChannelSource,
 	readActiveChannel,
 	readChannelBuildInfo,
@@ -44,19 +46,22 @@ function createFakeProcess(options: FakeOptions = {}) {
 	const runCalls: { command: string; args: string[]; cwd: string }[] = [];
 	const captureCalls: { command: string; args: string[] }[] = [];
 	const cloneCommit = options.cloneCommit ?? "1111111111111111111111111111111111111111";
+	let cloneRoot: string | undefined;
 	const fake: ChannelProcess = {
 		async run(command, args, { cwd }) {
 			runCalls.push({ command, args, cwd });
 			if (command === "git" && args[0] === "clone") {
 				const target = args[5];
+				cloneRoot = target;
 				mkdirSync(target, { recursive: true });
 				writeFileSync(
 					join(target, "package.json"),
 					JSON.stringify({ engines: options.enginesNode ? { node: options.enginesNode } : {} }),
 				);
 			}
-			if (command === "npm" && args[0] === "run" && cwd.endsWith("coding-agent")) {
-				const bundle = join(cwd, "dist", "bundle");
+			if (command === "npm" && args[0] === "run" && args[1] === "build" && cwd === cloneRoot) {
+				// The root build produces the CLI bundle, as in the real monorepo.
+				const bundle = join(cwd, "packages", "coding-agent", "dist", "bundle");
 				mkdirSync(bundle, { recursive: true });
 				writeFileSync(join(bundle, "cli.js"), "// built");
 			}
@@ -177,14 +182,7 @@ describe("channel manager", () => {
 				"https://git.test/repo.git",
 			]);
 			const npmArgs = runCalls.filter((call) => call.command === "npm").map((call) => call.args.join(" "));
-			expect(npmArgs).toEqual([
-				"ci --ignore-scripts",
-				"--prefix packages/tui run build",
-				"--prefix packages/telemetry run build",
-				"--prefix packages/ai run build",
-				"--prefix packages/agent run build",
-				"run build",
-			]);
+			expect(npmArgs).toEqual(["ci --ignore-scripts", "run build"]);
 
 			const buildDir = getChannelBuildDir("dev");
 			const info = readChannelBuildInfo(buildDir);
@@ -348,6 +346,39 @@ describe("channel manager", () => {
 			expect(statuses.map((status) => status.info.channel)).toEqual(["dev", "stable"]);
 			expect(statuses.find((status) => status.info.channel === "dev")?.active).toBe(true);
 			expect(statuses.find((status) => status.info.channel === "stable")?.active).toBe(false);
+		});
+	});
+
+	describe("memory budget", () => {
+		const meminfo = "MemTotal: 524288 kB\nMemAvailable: 440000 kB\nSwapFree: 480000 kB\n";
+
+		it("adds free swap only from a real /dev/ device", () => {
+			const deviceSwap =
+				"Filename\t\t\t\tType\t\tSize\tUsed\tPriority\n/dev/sda2                   partition\t524284\t0\t-2\n";
+			expect(memoryBudgetMB(meminfo, deviceSwap)).toBe(898);
+		});
+
+		it("ignores zram and unknown swap, counting only available memory", () => {
+			const zram =
+				"Filename\t\t\t\tType\t\tSize\tUsed\tPriority\n/dev/zram0                  partition\t524284\t0\t-2\n";
+			const unknown = "Filename\t\t\t\tType\t\tSize\tUsed\tPriority\nnone\tvirtual\t524284\t0\t-2\n";
+			expect(memoryBudgetMB(meminfo, zram)).toBe(429);
+			expect(memoryBudgetMB(meminfo, unknown)).toBe(429);
+			expect(memoryBudgetMB(meminfo, undefined)).toBe(429);
+		});
+
+		it("stays undefined without /proc/meminfo fields", () => {
+			expect(memoryBudgetMB(undefined, undefined)).toBeUndefined();
+			expect(memoryBudgetMB("MemTotal: 1 kB", undefined)).toBeUndefined();
+		});
+
+		it("caps node heaps on small machines and leaves big ones at node defaults", () => {
+			expect(buildNodeOptions(undefined)).toBeUndefined();
+			expect(buildNodeOptions(4096)).toBeUndefined();
+			expect(buildNodeOptions(3072)).toBeUndefined();
+			expect(buildNodeOptions(2000)).toBe("--max-old-space-size=1200");
+			expect(buildNodeOptions(500)).toBe("--max-old-space-size=300");
+			expect(buildNodeOptions(100)).toBe("--max-old-space-size=256");
 		});
 	});
 

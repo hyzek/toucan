@@ -83,6 +83,7 @@ These variables are read by Toucan itself:
 | `TOUCAN_PACKAGE_DIR` | Override the package directory, useful for Nix/Guix store paths |
 | `TOUCAN_HOME` | Override the channel state root; default is `~/.toucan`. See [Channel builds](cli.md#channel-builds) |
 | `TOUCAN_REPO_URL` | Override the git repository channel builds clone from; default is `https://github.com/hyzek/toucan.git` |
+| `TOUCAN_SYSTEM_LINK` | `install.sh` only: `0` skips the `/usr/local/bin/toucan` link (used by the installer where you manage PATH yourself) |
 | `TOUCAN_CHANNEL` | Set by the channel launcher to the active channel name |
 | `TOUCAN_OFFLINE` | Disable automatic network activity, including model catalog refreshes |
 | `TOUCAN_SKIP_VERSION_CHECK` | Disable the `pi.dev` latest-version request |

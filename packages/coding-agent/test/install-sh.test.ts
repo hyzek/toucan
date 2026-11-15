@@ -21,7 +21,14 @@ describe("install.sh", () => {
 	let toucanHome: string;
 
 	function installerEnv(): NodeJS.ProcessEnv {
-		return { ...process.env, HOME: home, TOUCAN_HOME: toucanHome, TOUCAN_REPO_URL: `file://${repo.repoDir}` };
+		return {
+			...process.env,
+			HOME: home,
+			TOUCAN_HOME: toucanHome,
+			TOUCAN_REPO_URL: `file://${repo.repoDir}`,
+			// Never let a root-run suite link into the real /usr/local/bin.
+			TOUCAN_SYSTEM_LINK: "0",
+		};
 	}
 
 	function runInstaller(args: string[]) {
@@ -53,7 +60,7 @@ describe("install.sh", () => {
 	it("builds a channel, installs the launcher, and adds PATH to rc files once", { timeout: RUN_TIMEOUT }, async () => {
 		const first = runInstaller(["dev"]);
 		expect(first.stderr).not.toMatch(/:\s.*error/i);
-		expect(first.stdout).toContain("Installed toucan dev");
+		expect(first.stdout).toContain("is ready — type: toucan");
 
 		const buildDir = join(toucanHome, "builds", "dev");
 		expect(readFileSync(join(toucanHome, "channel"), "utf8").trim()).toBe("dev");
@@ -69,14 +76,14 @@ describe("install.sh", () => {
 
 		// Re-running repairs in place without duplicating the PATH block.
 		const second = runInstaller(["dev"]);
-		expect(second.stdout).toContain("Installed toucan dev");
+		expect(second.stdout).toContain("Already at dev");
 		const bashrc = readFileSync(join(home, ".bashrc"), "utf8");
 		expect(bashrc.split(MARKER).length - 1).toBe(1);
 	});
 
 	it("resolves the stable channel to the highest release tag", { timeout: RUN_TIMEOUT }, async () => {
 		const result = runInstaller(["stable"]);
-		expect(result.stdout).toContain("Installed toucan stable");
+		expect(result.stdout).toContain("is ready — type: toucan");
 		const metadata = readFileSync(join(toucanHome, "builds", "stable", "channel.json"), "utf8");
 		expect(metadata).toContain('"ref": "b10"');
 		expect(metadata).toContain(repo.commitOfTag("b10"));

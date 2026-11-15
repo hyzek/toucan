@@ -75,7 +75,14 @@ export function createChannelRepoFixture(options: ChannelRepoOptions = {}): Chan
 	writeFileSync(
 		join(repoDir, "package.json"),
 		JSON.stringify(
-			{ name: "toucan-fixture", version: "0.0.1", private: true, engines, workspaces: ["packages/*"] },
+			{
+				name: "toucan-fixture",
+				version: "0.0.1",
+				private: true,
+				engines,
+				workspaces: ["packages/*"],
+				scripts: { build: "npm run build --workspaces --if-present" },
+			},
 			null,
 			2,
 		),
