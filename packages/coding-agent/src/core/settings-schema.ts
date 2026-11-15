@@ -328,7 +328,7 @@ export const SettingsSchema = Type.Object(
 		),
 		collapseChangelog: Type.Optional(
 			Type.Boolean({
-				description: "Show the condensed changelog after update; use /changelog for the full changelog.",
+				description: "Condense the startup Extension Updates notice to one line per package.",
 				default: SETTINGS_DEFAULTS.collapseChangelog,
 			}),
 		),

@@ -1817,7 +1817,7 @@ By default a transformer runs on normal user text, assistant text, and thinking 
 | `"user"`, `"assistant"`, `"assistant-thinking"` | Transcript messages (default) |
 | `"custom"` | Custom messages from `toucan.sendMessage()` without a registered message renderer, and expanded skill blocks (their content, without Toucan's header) |
 | `"summary"` | Expanded branch and compaction summaries (the summary, without Toucan's header) |
-| `"changelog"` | Toucan's changelog ("What's New" at startup and `/changelog`), the startup "Extension Updates" notice, and the release note of the "Update Available" notice |
+| `"changelog"` | Toucan's changelog (`/changelog`), the startup "Extension Updates" notice, and the release note of the "Update Available" notice |
 
 The transformer receives the Markdown string and a context with:
 

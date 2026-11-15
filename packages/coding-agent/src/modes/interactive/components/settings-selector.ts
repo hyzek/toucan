@@ -566,7 +566,7 @@ export class SettingsSelectorComponent extends Container {
 			{
 				id: "collapse-changelog",
 				label: "Collapse changelog",
-				description: "Show condensed changelog after updates",
+				description: "Condense the startup Extension Updates notice to one line per package",
 				currentValue: config.collapseChangelog ? "true" : "false",
 				values: ["true", "false"],
 			},

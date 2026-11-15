@@ -515,7 +515,6 @@ export class InteractiveMode {
 	private interruptConfirmTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	/** True while the confirmation owns the footer hint, because no status indicator provides it. */
 	private interruptHintOwned = false;
-	private changelogMarkdown: string | undefined = undefined;
 	private extensionChangelogUpdates: ExtensionChangelogUpdate[] = [];
 	private startupNoticesShown = false;
 	/** Last cache-warming notice, extended in place while it is the last chat line. */
@@ -627,7 +626,7 @@ export class InteractiveMode {
 	// Header container that holds the built-in or custom header
 	private headerContainer: Container;
 
-	// Built-in header (logo + keybinding hints + changelog)
+	// Built-in header (logo + keybinding hints + version)
 	private builtInHeader: Component | undefined = undefined;
 
 	// Custom header from extension (undefined = use built-in header)
@@ -917,13 +916,14 @@ export class InteractiveMode {
 		}
 	}
 
+	/** Startup notice for extensions this launch updated. Toucan's own changelog is not shown here; `/changelog` is. */
 	private showStartupNoticesIfNeeded(): void {
 		if (this.startupNoticesShown) {
 			return;
 		}
 		this.startupNoticesShown = true;
 
-		if (!this.changelogMarkdown && this.extensionChangelogUpdates.length === 0) {
+		if (this.extensionChangelogUpdates.length === 0) {
 			return;
 		}
 
@@ -933,35 +933,17 @@ export class InteractiveMode {
 			notice.addChild(new Spacer(1));
 		}
 		notice.addChild(new DynamicBorder());
-		if (this.changelogMarkdown) {
-			if (this.settingsManager.getCollapseChangelog()) {
-				const versionMatch = this.changelogMarkdown.match(/##\s+\[?(\d+)\.\d+\.\d+\]?/);
-				const latestBuild = versionMatch ? `b${versionMatch[1]}` : getBuildName();
-				const condensedText = `Updated to ${latestBuild}. Use ${theme.bold("/changelog")} to view full changelog.`;
-				notice.addChild(new Text(condensedText, 1, 0));
-			} else {
-				notice.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "What's New")), 1, 0));
-				notice.addChild(new Spacer(1));
-				notice.addChild(this.createChangelogMarkdown(this.changelogMarkdown.trim(), 1, 0));
-				notice.addChild(new Spacer(1));
-			}
-		}
-		if (this.extensionChangelogUpdates.length > 0) {
-			if (this.changelogMarkdown) {
-				notice.addChild(new Spacer(1));
-			}
-			if (this.settingsManager.getCollapseChangelog()) {
-				const condensedText = this.extensionChangelogUpdates
-					.map((update) => `Updated ${update.name} to v${update.version}.`)
-					.join("\n");
-				notice.addChild(new Text(condensedText, 1, 0));
-			} else {
-				notice.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "Extension Updates")), 1, 0));
-				notice.addChild(new Spacer(1));
-				const markdown = this.extensionChangelogUpdates.map((update) => update.markdown).join("\n\n");
-				notice.addChild(this.createChangelogMarkdown(markdown, 1, 0));
-				notice.addChild(new Spacer(1));
-			}
+		if (this.settingsManager.getCollapseChangelog()) {
+			const condensedText = this.extensionChangelogUpdates
+				.map((update) => `Updated ${update.name} to v${update.version}.`)
+				.join("\n");
+			notice.addChild(new Text(condensedText, 1, 0));
+		} else {
+			notice.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "Extension Updates")), 1, 0));
+			notice.addChild(new Spacer(1));
+			const markdown = this.extensionChangelogUpdates.map((update) => update.markdown).join("\n\n");
+			notice.addChild(this.createChangelogMarkdown(markdown, 1, 0));
+			notice.addChild(new Spacer(1));
 		}
 		notice.addChild(new DynamicBorder());
 		this.chatContainer.addChild(notice);
@@ -1042,8 +1024,8 @@ export class InteractiveMode {
 
 		this.registerSignalHandlers();
 
-		// Load changelogs (only show new entries, skip for resumed sessions)
-		this.changelogMarkdown = this.getChangelogForDisplay();
+		// Extension updates are shown at startup; Toucan's own changelog is only read on demand.
+		this.recordInstalledVersion();
 		this.extensionChangelogUpdates = this.getExtensionChangelogUpdates();
 
 		// Fullscreen renders on the alternate screen, so text printed to stdout here would stay in the shell
@@ -1409,39 +1391,32 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Get changelog entries to display on startup.
-	 * Only shows new entries since last seen version, skips for resumed sessions.
+	 * Record the version this install runs as seen, and report the install. Startup no longer prints
+	 * changelog entries; `/changelog` reads them on demand. Skipped for resumed sessions, so the
+	 * first fresh launch after an update is the one that records and reports it.
 	 */
-	private getChangelogForDisplay(): string | undefined {
-		// Skip changelog for resumed/continued sessions (already have messages)
+	private recordInstalledVersion(): void {
 		if (this.session.state.messages.length > 0) {
-			return undefined;
+			return;
 		}
 
 		const lastVersion = this.settingsManager.getLastChangelogVersion();
-		const changelogPath = getChangelogPath();
-		const entries = parseChangelog(changelogPath);
-
 		if (!lastVersion) {
-			// Fresh install - record the version, send telemetry, don't show changelog
 			this.settingsManager.setLastChangelogVersion(VERSION);
 			this.reportInstallTelemetry(VERSION);
-			return undefined;
+			return;
 		}
 
-		const newEntries = getNewEntries(entries, lastVersion);
+		const newEntries = getNewEntries(parseChangelog(getChangelogPath()), lastVersion);
 		if (!newEntries) {
-			// Unreadable saved version: show nothing and record the current one so later updates compare again
+			// Unreadable saved version: record the current one so later updates compare again.
 			this.settingsManager.setLastChangelogVersion(VERSION);
-			return undefined;
+			return;
 		}
 		if (newEntries.length > 0) {
 			this.settingsManager.setLastChangelogVersion(VERSION);
 			this.reportInstallTelemetry(VERSION);
-			return newEntries.map((e) => normalizeChangelogLinks(e.content, e)).join("\n\n");
 		}
-
-		return undefined;
 	}
 
 	private getExtensionChangelogUpdates(): ExtensionChangelogUpdate[] {
@@ -7043,7 +7018,7 @@ export class InteractiveMode {
 
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new DynamicBorder());
-		this.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "What's New")), 1, 0));
+		this.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "Changelog")), 1, 0));
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(this.createChangelogMarkdown(changelogMarkdown, 1, 1));
 		this.chatContainer.addChild(new DynamicBorder());

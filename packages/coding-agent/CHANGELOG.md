@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Removed
+
+- The startup "What's New" block. Toucan's changelog is read on demand with `/changelog`; the startup notice now only reports updated extensions, and `collapseChangelog` only condenses that notice
+
+### Fixed
+
+- The startup build update notice no longer repeats a release older than the running build and no longer goes quiet about a newer one. `update-check.json` answers were shared by every build on the machine, so after `toucan update` the previous build's cached answer either announced an older tag ("Build b69 is available (you are on b79)") or suppressed the newer release until the cache aged out. Each cached answer now names the build that wrote it, and release tags compare by build number before anything else
+
 ## [1.88.0] - 2026-11-15
 
 ### Breaking Changes
@@ -83,7 +91,6 @@
 
 ### Fixed
 
-- The startup build update notice no longer repeats a release older than the running build and no longer goes quiet about a newer one. `update-check.json` answers were shared by every build on the machine, so after `toucan update` the previous build's cached answer either announced an older tag ("Build b69 is available (you are on b79)") or suppressed the newer release until the cache aged out. Each cached answer now names the build that wrote it, and release tags compare by build number before anything else
 - The launch tip now hides when any chat history appears, not only on prompts and model replies: `!` bash rows and built-in command output such as `/session` left it visible. Startup notices, update banners and the `/new` confirmation still keep it visible
 - A shell command that can only write one file (`printf 'x' > notes.txt`) no longer shows `(no output)` under its `Edit (printf)` row when the file came out unchanged; the row says `no change` instead
 - Fixed the bash tool reporting only `Command timed out` when the command had already exited but a background process it started kept writing to its output until the timeout. The error now also reports the shell's exit code and when it exited ([#11613](https://github.com/earendil-works/pi/issues/11613))

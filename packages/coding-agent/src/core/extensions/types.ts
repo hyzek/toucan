@@ -1569,7 +1569,7 @@ export interface MessageRenderOptions extends KeybindingHints {
  * - `user`, `assistant`, `assistant-thinking`: transcript messages (the default types of a transformer)
  * - `custom`: custom messages without a custom renderer, and expanded skill blocks (their content, without Toucan's header)
  * - `summary`: expanded branch and compaction summaries (the summary, without Toucan's header)
- * - `changelog`: Toucan's changelog ("What's New" and `/changelog`), the "Extension Updates" notice, and the release note of
+ * - `changelog`: Toucan's changelog (`/changelog`), the "Extension Updates" notice, and the release note of
  *   the "Update Available" notice
  */
 export type MarkdownMessageType = "user" | "assistant" | "assistant-thinking" | "custom" | "summary" | "changelog";

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Container } from "@hyzek/toucan-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { VERSION } from "../src/config.ts";
 import { ExtensionRunner } from "../src/core/extensions/runner.ts";
 import type { Extension, MarkdownMessageType, MarkdownTransformer } from "../src/core/extensions/types.ts";
 import { InMemorySettingsStorage, SettingsManager } from "../src/core/settings-manager.ts";
@@ -24,7 +25,6 @@ type ExtensionChangelogContext = {
 
 type StartupNoticesContext = {
 	startupNoticesShown: boolean;
-	changelogMarkdown: string | undefined;
 	extensionChangelogUpdates: ExtensionChangelogUpdate[];
 	version: string;
 	chatContainer: Container;
@@ -33,10 +33,17 @@ type StartupNoticesContext = {
 	session: { extensionRunner: { getMarkdownTransformers(): MarkdownTransformer[] } };
 };
 
+type InstalledVersionContext = {
+	session: { state: { messages: unknown[] } };
+	settingsManager: SettingsManager;
+	reportInstallTelemetry(version: string): void;
+};
+
 const prototype = InteractiveMode.prototype as unknown as {
 	getExtensionChangelogUpdates(this: ExtensionChangelogContext): ExtensionChangelogUpdate[];
 	readPackageJson(packageRoot: string): { name?: string; version?: string } | undefined;
 	showStartupNoticesIfNeeded(this: StartupNoticesContext): void;
+	recordInstalledVersion(this: InstalledVersionContext): void;
 };
 
 const CHANGELOG = `# Changelog
@@ -187,19 +194,17 @@ describe("InteractiveMode startup notices", () => {
 		return { markdownTransformer: { transformer, messageTypes: new Set(messageTypes) } };
 	}
 
-	function renderNotices(extensions: Pick<Extension, "markdownTransformer">[]): string {
+	function renderNotices(
+		extensions: Pick<Extension, "markdownTransformer">[],
+		updates: ExtensionChangelogUpdate[] = [
+			{ name: "toucan-demo", version: "1.2.0", markdown: "## toucan-demo [1.2.0]\n\n- :warning: Demo change" },
+		],
+	): string {
 		// getMarkdownTransformers only reads the extensions' transformer registrations.
 		const runner = { extensions } as unknown as ExtensionRunner;
 		const context: StartupNoticesContext = {
 			startupNoticesShown: false,
-			changelogMarkdown: "## [2.0.0]\n\n- :warning: Toucan change",
-			extensionChangelogUpdates: [
-				{
-					name: "toucan-demo",
-					version: "1.2.0",
-					markdown: "## toucan-demo [1.2.0]\n\n- :warning: Demo change",
-				},
-			],
+			extensionChangelogUpdates: updates,
 			version: "2.0.0",
 			chatContainer: new Container(),
 			settingsManager: SettingsManager.fromStorage(new InMemorySettingsStorage()),
@@ -217,10 +222,9 @@ describe("InteractiveMode startup notices", () => {
 
 	const replaceShortcodes: MarkdownTransformer = (markdown) => markdown.replaceAll(":warning:", "⚠");
 
-	test("runs changelog transformers on What's New and Extension Updates", () => {
+	test("runs changelog transformers on Extension Updates", () => {
 		const rendered = renderNotices([extensionWithTransformer(replaceShortcodes, ["changelog"])]);
 
-		expect(rendered).toContain("⚠ Toucan change");
 		expect(rendered).toContain("⚠ Demo change");
 		expect(rendered).not.toContain(":warning:");
 	});
@@ -230,7 +234,40 @@ describe("InteractiveMode startup notices", () => {
 			extensionWithTransformer(replaceShortcodes, ["user", "assistant", "assistant-thinking"]),
 		]);
 
-		expect(rendered).toContain(":warning: Toucan change");
 		expect(rendered).toContain(":warning: Demo change");
+	});
+
+	test("prints no notice when no extension updated", () => {
+		expect(renderNotices([], [])).toBe("");
+	});
+});
+
+describe("InteractiveMode installed-version bookkeeping", () => {
+	let settingsManager: SettingsManager;
+
+	function recordVersion(messages: unknown[]): void {
+		const context: InstalledVersionContext = {
+			session: { state: { messages } },
+			settingsManager,
+			reportInstallTelemetry: () => {},
+		};
+		Object.setPrototypeOf(context, InteractiveMode.prototype);
+		prototype.recordInstalledVersion.call(context);
+	}
+
+	beforeEach(() => {
+		settingsManager = SettingsManager.fromStorage(new InMemorySettingsStorage());
+	});
+
+	test("records this version on a fresh install", () => {
+		recordVersion([]);
+
+		expect(settingsManager.getLastChangelogVersion()).toBe(VERSION);
+	});
+
+	test("leaves the record alone for a resumed session", () => {
+		recordVersion([{ role: "user", content: "hi" }]);
+
+		expect(settingsManager.getLastChangelogVersion()).toBeUndefined();
 	});
 });
