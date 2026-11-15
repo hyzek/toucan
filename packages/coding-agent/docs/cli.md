@@ -293,7 +293,7 @@ If a wrapper or another package manager provides Toucan, set `TOUCAN_SELF_UPDATE
 export TOUCAN_SELF_UPDATE_COMMAND="mise use -g npm:{packageName}@{version}"
 ```
 
-`toucan update` runs it only when pi.dev has a newer release, replacing `{packageName}`, `{version}`, and `{installSpec}` (`{packageName}@{version}`) with that release. The value is split on spaces. For arguments with spaces, use the `selfUpdateCommand` setting in `~/.toucan/agent/settings.json` instead, an argv array such as `["nix", "profile", "upgrade", "toucan"]`.
+`toucan update` runs it only when Toucan's GitHub releases have a newer build, replacing `{packageName}`, `{version}`, and `{installSpec}` (`{packageName}@{version}`) with that release. The value is split on spaces. For arguments with spaces, use the `selfUpdateCommand` setting in `~/.toucan/agent/settings.json` instead, an argv array such as `["nix", "profile", "upgrade", "toucan"]`.
 
 ### Channel builds
 
@@ -310,6 +310,10 @@ Channel builds run Toucan from GitHub checkouts under `~/.toucan` instead of npm
 Channels: `dev` and `nightly` track those branches; `stable` tracks the newest `b<N>` release tag. Every push to `main` is released automatically: it is tagged `bN` (N is the commit's position on `main`, the same number `toucan --version` reports) and gets a GitHub release, so `stable` advances with each merged change. `@<ref>` pins the build to a branch, tag, or ref, e.g. `toucan install toucan:stable@b24`; a pinned build keeps updating on its pin.
 
 `toucan install` clones the ref, checks the Node version against the build's `engines.node`, runs `npm ci --ignore-scripts`, builds the workspace, and swaps the finished build into `~/.toucan/builds/<name>` only on success. A source build needs about 768 MB of free memory and swap (a real swap device; zram does not count); on small machines the installer refuses up front instead of being OOM-killed. `toucan update` rebuilds the channel the running build belongs to when the remote commit moved (add `--force` to rebuild anyway). `toucan channel <name>` switches the active channel and builds it on demand.
+
+Every operation clones from the remote that build was installed from, so a fork or mirror keeps updating from its own source; `TOUCAN_REPO_URL` overrides that for one machine. `scripts/install.sh` follows the same rule.
+
+At startup, toucan checks whether a newer build exists and prints a one-time notice naming it and the `toucan update` command. A channel build asks the remote it follows; any other install asks the GitHub release feed. The answer is cached in `~/.toucan/update-check.json` for 20 hours, each build is announced once, and a build pinned with `@<ref>` is never announced because `toucan update` cannot move it. `TOUCAN_OFFLINE` or `TOUCAN_SKIP_VERSION_CHECK` turns the check off; an unreachable remote stays silent.
 
 The launcher at `~/.toucan/bin/toucan` starts the active channel; add that directory to `PATH` (`toucan launcher` regenerates it). On first use, `scripts/install.sh` in the repository root performs the whole setup, including the `PATH` entry. Channel builds are not supported on Windows.
 

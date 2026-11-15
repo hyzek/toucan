@@ -82,11 +82,11 @@ These variables are read by Toucan itself:
 | `TOUCAN_CODING_AGENT_SESSION_DIR` | Override session storage; overridden by `--session-dir` |
 | `TOUCAN_PACKAGE_DIR` | Override the package directory, useful for Nix/Guix store paths |
 | `TOUCAN_HOME` | Override the channel state root; default is `~/.toucan`. See [Channel builds](cli.md#channel-builds) |
-| `TOUCAN_REPO_URL` | Override the git repository channel builds clone from; default is `https://github.com/hyzek/toucan.git` |
+| `TOUCAN_REPO_URL` | Override the git repository channel builds clone from and the update check asks. Unset, both follow the remote the installed build was cloned from, falling back to `https://github.com/hyzek/toucan.git` |
 | `TOUCAN_SYSTEM_LINK` | `install.sh` only: `0` skips the `/usr/local/bin/toucan` link (used by the installer where you manage PATH yourself) |
 | `TOUCAN_CHANNEL` | Set by the channel launcher to the active channel name |
 | `TOUCAN_OFFLINE` | Disable automatic network activity, including model catalog refreshes |
-| `TOUCAN_SKIP_VERSION_CHECK` | Disable the `pi.dev` latest-version request |
+| `TOUCAN_SKIP_VERSION_CHECK` | Disable the startup update check that announces a newer build. It asks the build's own git remote (`git ls-remote`) for channel builds and the GitHub release feed otherwise, caches the answer in `~/.toucan/update-check.json`, and announces each build once |
 | `TOUCAN_SELF_UPDATE_COMMAND` | Command `toucan update` runs to update Toucan itself, split on whitespace, with `{packageName}`, `{version}`, and `{installSpec}` placeholders. Takes precedence over the `selfUpdateCommand` setting. See [Custom update command](cli.md#custom-update-command) |
 | `TOUCAN_TELEMETRY` | Override install/update telemetry and provider attribution headers: `1`/`true`/`yes` or `0`/`false`/`no` |
 | `TOUCAN_CODEMODE_MAX_WORKERS` | Maximum codemode workers alive at once across all sessions in the process; default `2`. Each worker's script may use up to 256 MB. Raise it when one process runs several sessions, such as in-process subagents. Further scripts wait for a free worker. See [Codemode](codemode.md) |

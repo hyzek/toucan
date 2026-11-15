@@ -1,9 +1,8 @@
 import { compare, valid } from "semver";
+import { numericVersion, PACKAGE_NAME, RELEASE_FEED_URL } from "../config.ts";
 import { fetchWithRetry } from "./management-http.ts";
 import { getToucanUserAgent } from "./toucan-user-agent.ts";
 
-// Upstream pi service: the fork does not host pi.dev; endpoints are kept as-is for now.
-const LATEST_VERSION_URL = "https://pi.dev/api/latest-version";
 const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 10000;
 
 export interface LatestToucanRelease {
@@ -49,18 +48,24 @@ export function isNewerPackageVersion(candidateVersion: string, currentVersion: 
 	return candidateVersion.trim() !== currentVersion.trim();
 }
 
+/**
+ * Newest Toucan release, from the GitHub release feed. Its `b<N>` tag answers as the numeric
+ * version npm and self-update compare, and the package name is always this package's own:
+ * a version feed must never decide what gets installed.
+ */
 export async function getLatestToucanRelease(
 	currentVersion: string,
 	options: { timeoutMs?: number; retry?: boolean } = {},
 ): Promise<LatestToucanRelease | undefined> {
+	// TOUCAN_OFFLINE covers explicit update work too, like package-manager.ts.
 	if (process.env.TOUCAN_OFFLINE) return undefined;
 
 	const response = await fetchWithRetry(
-		LATEST_VERSION_URL,
+		RELEASE_FEED_URL,
 		{
 			headers: {
 				"User-Agent": getToucanUserAgent(currentVersion),
-				accept: "application/json",
+				accept: "application/vnd.github+json",
 			},
 		},
 		{
@@ -70,41 +75,15 @@ export async function getLatestToucanRelease(
 	);
 	if (!response.ok) return undefined;
 
-	const data = (await response.json()) as {
-		packageName?: unknown;
-		version?: unknown;
-		note?: unknown;
-	};
-	if (typeof data.version !== "string" || !data.version.trim()) {
+	const data = (await response.json()) as { tag_name?: unknown; body?: unknown };
+	// Only Toucan's `b<N>` tags name a build; anything else must not become an install spec.
+	if (typeof data.tag_name !== "string" || !/^b\d+$/.test(data.tag_name.trim())) {
 		return undefined;
 	}
-	const packageName =
-		typeof data.packageName === "string" && data.packageName.trim() ? data.packageName.trim() : undefined;
-	const note = typeof data.note === "string" && data.note.trim() ? data.note.trim() : undefined;
+	const note = typeof data.body === "string" && data.body.trim() ? data.body.trim() : undefined;
 	return {
-		version: data.version.trim(),
-		packageName,
+		version: numericVersion(data.tag_name),
+		packageName: PACKAGE_NAME,
 		...(note ? { note } : {}),
 	};
-}
-
-export async function getLatestToucanVersion(
-	currentVersion: string,
-	options: { timeoutMs?: number; retry?: boolean } = {},
-): Promise<string | undefined> {
-	return (await getLatestToucanRelease(currentVersion, options))?.version;
-}
-
-export async function checkForNewToucanVersion(currentVersion: string): Promise<LatestToucanRelease | undefined> {
-	if (process.env.TOUCAN_SKIP_VERSION_CHECK) return undefined;
-
-	try {
-		const latestRelease = await getLatestToucanRelease(currentVersion);
-		if (latestRelease && isNewerPackageVersion(latestRelease.version, currentVersion)) {
-			return latestRelease;
-		}
-		return undefined;
-	} catch {
-		return undefined;
-	}
 }

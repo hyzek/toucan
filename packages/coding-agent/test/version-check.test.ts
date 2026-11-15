@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PACKAGE_NAME, RELEASE_FEED_URL } from "../src/config.ts";
 import {
-	checkForNewToucanVersion,
 	comparePackageVersions,
 	formatVersionCheckError,
 	getLatestToucanRelease,
-	getLatestToucanVersion,
 	isNewerPackageVersion,
 } from "../src/utils/version-check.ts";
 import { allowNetwork } from "./test-network-env.ts";
-
-const originalSkipVersionCheck = process.env.TOUCAN_SKIP_VERSION_CHECK;
 
 beforeEach(() => {
 	allowNetwork();
@@ -17,11 +14,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.unstubAllGlobals();
-	if (originalSkipVersionCheck === undefined) {
-		delete process.env.TOUCAN_SKIP_VERSION_CHECK;
-	} else {
-		process.env.TOUCAN_SKIP_VERSION_CHECK = originalSkipVersionCheck;
-	}
+	vi.unstubAllEnvs();
 });
 
 describe("version checks", () => {
@@ -34,48 +27,87 @@ describe("version checks", () => {
 		expect(isNewerPackageVersion("0.70.6", "0.70.5")).toBe(true);
 	});
 
-	it("returns only newer versions", async () => {
-		const fetchMock = vi.fn(async () => Response.json({ version: "1.2.3" }));
+	it("answers a b<N> release tag as the numeric version self-update compares", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ tag_name: "b70" }));
 		vi.stubGlobal("fetch", fetchMock);
 
-		await expect(checkForNewToucanVersion("1.2.3")).resolves.toBeUndefined();
-		await expect(checkForNewToucanVersion("1.2.2")).resolves.toEqual({ version: "1.2.3" });
+		await expect(getLatestToucanRelease("61.0.0")).resolves.toEqual({
+			version: "70.0.0",
+			packageName: PACKAGE_NAME,
+		});
 	});
 
-	it("uses the pi.dev version check api with a toucan user agent", async () => {
-		const fetchMock = vi.fn(async () => Response.json({ version: "1.2.4" }));
+	it("uses the GitHub release feed with a toucan user agent", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ tag_name: "b70" }));
 		vi.stubGlobal("fetch", fetchMock);
 
-		await expect(getLatestToucanVersion("1.2.3")).resolves.toBe("1.2.4");
+		await expect(getLatestToucanRelease("61.0.0")).resolves.toBeDefined();
 		expect(fetchMock).toHaveBeenCalledWith(
-			"https://pi.dev/api/latest-version",
+			RELEASE_FEED_URL,
 			expect.objectContaining({
 				headers: expect.objectContaining({
-					"User-Agent": expect.stringMatching(/^toucan\/1\.2\.3 /),
-					accept: "application/json",
+					"User-Agent": expect.stringMatching(/^toucan\/61\.0\.0 /),
+					accept: "application/vnd.github+json",
 				}),
 			}),
 		);
 	});
 
-	it("retries a transient version request when explicitly requested", async () => {
+	it("returns the release body as the update note", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ tag_name: "b70", body: " **Read this** " }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(getLatestToucanRelease("61.0.0")).resolves.toEqual({
+			version: "70.0.0",
+			packageName: PACKAGE_NAME,
+			note: "**Read this**",
+		});
+	});
+
+	it("names this package, never one the feed suggests", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ tag_name: "b70", name: "@someone-else/toucan" }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		const release = await getLatestToucanRelease("61.0.0");
+		expect(release?.packageName).toBe(PACKAGE_NAME);
+	});
+
+	it("ignores releases whose tag is not a build tag", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ tag_name: "v3.1.0" }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(getLatestToucanRelease("61.0.0")).resolves.toBeUndefined();
+	});
+
+	it("returns undefined when the feed is unavailable", async () => {
+		const fetchMock = vi.fn(async () => new Response("nope", { status: 503 }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(getLatestToucanRelease("61.0.0", { retry: false })).resolves.toBeUndefined();
+	});
+
+	it("retries a transient release request when explicitly requested", async () => {
 		const fetchMock = vi
 			.fn()
 			.mockRejectedValueOnce(new Error("fetch failed"))
 			.mockRejectedValueOnce(new Error("fetch failed"))
-			.mockResolvedValueOnce(Response.json({ version: "1.2.4" }));
+			.mockResolvedValueOnce(Response.json({ tag_name: "b70" }));
 		vi.stubGlobal("fetch", fetchMock);
 
-		await expect(getLatestToucanRelease("1.2.3", { retry: true })).resolves.toEqual({ version: "1.2.4" });
+		await expect(getLatestToucanRelease("61.0.0", { retry: true })).resolves.toEqual({
+			version: "70.0.0",
+			packageName: PACKAGE_NAME,
+		});
 		expect(fetchMock).toHaveBeenCalledTimes(3);
 	});
 
-	it("keeps automatic version checks to one request", async () => {
-		const fetchMock = vi.fn().mockRejectedValue(new Error("fetch failed"));
+	it("skips the request when offline", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ tag_name: "b70" }));
 		vi.stubGlobal("fetch", fetchMock);
+		vi.stubEnv("TOUCAN_OFFLINE", "1");
 
-		await expect(checkForNewToucanVersion("1.2.3")).resolves.toBeUndefined();
-		expect(fetchMock).toHaveBeenCalledOnce();
+		await expect(getLatestToucanRelease("61.0.0")).resolves.toBeUndefined();
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("formats nested network error details", () => {
@@ -87,45 +119,5 @@ describe("version checks", () => {
 		});
 
 		expect(formatVersionCheckError(error)).toBe("fetch failed (ETIMEDOUT, ENETUNREACH)");
-	});
-
-	it("returns the active package metadata from the version check api", async () => {
-		const fetchMock = vi.fn(async () =>
-			Response.json({
-				packageName: "@new-scope/toucan",
-				version: "1.2.4",
-			}),
-		);
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(getLatestToucanRelease("1.2.3")).resolves.toEqual({
-			packageName: "@new-scope/toucan",
-			version: "1.2.4",
-		});
-	});
-
-	it("returns update notes from the version check api", async () => {
-		const fetchMock = vi.fn(async () => Response.json({ note: " **Read this** ", version: "1.2.4" }));
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(getLatestToucanRelease("1.2.3")).resolves.toEqual({ note: "**Read this**", version: "1.2.4" });
-	});
-
-	it("skips automatic api calls when version checks are disabled", async () => {
-		process.env.TOUCAN_SKIP_VERSION_CHECK = "1";
-		const fetchMock = vi.fn();
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(checkForNewToucanVersion("1.2.3")).resolves.toBeUndefined();
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it("allows direct api calls when automatic version checks are disabled", async () => {
-		process.env.TOUCAN_SKIP_VERSION_CHECK = "1";
-		const fetchMock = vi.fn(async () => Response.json({ version: "1.2.4" }));
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(getLatestToucanVersion("1.2.3")).resolves.toBe("1.2.4");
-		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 });

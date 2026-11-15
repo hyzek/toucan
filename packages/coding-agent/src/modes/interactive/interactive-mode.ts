@@ -69,6 +69,7 @@ import {
 import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
 import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../../core/agent-session-services.ts";
+import { type AvailableBuild, checkForAvailableBuild } from "../../core/build-update-check.ts";
 import {
 	CACHE_TTL_MS,
 	type CacheMiss,
@@ -136,7 +137,6 @@ import { loadAllHighlightLanguages } from "../../utils/syntax-highlight.ts";
 import { stripBom } from "../../utils/text.ts";
 import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
 import { getToucanUserAgent } from "../../utils/toucan-user-agent.ts";
-import { checkForNewToucanVersion, type LatestToucanRelease } from "../../utils/version-check.ts";
 import { reportBug } from "./bug-report.ts";
 import { createChatViewport } from "./chat-viewport.ts";
 import { AgentsCommandCenterComponent } from "./components/agents-command-center.ts";
@@ -1229,10 +1229,11 @@ export class InteractiveMode {
 				.finally(() => clearTimeout(timeout));
 		}
 
-		// Start version check asynchronously
-		checkForNewToucanVersion(this.version).then((newRelease) => {
-			if (newRelease) {
-				this.showNewVersionNotification(newRelease);
+		// Update notice: what this build could update to, if anything. Cached, and silent when
+		// the remote cannot be reached, so it never delays or breaks startup.
+		void checkForAvailableBuild().then((available) => {
+			if (available) {
+				this.showBuildUpdateNotice(available);
 			}
 		});
 
@@ -4791,33 +4792,40 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	showNewVersionNotification(release: LatestToucanRelease): void {
-		const updateInstruction = () =>
-			theme.fg("muted", `New version ${buildName(release.version)} is available. Run `) +
-			theme.fg("accent", `${APP_NAME} update`);
-		// Upstream pi changelog: the fork does not host pi.dev.
-		const changelogUrl = "https://pi.dev/changelog";
-		const changelogLine = () => {
-			const changelogLink = getCapabilities().hyperlinks
-				? hyperlink(theme.fg("accent", changelogUrl), changelogUrl)
-				: theme.fg("accent", changelogUrl);
-			return theme.fg("muted", "Changelog: ") + changelogLink;
-		};
-		const note = release.note?.trim();
+	/** Announce a build this install could update to; see core/build-update-check.ts. */
+	showBuildUpdateNotice(available: AvailableBuild): void {
+		const localBuild = getBuildName();
+		const headline =
+			available.kind === "release"
+				? `Build ${available.label} is available (you are on ${localBuild})`
+				: `New commits on ${available.ref} at ${available.commit} (you are on ${localBuild})`;
+		const linkLabel = available.kind === "release" ? "Release: " : "Commits: ";
+		const url = available.url;
 
 		// A notice, not conversation: the launch tip stays visible above it.
 		const notice = new ChatNotice();
 		notice.addChild(new Spacer(1));
 		notice.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
 		notice.addChild(
-			new ThemedText(() => `${theme.bold(theme.fg("warning", "Update Available"))}\n${updateInstruction()}`, 1, 0),
+			new ThemedText(
+				() =>
+					`${theme.bold(theme.fg("warning", "Update Available"))}\n` +
+					`${theme.fg("muted", `${headline}. Run `)}${theme.fg("accent", `${APP_NAME} update`)}`,
+				1,
+				0,
+			),
 		);
-		if (note) {
-			notice.addChild(new Spacer(1));
-			notice.addChild(this.createChangelogMarkdown(note, 1, 0, { color: (text) => theme.fg("muted", text) }));
-			notice.addChild(new Spacer(1));
+		if (url) {
+			notice.addChild(
+				new ThemedText(
+					() =>
+						theme.fg("muted", linkLabel) +
+						(getCapabilities().hyperlinks ? hyperlink(theme.fg("accent", url), url) : theme.fg("accent", url)),
+					1,
+					0,
+				),
+			);
 		}
-		notice.addChild(new ThemedText(changelogLine, 1, 0));
 		notice.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
 		this.chatContainer.addChild(notice);
 		this.ui.requestRender();
