@@ -241,4 +241,31 @@ describe("build update check", () => {
 
 		await expect(checkForAvailableBuild({ install: undefined, nowMs })).resolves.toBeUndefined();
 	});
+
+	it("stays silent when a cached stable tag is older than the installed tag", async () => {
+		// A stable build updated to b79 while update-check.json still caches the b69 position:
+		// the cached commit no longer matches the checkout, but b69 must not be announced as an update.
+		writeFileSync(
+			updateCheckStatePath(),
+			JSON.stringify({
+				kind: "toucan-update-check",
+				schemaVersion: 1,
+				source: "channel:stable",
+				checkedAt: new Date(nowMs - 60_000).toISOString(),
+				remoteIdentity: COMMIT_A,
+				remoteLabel: "b69",
+				remoteRef: "b69",
+			}),
+		);
+		const git = fakeGit(undefined);
+
+		const available = await checkForAvailableBuild({
+			install: channelInstall({ channel: "stable", ref: "b79", commit: COMMIT_B }),
+			process: { lsRemote: git.lsRemote },
+			nowMs,
+		});
+
+		expect(available).toBeUndefined();
+		expect(git.calls).toHaveLength(0);
+	});
 });

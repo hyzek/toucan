@@ -149,11 +149,15 @@ async function lookupReleaseRemote(): Promise<RemotePosition | undefined> {
 
 /** True when the running build already is `remote`. */
 function isCurrentBuild(remote: RemotePosition, install: ChannelBuildInfo | undefined): boolean {
-	if (install) return remote.identity === install.commit;
 	const remoteNumber = buildNumber(remote.label);
-	const localNumber = buildNumber(getBuildName());
-	if (remoteNumber === undefined || localNumber === undefined) return true;
-	return remoteNumber <= localNumber;
+	if (remoteNumber === undefined) return install ? remote.identity === install.commit : true;
+	// The build's own number: the tag a stable build was cut from, else the checkout's name.
+	const localNumber = buildNumber(install?.ref ?? "") ?? buildNumber(getBuildName());
+	// A release tag is never an update over a build of the same or a newer number. Without
+	// this, a channel install whose cached remote position went stale while the build updated
+	// announces the older tag (its identity no longer matches the checkout).
+	if (localNumber !== undefined && remoteNumber <= localNumber) return true;
+	return install ? remote.identity === install.commit : false;
 }
 
 /** Announcement for a remote position: a named release, or new commits on a branch. */
