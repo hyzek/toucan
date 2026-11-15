@@ -92,6 +92,22 @@ describe("channel manager (real git and npm)", () => {
 		},
 	);
 
+	it(
+		"keeps following the remote a build came from after TOUCAN_REPO_URL is unset",
+		{ timeout: BUILD_TIMEOUT },
+		async () => {
+			// A fork or mirror install sets the variable once; updates must keep using it.
+			await installChannel("dev");
+			const moved = repo.commitOnBranch("dev", "advance the recorded remote");
+			vi.stubEnv("TOUCAN_REPO_URL", "");
+
+			const result = await updateChannel("dev");
+			if (result.kind !== "built") throw new Error("expected a rebuild");
+			expect(result.info.commit).toBe(moved);
+			expect(result.info.repoUrl).toBe(`file://${repo.repoDir}`);
+		},
+	);
+
 	it("keeps the last-good build and releases the lock when a build fails", { timeout: BUILD_TIMEOUT }, async () => {
 		const good = await installChannel("dev");
 		if (good.kind !== "built") throw new Error("expected a build");

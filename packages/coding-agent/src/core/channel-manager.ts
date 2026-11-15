@@ -16,7 +16,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
-import { CONFIG_DIR_NAME, expandTildePath, getPackageDir } from "../config.ts";
+import { CONFIG_DIR_NAME, expandTildePath, getPackageDir, REPO_CLONE_URL } from "../config.ts";
 import { spawnProcess, spawnProcessSync, waitForChildProcess } from "../utils/child-process.ts";
 import { stripBom } from "../utils/text.ts";
 
@@ -27,7 +27,6 @@ const CHANNEL_NAMES: readonly ChannelName[] = ["dev", "nightly", "stable"];
 /** Overrides the shared state root (default ~/.toucan) for tests and custom layouts. */
 export const TOUCAN_HOME_ENV = "TOUCAN_HOME";
 const TOUCAN_REPO_URL_ENV = "TOUCAN_REPO_URL";
-const DEFAULT_REPO_URL = "https://github.com/hyzek/toucan.git";
 const CHANNEL_POINTER_FILE = "channel";
 const BUILD_METADATA_FILE = "channel.json";
 const STAGING_DIR_NAME = ".tmp";
@@ -81,6 +80,8 @@ export interface ChannelProcess {
 export interface ChannelOperationOptions {
 	pinnedRef?: string;
 	force?: boolean;
+	/** Remote to build from; defaults to the remote this machine already builds from. */
+	repoUrl?: string;
 	process?: ChannelProcess;
 }
 
@@ -251,6 +252,37 @@ export function checkNodeEngine(requirement: string | undefined, nodeVersion: st
 	return { kind: "ok" };
 }
 
+/**
+ * Remote a channel operation clones from: `TOUCAN_REPO_URL` when set, otherwise the remote
+ * recorded by an installed build. Order: this channel's build, the active channel's build,
+ * then any other installed build. Without this, a build installed from a fork would silently
+ * rebuild from the default repository the next time it updates.
+ */
+export function channelRepoUrl(channel: ChannelName): string {
+	const configured = process.env[TOUCAN_REPO_URL_ENV]?.trim();
+	if (configured) return configured;
+	const order: ChannelName[] = [channel];
+	const active = readActiveChannel();
+	if (active !== undefined && active !== channel) order.push(active);
+	for (const name of CHANNEL_NAMES) {
+		if (!order.includes(name)) order.push(name);
+	}
+	for (const name of order) {
+		const stored = readChannelBuildInfo(getChannelBuildDir(name))?.repoUrl.trim();
+		if (stored) return stored;
+	}
+	return REPO_CLONE_URL;
+}
+
+/**
+ * Ref an installed build tracks: its pin, or the branch for `dev`/`nightly`. Undefined for an
+ * unpinned `stable` build, whose ref is the newest release tag and needs a remote lookup.
+ */
+export function channelTrackedRef(info: ChannelBuildInfo): string | undefined {
+	if (info.pinnedRef !== undefined) return info.pinnedRef;
+	return info.channel === "stable" ? undefined : info.channel;
+}
+
 /** Install or rebuild a channel: commit-graph clone, engine check, npm ci, bundle build, swap. */
 export async function installChannel(
 	channel: ChannelName,
@@ -263,7 +295,7 @@ export async function installChannel(
 	const release = await acquireChannelLock(buildsDir, channel);
 	try {
 		cleanupStaleStaging(buildsDir, channel);
-		const repoUrl = process.env[TOUCAN_REPO_URL_ENV]?.trim() || DEFAULT_REPO_URL;
+		const repoUrl = options.repoUrl?.trim() || channelRepoUrl(channel);
 		const ref = options.pinnedRef ?? defaultRefFor(channel, childProcess, repoUrl);
 		const remoteCommit = resolveRemoteCommit(childProcess, repoUrl, ref);
 		const existing = readChannelBuildInfo(buildDir);
@@ -414,17 +446,26 @@ export function resolveLatestBuildTag(lsRemoteOutput: string): string | undefine
 
 function resolveRemoteCommit(childProcess: ChannelProcess, repoUrl: string, ref: string): string {
 	const output = childProcess.capture("git", ["ls-remote", repoUrl, ref]);
+	const commit = parseRemoteCommit(output, ref);
+	if (!commit) throw new Error(`Ref "${ref}" was not found in ${repoUrl}.`);
+	return commit;
+}
+
+/**
+ * Commit `ref` points at in `git ls-remote <url> <ref>` output, peeled annotated tags
+ * preferred. Undefined when the ref is absent. Exported for the update check, which
+ * resolves remotes asynchronously instead of through the synchronous process seam.
+ */
+export function parseRemoteCommit(lsRemoteOutput: string, ref: string): string | undefined {
 	let tagObject: string | undefined;
 	let peeled: string | undefined;
-	for (const line of output.split("\n")) {
+	for (const line of lsRemoteOutput.split("\n")) {
 		const match = /^([0-9a-f]{7,})\s+refs\/(?:heads|tags)\/(.+)$/.exec(line);
 		if (!match) continue;
 		if (match[2] === ref) tagObject = match[1];
 		else if (match[2] === `${ref}^{}`) peeled = match[1];
 	}
-	const commit = peeled ?? tagObject;
-	if (!commit) throw new Error(`Ref "${ref}" was not found in ${repoUrl}.`);
-	return commit;
+	return peeled ?? tagObject;
 }
 
 /**

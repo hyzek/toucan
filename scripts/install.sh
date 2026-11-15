@@ -161,6 +161,16 @@ BUILDS_DIR="$TOUCAN_HOME/builds"
 BUILD_DIR="$BUILDS_DIR/$CHANNEL"
 LAUNCHER="$TOUCAN_HOME/bin/toucan"
 LOCK_DIR="$BUILDS_DIR/.$CHANNEL.installer.lock"
+
+# The remote: TOUCAN_REPO_URL when set, otherwise the remote this build was cloned from.
+# Without that fallback, re-running the installer on a fork or mirror install would
+# silently rebuild from the default repository.
+if [ -z "${TOUCAN_REPO_URL:-}" ] && [ -f "$BUILD_DIR/channel.json" ]; then
+	STORED_REPO_URL="$(node -e 'const url = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).repoUrl; if (typeof url === "string") process.stdout.write(url);' "$BUILD_DIR/channel.json" 2>/dev/null || true)"
+	if [ -n "$STORED_REPO_URL" ]; then
+		REPO_URL="$STORED_REPO_URL"
+	fi
+fi
 mkdir -p "$BUILDS_DIR/.tmp"
 LOG_FILE="$BUILDS_DIR/.tmp/install-$CHANNEL-$(date +%Y%m%d-%H%M%S).log"
 

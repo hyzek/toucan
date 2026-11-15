@@ -31,9 +31,11 @@ describe("install.sh", () => {
 		};
 	}
 
-	function runInstaller(args: string[]) {
+	function runInstaller(args: string[], envRemovals: string[] = []) {
+		const env = installerEnv();
+		for (const name of envRemovals) delete env[name];
 		return spawnSync("sh", [INSTALLER, ...args], {
-			env: installerEnv(),
+			env,
 			encoding: "utf8",
 			timeout: RUN_TIMEOUT,
 			maxBuffer: 16 * 1024 * 1024,
@@ -110,5 +112,30 @@ describe("install.sh", () => {
 		expect(result.status).not.toBe(0);
 		expect(result.stderr).toContain("requires Node >=999.0.0");
 		expect(existsSync(join(toucanHome, "builds", "dev"))).toBe(false);
+	});
+
+	it("follows the remote recorded in the build when TOUCAN_REPO_URL is unset", { timeout: RUN_TIMEOUT }, () => {
+		// Regression: the installer always used the default repository, so re-running it on a
+		// fork or mirror install silently replaced it with upstream code.
+		const stored = "file:///toucan-installer-remote-missing";
+		mkdirSync(join(toucanHome, "builds", "dev"), { recursive: true });
+		writeFileSync(
+			join(toucanHome, "builds", "dev", "channel.json"),
+			JSON.stringify({
+				kind: "toucan-channel",
+				schemaVersion: 1,
+				channel: "dev",
+				ref: "dev",
+				commit: "0".repeat(40),
+				builtAt: new Date().toISOString(),
+				node: process.version,
+				repoUrl: stored,
+			}),
+		);
+
+		const result = runInstaller(["dev"], ["TOUCAN_REPO_URL"]);
+
+		expect(result.status).not.toBe(0);
+		expect(result.stderr).toContain(stored);
 	});
 });

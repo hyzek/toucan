@@ -606,6 +606,10 @@ export const APP_TITLE: string = toucanConfigName ? APP_NAME : "TC";
 export const CONFIG_DIR_NAME: string = pkg.toucanConfig?.configDir || ".toucan";
 export const VERSION: string = pkg.version || "0.0.0";
 
+/** Repository channel builds clone from, and where its releases are published. */
+export const REPO_CLONE_URL = "https://github.com/hyzek/toucan.git";
+export const RELEASE_FEED_URL = "https://api.github.com/repos/hyzek/toucan/releases/latest";
+
 /**
  * Toucan's version is a build number: package version `23.0.0` is announced as `b23`. The numeric
  * form stays in package.json, npm, and the model-catalog User-Agent because those compare semver;

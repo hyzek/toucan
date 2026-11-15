@@ -7,9 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { REPO_CLONE_URL } from "../src/config.ts";
 import {
 	buildNodeOptions,
 	type ChannelProcess,
+	channelRepoUrl,
 	checkNodeEngine,
 	detectChannelInstall,
 	ensureLauncher,
@@ -88,7 +90,10 @@ function fakeCommit(ref: string): string {
 	return (hex + "0".repeat(40)).slice(0, 40);
 }
 
-function writeBuildMetadata(buildDir: string, overrides: Partial<{ commit: string; ref: string }> = {}): void {
+function writeBuildMetadata(
+	buildDir: string,
+	overrides: Partial<{ commit: string; ref: string; channel: string; repoUrl: string }> = {},
+): void {
 	mkdirSync(buildDir, { recursive: true });
 	writeFileSync(
 		join(buildDir, "channel.json"),
@@ -292,6 +297,56 @@ describe("channel manager", () => {
 		it("throws for a channel that is not installed", async () => {
 			const { fake } = createFakeProcess();
 			await expect(updateChannel("dev", { process: fake })).rejects.toThrow(/not installed/);
+		});
+	});
+
+	describe("remote resolution", () => {
+		it("rebuilds from the remote recorded in the build when TOUCAN_REPO_URL is unset", async () => {
+			// The regression: an update used to resolve the default repository, silently
+			// replacing a fork build with upstream code.
+			writeBuildMetadata(getChannelBuildDir("dev"), { channel: "dev", ref: "dev", commit: fakeCommit("dev") });
+			const moved = fakeCommit("dev").replace(/0+$/, "9");
+			const { fake, runCalls, captureCalls } = createFakeProcess({
+				commits: { dev: moved },
+				cloneCommit: moved,
+			});
+			vi.stubEnv("TOUCAN_REPO_URL", "");
+
+			await updateChannel("dev", { process: fake });
+
+			const cloneArgs = runCalls.find((call) => call.args[0] === "clone")?.args ?? [];
+			expect(cloneArgs).toContain("https://git.test/repo.git");
+			expect(captureCalls.some((call) => call.args.includes("https://git.test/repo.git"))).toBe(true);
+		});
+
+		it("prefers TOUCAN_REPO_URL over the remote recorded in the build", async () => {
+			writeBuildMetadata(getChannelBuildDir("dev"), { channel: "dev", ref: "dev", commit: fakeCommit("dev") });
+			const moved = fakeCommit("dev").replace(/0+$/, "9");
+			const { fake, runCalls } = createFakeProcess({ commits: { dev: moved }, cloneCommit: moved });
+			vi.stubEnv("TOUCAN_REPO_URL", "https://env.test/repo.git");
+
+			await updateChannel("dev", { process: fake });
+
+			const cloneArgs = runCalls.find((call) => call.args[0] === "clone")?.args ?? [];
+			expect(cloneArgs).toContain("https://env.test/repo.git");
+		});
+
+		it("follows an installed sibling channel's remote when this channel has no build", () => {
+			writeBuildMetadata(getChannelBuildDir("nightly"), {
+				channel: "nightly",
+				ref: "nightly",
+				repoUrl: "https://fork.test/toucan.git",
+			});
+			vi.stubEnv("TOUCAN_REPO_URL", "");
+
+			expect(channelRepoUrl("dev")).toBe("https://fork.test/toucan.git");
+		});
+
+		it("uses the default repository when nothing records another one", () => {
+			vi.stubEnv("TOUCAN_REPO_URL", "");
+			writeBuildMetadata(getChannelBuildDir("dev"), { repoUrl: "  " });
+
+			expect(channelRepoUrl("dev")).toBe(REPO_CLONE_URL);
 		});
 	});
 
