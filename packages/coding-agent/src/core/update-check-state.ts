@@ -1,6 +1,8 @@
 // Cached result of the build update check: when we last looked, what the remote held, and
-// which build we already announced. Stored under TOUCAN_HOME so every channel build on the
-// machine shares one answer and a build is announced at most once.
+// which build we already announced. Stored under TOUCAN_HOME so channel builds on the machine
+// share the file, and a build is announced at most once. One build's answer is not reused by
+// another: a record names the build that wrote it (`localIdentity`), because the answer it
+// holds ("current", or "already announced b69") is only true of that build.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,6 +28,8 @@ export interface UpdateCheckState {
 	remoteRef?: string;
 	/** Release or commit page for that remote position, when the remote has a web UI. */
 	remoteUrl?: string;
+	/** Commit of the channel build that wrote this record; another build must not reuse the answer. */
+	localIdentity?: string;
 	/** Set once the user has been told about `remoteIdentity`; that build is not announced again. */
 	notifiedIdentity?: string;
 }
@@ -46,8 +50,12 @@ export function updateCheckStatePath(): string {
 	return join(getToucanHome(), STATE_FILE);
 }
 
-/** Cached lookup for `source`; undefined when absent, unreadable, or for another source. */
-export function readUpdateCheckState(source: string): UpdateCheckState | undefined {
+/**
+ * Cached lookup for `source`, written by the build `localIdentity` names; undefined when absent,
+ * unreadable, for another source, or written by a different build (`toucan update` moves a channel
+ * build, and the old build's answer says nothing about the new one).
+ */
+export function readUpdateCheckState(source: string, localIdentity?: string): UpdateCheckState | undefined {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(stripBom(readFileSync(updateCheckStatePath(), "utf8")));
@@ -69,6 +77,9 @@ export function readUpdateCheckState(source: string): UpdateCheckState | undefin
 	}
 	const notifiedIdentity =
 		typeof value.notifiedIdentity === "string" && value.notifiedIdentity ? value.notifiedIdentity : undefined;
+	const storedLocalIdentity =
+		typeof value.localIdentity === "string" && value.localIdentity ? value.localIdentity : undefined;
+	if (localIdentity !== undefined && storedLocalIdentity !== localIdentity) return undefined;
 	const remoteUrl = typeof value.remoteUrl === "string" && value.remoteUrl ? value.remoteUrl : undefined;
 	const remoteRef = typeof value.remoteRef === "string" && value.remoteRef ? value.remoteRef : undefined;
 	return {
@@ -80,6 +91,7 @@ export function readUpdateCheckState(source: string): UpdateCheckState | undefin
 		remoteLabel: value.remoteLabel,
 		...(remoteRef !== undefined ? { remoteRef } : {}),
 		...(remoteUrl !== undefined ? { remoteUrl } : {}),
+		...(storedLocalIdentity !== undefined ? { localIdentity: storedLocalIdentity } : {}),
 		...(notifiedIdentity !== undefined ? { notifiedIdentity } : {}),
 	};
 }
@@ -114,12 +126,16 @@ export function remotePositionOf(state: UpdateCheckState): RemotePosition {
 	};
 }
 
-/** State record for a lookup of `source`; `announced` is set only when the user was told. */
+/**
+ * State record for a lookup of `source` by the build `localIdentity` names; `announced` is set only
+ * when the user was told.
+ */
 export function updateCheckRecord(
 	source: string,
 	remote: RemotePosition,
 	announced: boolean,
 	nowMs: number,
+	localIdentity?: string,
 ): UpdateCheckState {
 	return {
 		kind: "toucan-update-check",
@@ -130,6 +146,7 @@ export function updateCheckRecord(
 		remoteLabel: remote.label,
 		...(remote.ref !== undefined ? { remoteRef: remote.ref } : {}),
 		...(remote.url !== undefined ? { remoteUrl: remote.url } : {}),
+		...(localIdentity !== undefined ? { localIdentity } : {}),
 		...(announced ? { notifiedIdentity: remote.identity } : {}),
 	};
 }

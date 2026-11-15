@@ -1,6 +1,6 @@
 // Tests for the startup update check: what it announces, what it stays silent about, and how
-// update-check.json keeps a build announced once per machine. Git is replaced by a fake
-// remote; the network path stubs fetch. No real remotes are contacted.
+// update-check.json caches one answer per build. Git is replaced by a fake remote; the network
+// path stubs fetch. No real remotes are contacted.
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,6 +13,7 @@ import { allowNetwork } from "./test-network-env.ts";
 
 const COMMIT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const COMMIT_C = "cccccccccccccccccccccccccccccccccccccccc";
 
 function channelInstall(overrides: Partial<ChannelBuildInfo> = {}): ChannelBuildInfo {
 	return {
@@ -114,6 +115,7 @@ describe("build update check", () => {
 				remoteLabel: COMMIT_B.slice(0, 7),
 				remoteRef: "dev",
 				remoteUrl: `https://github.com/hyzek/toucan/commit/${COMMIT_B}`,
+				localIdentity: "0".repeat(40),
 				notifiedIdentity: COMMIT_A,
 			}),
 		);
@@ -242,9 +244,9 @@ describe("build update check", () => {
 		await expect(checkForAvailableBuild({ install: undefined, nowMs })).resolves.toBeUndefined();
 	});
 
-	it("stays silent when a cached stable tag is older than the installed tag", async () => {
-		// A stable build updated to b79 while update-check.json still caches the b69 position:
-		// the cached commit no longer matches the checkout, but b69 must not be announced as an update.
+	it("stays silent when this build's cached tag is older than the installed tag", async () => {
+		// A stable build that already compared itself against b69 must not be told about b69 again
+		// after it moved to b79; the cached position is behind the checkout.
 		writeFileSync(
 			updateCheckStatePath(),
 			JSON.stringify({
@@ -255,6 +257,7 @@ describe("build update check", () => {
 				remoteIdentity: COMMIT_A,
 				remoteLabel: "b69",
 				remoteRef: "b69",
+				localIdentity: COMMIT_B,
 			}),
 		);
 		const git = fakeGit(undefined);
@@ -267,5 +270,43 @@ describe("build update check", () => {
 
 		expect(available).toBeUndefined();
 		expect(git.calls).toHaveLength(0);
+	});
+
+	it("looks again when the cache belongs to a build that is no longer installed", async () => {
+		// The reported silence: a build updated b69 -> b79 while update-check.json still held the old
+		// build's "already announced b69" answer, so relaunches reused it and never saw b88.
+		writeFileSync(
+			updateCheckStatePath(),
+			JSON.stringify({
+				kind: "toucan-update-check",
+				schemaVersion: 1,
+				source: "channel:stable",
+				checkedAt: new Date(nowMs - 60_000).toISOString(),
+				remoteIdentity: COMMIT_A,
+				remoteLabel: "b69",
+				remoteRef: "b69",
+				localIdentity: COMMIT_A,
+				notifiedIdentity: COMMIT_A,
+			}),
+		);
+		const git = fakeGit(COMMIT_C, "b88");
+
+		const available = await checkForAvailableBuild({
+			install: channelInstall({ channel: "stable", ref: "b79", commit: COMMIT_B }),
+			process: { lsRemote: git.lsRemote },
+			nowMs,
+		});
+
+		expect(available).toEqual({
+			kind: "release",
+			label: "b88",
+			url: "https://github.com/hyzek/toucan/releases/tag/b88",
+		});
+		expect(readState()).toMatchObject({
+			localIdentity: COMMIT_B,
+			remoteIdentity: COMMIT_C,
+			remoteLabel: "b88",
+			notifiedIdentity: COMMIT_C,
+		});
 	});
 });

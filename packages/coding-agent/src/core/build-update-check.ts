@@ -1,7 +1,7 @@
 // Whether the running toucan build could update, and whether to say so. A channel build asks
 // its own git remote (the same resolution `toucan update` uses); any other install asks the
-// GitHub release feed. Lookups are cached in update-check.json and an available build is
-// announced once per machine.
+// GitHub release feed. Lookups are cached in update-check.json for the build that made them, and
+// an available build is announced once.
 
 import { getBuildName, RELEASE_FEED_URL, VERSION } from "../config.ts";
 import { spawnProcess, waitForChildProcess } from "../utils/child-process.ts";
@@ -76,7 +76,11 @@ export async function checkForAvailableBuild(
 	if (install?.pinnedRef !== undefined) return undefined;
 
 	const source = install ? `channel:${install.channel}` : "release";
-	const cached = readUpdateCheckState(source);
+	// The channel build's commit: an answer written before `toucan update` describes the build that
+	// is gone, so a record from another commit is never reused. Non-channel installs have no commit
+	// to name themselves by (a source checkout moves on its own); they compare on the feed alone.
+	const localIdentity = install?.commit;
+	const cached = readUpdateCheckState(source, localIdentity);
 	const remote =
 		cached && isUpdateCheckFresh(cached, nowMs)
 			? remotePositionOf(cached)
@@ -85,12 +89,12 @@ export async function checkForAvailableBuild(
 
 	if (isCurrentBuild(remote, install)) {
 		// Cache the "nothing to do" answer too, so most launches never reach the network.
-		if (!cached) writeUpdateCheckState(updateCheckRecord(source, remote, false, nowMs));
+		if (!cached) writeUpdateCheckState(updateCheckRecord(source, remote, false, nowMs, localIdentity));
 		return undefined;
 	}
 	if (cached?.notifiedIdentity === remote.identity) return undefined;
 
-	writeUpdateCheckState(updateCheckRecord(source, remote, true, nowMs));
+	writeUpdateCheckState(updateCheckRecord(source, remote, true, nowMs, localIdentity));
 	return availableBuild(remote);
 }
 
