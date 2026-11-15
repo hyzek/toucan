@@ -15,7 +15,13 @@ type UhmContext = {
 				model: unknown,
 				context: { systemPrompt?: string; messages: Array<{ role: string; content: string }> },
 				options: { maxTokens: number },
-			) => { result: () => Promise<{ content: Array<{ type: string; text: string }>; stopReason: string }> };
+			) => {
+				result: () => Promise<{
+					content: Array<{ type: string; text: string }>;
+					stopReason: string;
+					errorMessage?: string;
+				}>;
+			};
 		};
 		prompt: (text: string) => Promise<void>;
 	};
@@ -156,6 +162,28 @@ describe("InteractiveMode /uhm reformulation", () => {
 		await interactiveModePrototype.handleUhmCommand.call(context, "build a game");
 
 		expect(context.showError).toHaveBeenCalledWith("The model did not return a reformulation. Try /uhm again.");
+		expect(context.uhmHandoffArmed).toBe(false);
+	});
+
+	it("reports the provider error when the model call fails", async () => {
+		const context = createContext({
+			session: {
+				...createContext().session,
+				modelRuntime: {
+					streamSimple: vi.fn(() => ({
+						result: async () => ({
+							content: [],
+							stopReason: "error",
+							errorMessage: "401 unauthorized",
+						}),
+					})),
+				},
+			},
+		});
+
+		await interactiveModePrototype.handleUhmCommand.call(context, "build a game");
+
+		expect(context.showError).toHaveBeenCalledWith("/uhm could not reach the model: 401 unauthorized");
 		expect(context.uhmHandoffArmed).toBe(false);
 	});
 });

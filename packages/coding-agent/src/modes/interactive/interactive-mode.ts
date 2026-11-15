@@ -7191,12 +7191,17 @@ ${extensionShortcutRows.join("\n")}
 					{ maxTokens: 200 },
 				)
 				.result();
+			if (response.stopReason === "error") {
+				// An unauthenticated or unknown default model lands here, not in the !model guard above.
+				this.showError(`/uhm could not reach the model: ${response.errorMessage ?? "no error reported"}`);
+				return;
+			}
 			const refined = response.content
 				.filter((block) => block.type === "text")
 				.map((block) => block.text)
 				.join(" ")
 				.trim();
-			if (!refined || response.stopReason === "error") {
+			if (!refined) {
 				this.showError("The model did not return a reformulation. Try /uhm again.");
 				return;
 			}
