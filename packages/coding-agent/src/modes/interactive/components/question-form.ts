@@ -416,12 +416,18 @@ export class QuestionForm {
 					: "";
 
 			if (option?.description && primaryWidth > 0) {
+				// Two-column row: label left, description right, and the description wraps into
+				// its own column instead of being cut at the screen edge.
 				const gap = Math.max(1, primaryWidth - visibleWidth(label));
-				const descWidth = width - visibleWidth(cursor) - visibleWidth(box) - primaryWidth - 2;
+				const columnStart = visibleWidth(INDENT) + visibleWidth(cursor) + visibleWidth(box) + primaryWidth + gap;
+				const descWidth = width - columnStart;
 				if (descWidth > 8) {
+					const columnPad = " ".repeat(columnStart);
+					const descLines = wrapTextWithAnsi(theme.fg("muted", option.description), descWidth);
 					rows.push(
-						`${INDENT}${cursor}${box}${truncateToWidth(labelText, primaryWidth, "")}${" ".repeat(gap)}${theme.fg("muted", truncateToWidth(option.description, descWidth, ""))}`,
+						`${INDENT}${cursor}${box}${truncateToWidth(labelText, primaryWidth, "")}${" ".repeat(gap)}${descLines[0]}`,
 					);
+					for (const line of descLines.slice(1)) rows.push(`${columnPad}${line}`);
 					continue;
 				}
 			}

@@ -265,4 +265,27 @@ describe("QuestionForm overflow wrapping", () => {
 		expect(lines.filter((line) => !line.startsWith("  "))).toEqual([]);
 		expect(lines.some((line) => line.startsWith("  ") && line.includes("instance"))).toBe(true);
 	});
+
+	it("wraps a long two-column description into its column instead of losing it at the edge", () => {
+		const description =
+			"Keep the technical essay but strip its logic: tsc's rulings become arbitrary, self-contradicting, unexplained. It bans things it cannot name and has grudges against specific generics.";
+		const { form } = makeForm([
+			{
+				question: "Which direction?",
+				header: "Angle",
+				options: [{ label: "Compiler is unhinged, not coherent", description }],
+			},
+		]);
+		const width = 100;
+		const lines = nonBlankLines(form, width);
+		for (const line of lines) expect(line.length).toBeLessThanOrEqual(width);
+		// No tail of the description is left behind the cut.
+		expect(lines.join(" ")).toContain("grudges against specific generics.");
+		// Continuation lines sit under the description column, indented past the label column.
+		const first = lines.find((line) => line.includes("Keep the technical essay"))!;
+		const column = first.indexOf("Keep the technical essay");
+		const continuation = lines[lines.indexOf(first) + 1]!;
+		expect(continuation.length).toBeGreaterThan(column);
+		expect(continuation.startsWith(" ".repeat(column))).toBe(true);
+	});
 });
