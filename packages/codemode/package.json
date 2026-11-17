@@ -1,6 +1,6 @@
 {
 	"name": "@hyzek/toucan-codemode",
-	"version": "1.111.0",
+	"version": "1.113.0",
 	"description": "Sandboxed JavaScript execution where the only capability is calling injected tools",
 	"type": "module",
 	"main": "./dist/index.js",

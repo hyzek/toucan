@@ -1,7 +1,7 @@
 {
 	"name": "toucan-extension-custom-provider-anthropic",
 	"private": true,
-	"version": "1.111.0",
+	"version": "1.113.0",
 	"type": "module",
 	"scripts": {
 		"clean": "echo 'nothing to clean'",
