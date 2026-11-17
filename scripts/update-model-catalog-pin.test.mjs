@@ -158,7 +158,15 @@ test("refuses to pin a live catalog that cannot hydrate the checkout", async () 
 	assert.equal(readPin(), pinFile(currentRevision));
 });
 
-for (const failure of ["discovery-http", "discovery-revision", "discovery-hash", "revision-http", "revision-hash"]) {
+// #10985: a discovery header that is not a revision (the server answering "latest")
+// is treated as absent; the revision is derived from the served bytes.
+test("derives the revision from the body when the discovery header is not a revision", async () => {
+	mockToucanDev({ failure: "discovery-revision" });
+	assert.deepEqual(await pinned(updateModelCatalogPin(root)), { revision: liveRevision, updated: true });
+	assert.equal(readPin(), pinFile(liveRevision));
+});
+
+for (const failure of ["discovery-http", "discovery-hash", "revision-http", "revision-hash"]) {
 	test(`keeps the old pin on ${failure} failure`, async () => {
 		mockToucanDev({ failure });
 		await assert.rejects(updateModelCatalogPin(root));
