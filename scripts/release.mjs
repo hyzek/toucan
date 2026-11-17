@@ -55,38 +55,6 @@ function getVersion() {
 	return pkg.version;
 }
 
-function assertPackagesAreRegisteredWithNpm() {
-	const packageNames = getPublicWorkspacePackages().map((pkg) => pkg.name);
-	const unregisteredPackages = [];
-
-	console.log("Checking npm package registration...");
-	for (const packageName of packageNames) {
-		const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["view", packageName, "version", "--json"], {
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-
-		if (result.status === 0 && result.stdout.trim()) {
-			console.log(`  ${packageName}`);
-			continue;
-		}
-
-		const output = [result.stdout, result.stderr, result.error?.message].filter(Boolean).join("\n");
-		if (output.includes("E404") || output.includes("404 Not Found")) {
-			unregisteredPackages.push(packageName);
-			continue;
-		}
-
-		throw new Error(output ? `Failed to query npm registration for ${packageName}\n${output}` : `Failed to query npm registration for ${packageName}`);
-	}
-
-	if (unregisteredPackages.length > 0) {
-		throw new Error(`The following public workspace packages are not registered on npm:\n${unregisteredPackages.map((packageName) => `  ${packageName}`).join("\n")}\nRegister them before running a release.`);
-	}
-
-	console.log("  All public workspace packages are registered on npm\n");
-}
-
 const MODEL_CATALOG_PIN = "nix/model-catalog.json";
 
 // Release tags are immutable, so the tagged Nix pin must already build the
@@ -273,11 +241,11 @@ if (status && status.trim()) {
 }
 console.log("  Working directory clean\n");
 
-// 2. Resolve the build number and verify npm package registration before modifying the worktree.
+// 2. Resolve the build number before modifying the worktree. Releases ship as GitHub
+// release assets; this fork does not publish the @hyzek packages to npm.
 const version = versionFromBuildNumber(resolveBuildNumber(getVersion()));
 const buildName = buildNameFromVersion(version);
 console.log(`Cutting ${buildName} (package version ${version})\n`);
-assertPackagesAreRegisteredWithNpm();
 
 // Pin and verify the Nix model catalog before modifying versions, so the pin
 // lands in the release commit and a failure leaves the worktree clean.
