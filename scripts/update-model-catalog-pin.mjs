@@ -33,13 +33,16 @@ async function fetchRevision(revision) {
 async function fetchLiveCatalog() {
 	const response = await fetch(`https://pi.dev/api/models?${MODEL_TYPES}`);
 	if (!response.ok) throw new Error(`Catalog discovery failed: HTTP ${response.status}`);
-	const revision = response.headers.get("x-toucan-model-catalog-revision");
-	if (typeof revision !== "string" || !REVISION_RE.test(revision)) {
-		throw new Error("Catalog discovery returned an invalid or missing revision");
+	const body = Buffer.from(await response.arrayBuffer());
+	const header = response.headers.get("x-toucan-model-catalog-revision");
+	if (typeof header === "string" && REVISION_RE.test(header)) {
+		if (sha256(body) !== header) throw new Error("Catalog discovery body does not match its revision");
+		return header;
 	}
-	if (sha256(Buffer.from(await response.arrayBuffer())) !== revision) {
-		throw new Error("Catalog discovery body does not match its revision");
-	}
+	// The revision header is gone; the revision is defined as the hash of the served bytes, so derive
+	// it from the body. `fetchRevision` below proves the claim by refetching the immutable URL.
+	const revision = sha256(body);
+	if (!REVISION_RE.test(revision)) throw new Error("Catalog discovery returned an invalid or missing revision");
 	return revision;
 }
 
