@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### New Features
+
+- Keyboard shortcuts popup: `?` or `/shortcuts` opens a compact hotkey reference above the input
+- Toucan art farewell: interactive sessions now end with the block-shaded toucan and `Bye!` in the scrollback
+
+### Added
+
+- Exiting an interactive session (double `ctrl+c`, `ctrl+d`, `/quit`) replaces the idle input area — editor band, status line, footer, hints — with block-shaded toucan art and a `Bye!` line, so the terminal ends on the session rather than a prompt
+
 ### Changed
 
 - `?` and `/shortcuts` open the keyboard shortcuts as a popup above the input box instead of printing a table into the transcript: `Compose`, `Session`, and `Editor` columns with the keys in the accent color, the path of `keybindings.json` for customizing them, and a `? / esc close` hint. The popup closes on `?`, Esc, or typing, and shrinks to fit short terminals
