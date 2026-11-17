@@ -186,4 +186,21 @@ describe("DiffComponent", () => {
 		expect(stripAnsi(lines[1])).toHaveLength(40);
 		expect(bands(lines[1])).toHaveLength(1);
 	});
+
+	it("hands back the same array while nothing changed, and repaints on input or invalidate", () => {
+		const component = new DiffComponent(change(4), { expandHint: "(ctrl+o to expand)" });
+
+		const first = component.render(80);
+		expect(component.render(80)).toBe(first);
+
+		component.setOptions({ expanded: true });
+		const opened = component.render(80);
+		expect(opened).not.toBe(first);
+		expect(component.render(80)).toBe(opened);
+
+		component.invalidate();
+		const repainted = component.render(80);
+		expect(repainted).not.toBe(opened);
+		expect(component.render(80)).toBe(repainted);
+	});
 });

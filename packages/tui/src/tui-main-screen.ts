@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { deleteKittyImage, isImageLine } from "./terminal-image.ts";
-import { type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
+import { deleteKittyImage, getMaxKittyImageRows, isImageLine } from "./terminal-image.ts";
+import { CURSOR_MARKER, type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
 import { visibleWidth } from "./utils.ts";
 
 /** OSC 133 prompt markers at the start of a rendered line. Fullscreen uses them for prompt navigation. */
@@ -113,6 +113,22 @@ function isTermuxSession(): boolean {
 	return Boolean(process.env.TERMUX_VERSION);
 }
 
+/** Where the hardware cursor sits in a frame, or null when the frame shows no cursor. */
+type CursorPosition = { row: number; col: number } | null;
+
+/** What a frame produced: the terminal-ready lines and how much of them the differential pass has to inspect. */
+interface RenderedFrame {
+	lines: string[];
+	/**
+	 * Lines below this index are byte-identical to the lines of the frame before, so the differential pass
+	 * starts here instead of at line 0. Zero when the whole render was produced again.
+	 */
+	scanFrom: number;
+	/** True when `lines` is the renderer's own reused buffer, which `rememberChangedLines` must copy out of. */
+	reusedBuffer: boolean;
+	cursorPos: CursorPosition;
+}
+
 export interface TuiMainScreenRenderState {
 	previousLines: string[];
 	previousWidth: number;
@@ -126,8 +142,26 @@ export interface TuiMainScreenRenderState {
 /** TUI implementation that renders into the terminal's main screen and scrollback. */
 export class TuiMainScreen extends TuiBase implements TUI {
 	readonly mode = "regular" as const;
+	/** The lines the terminal shows, kept between frames so the next frame can diff against them. */
 	private previousLines: string[] = [];
-	private previousKittyImageIds = new Set<number>();
+	/**
+	 * The renderer's own copy of the document's terminal-ready lines, reused across frames. Only the lines
+	 * from the first changed one are produced again; the lines above are the ones already on screen.
+	 */
+	private readonly documentLines: string[] = [];
+	/** True when the whole render must be compared again, because the last frame did not use the incremental path. */
+	private rescanAllLines = true;
+	/**
+	 * Ascending indexes into {@link documentLines} of the lines that carry a kitty image header. Maintained
+	 * alongside the line production so scans for image blocks cost the number of images, not the number of
+	 * transcript lines; empty whenever nothing is known about the lines (then the frame rebuilds them all).
+	 */
+	private imageLineIndexes: number[] = [];
+	/**
+	 * Kitty image ids left on screen by a render state reset. Reset forgets `previousLines`, but the terminal
+	 * still shows those lines, so the next clearing redraw has to delete the placements from this list.
+	 */
+	private pendingKittyImageIds = new Set<number>();
 	private previousWidth = 0;
 	private previousHeight = 0;
 	private cursorRow = 0;
@@ -149,17 +183,31 @@ export class TuiMainScreen extends TuiBase implements TUI {
 
 	restoreRenderState(state: TuiMainScreenRenderState): void {
 		this.previousLines = state.previousLines.map((line) => (isImageLine(line) ? "" : line));
-		this.previousKittyImageIds = new Set();
+		// The other renderer owns whatever the terminal shows now, including its images.
+		this.pendingKittyImageIds.clear();
 		this.previousWidth = state.previousWidth;
 		this.previousHeight = state.previousHeight;
 		this.cursorRow = state.cursorRow;
 		this.hardwareCursorRow = state.hardwareCursorRow;
 		this.maxLinesRendered = state.maxLinesRendered;
 		this.previousViewportTop = state.previousViewportTop;
+		// The lines came from another renderer, so nothing is known about which of them the document
+		// produces again; the next frame compares everything.
+		this.documentLines.length = 0;
+		this.imageLineIndexes = [];
+		this.rescanAllLines = true;
 	}
 
 	protected override resetRenderState(): void {
+		// The terminal keeps showing the lines until the next frame clears them, so its images must be
+		// remembered for that clearing redraw even though the lines themselves are forgotten.
+		for (const id of this.collectKittyImageIds(this.previousLines)) {
+			this.pendingKittyImageIds.add(id);
+		}
 		this.previousLines = [];
+		this.documentLines.length = 0;
+		this.imageLineIndexes = [];
+		this.rescanAllLines = true;
 		this.previousWidth = -1;
 		this.previousHeight = -1;
 		this.cursorRow = 0;
@@ -178,7 +226,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.terminal.write("\r\n");
 	}
 
-	private collectKittyImageIds(lines: string[]): Set<number> {
+	/** The kitty image ids on screen, used to delete them before a full redraw wipes the scrollback. */
+	private collectKittyImageIds(lines: readonly string[]): Set<number> {
 		const ids = new Set<number>();
 		for (const line of lines) {
 			for (const id of extractKittyImageIds(line)) {
@@ -196,7 +245,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		return buffer;
 	}
 
-	private getKittyImageReservedRows(lines: string[], index: number, maxIndex = lines.length - 1): number {
+	private getKittyImageReservedRows(lines: readonly string[], index: number, maxIndex = lines.length - 1): number {
 		const rows = extractKittyImageRows(lines[index] ?? "");
 		if (rows <= 1) return 1;
 
@@ -210,27 +259,46 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		return reservedRows;
 	}
 
+	/**
+	 * Grow the changed range so a redraw covers whole kitty image blocks. A block starting at or after the
+	 * first changed line always joins the range: redrawing its rows invalidates the placement above, so it
+	 * must be deleted and drawn again. A block starting above the range joins only when its rows reach into
+	 * it, and a block cannot reach down further than `getMaxKittyImageRows()`, so lines above that bound are
+	 * not inspected. Only image-carrying lines are visited, from the maintained {@link imageLineIndexes}.
+	 */
 	private expandChangedRangeForKittyImages(
 		firstChanged: number,
 		lastChanged: number,
-		newLines: string[],
+		newLines: readonly string[],
 	): { firstChanged: number; lastChanged: number } {
 		let expandedFirstChanged = firstChanged;
 		let expandedLastChanged = lastChanged;
-		const expandForLines = (lines: string[]): void => {
-			for (let i = 0; i < lines.length; i++) {
-				if (extractKittyImageIds(lines[i]).length === 0) continue;
-				const blockEnd = i + this.getKittyImageReservedRows(lines, i) - 1;
-				if (i >= firstChanged || (i <= lastChanged && blockEnd >= firstChanged)) {
-					expandedFirstChanged = Math.min(expandedFirstChanged, i);
-					expandedLastChanged = Math.max(expandedLastChanged, blockEnd);
-				}
+		const scanFrom = Math.max(0, firstChanged - getMaxKittyImageRows());
+		for (const index of this.imageLineIndexes) {
+			if (index < scanFrom) continue;
+			if (index >= newLines.length) break;
+			if (extractKittyImageIds(newLines[index] ?? "").length === 0) continue;
+			const blockEnd = index + this.getKittyImageReservedRows(newLines, index) - 1;
+			if (index >= firstChanged || blockEnd >= firstChanged) {
+				expandedFirstChanged = Math.min(expandedFirstChanged, index);
+				expandedLastChanged = Math.max(expandedLastChanged, blockEnd);
 			}
-		};
-
-		expandForLines(this.previousLines);
-		expandForLines(newLines);
+		}
 		return { firstChanged: expandedFirstChanged, lastChanged: expandedLastChanged };
+	}
+
+	/**
+	 * Update {@link imageLineIndexes} after the lines from `producedFrom` were rebuilt: the indexes below
+	 * it describe untouched lines and stay, the ones at and above it describe lines that no longer exist.
+	 */
+	private rememberImageLines(producedFrom: number, lines: readonly string[]): void {
+		const imageLineIndexes = this.imageLineIndexes;
+		while (imageLineIndexes.length > 0 && imageLineIndexes[imageLineIndexes.length - 1]! >= producedFrom) {
+			imageLineIndexes.pop();
+		}
+		for (let line = producedFrom; line < lines.length; line++) {
+			if (lines[line]!.includes(KITTY_SEQUENCE_PREFIX)) imageLineIndexes.push(line);
+		}
 	}
 
 	private deleteChangedKittyImages(firstChanged: number, lastChanged: number): string {
@@ -245,6 +313,98 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		}
 
 		return this.deleteKittyImages(ids);
+	}
+
+	/**
+	 * Renders the document into terminal-ready lines.
+	 *
+	 * Without overlays the render is incremental: the container cache reports the first line that differs
+	 * from the frame before, and only the lines from there are produced again. A frame then costs what
+	 * changed instead of the whole transcript, which is what made long sessions slow. Overlays composite
+	 * into arbitrary rows of a whole-document render, so their frames still rebuild everything.
+	 */
+	private produceFrame(width: number, height: number): RenderedFrame {
+		if (this.hasOverlayEntries) {
+			const whole = this.produceWholeFrame(width, height);
+			this.rescanAllLines = true;
+			return { lines: whole.lines, scanFrom: 0, reusedBuffer: false, cursorPos: whole.cursorPos };
+		}
+
+		const rendered = this.renderCached(width);
+		const scanFrom = this.rescanAllLines ? 0 : Math.min(rendered.firstChanged, this.documentLines.length);
+		const documentLines = this.documentLines;
+		for (let line = scanFrom; line < rendered.lines.length; line++) {
+			documentLines[line] = this.applyLineReset(this.prepareDocumentLine(rendered.lines[line]!));
+		}
+		documentLines.length = rendered.lines.length;
+		this.rememberImageLines(scanFrom, documentLines);
+		this.rescanAllLines = false;
+		return {
+			lines: documentLines,
+			scanFrom,
+			reusedBuffer: true,
+			cursorPos: this.findCursorPosition(rendered.lines, height),
+		};
+	}
+
+	/**
+	 * Resolves fake cursors and drops the OSC 133 prompt markers, the part of a rendered line that is
+	 * render metadata rather than terminal output. Cursor markers survive: {@link applyLineReset} needs them
+	 * to find the hardware cursor and strips them itself.
+	 */
+	private prepareDocumentLine(line: string): string {
+		return this.resolveFakeCursor(OSC133_ZONE_PREFIX.test(line) ? line.replace(OSC133_ZONE_PREFIX, "") : line);
+	}
+
+	/** The cursor position within the visible rows of a raw render, for the incremental frame. */
+	private findCursorPosition(rawLines: readonly string[], height: number): { row: number; col: number } | null {
+		for (let row = rawLines.length - 1; row >= Math.max(0, rawLines.length - height); row--) {
+			const line = this.prepareDocumentLine(rawLines[row]!);
+			const markerIndex = line.indexOf(CURSOR_MARKER);
+			if (markerIndex === -1) continue;
+			return { row, col: visibleWidth(line.slice(0, markerIndex)) };
+		}
+		return null;
+	}
+
+	/** Renders the whole document and composites the overlays into it: the pre-incremental path. */
+	private produceWholeFrame(width: number, height: number): { lines: string[]; cursorPos: CursorPosition } {
+		// Fake cursors are resolved before compositing so overlays and line slicing see plain SGR codes.
+		let lines = this.resolveFakeCursors(this.render(width).map((line) => this.prepareDocumentLine(line)));
+		lines = this.compositeOverlays(lines, width, height);
+		// The whole render is new, so the image index list starts over and describes this frame's lines.
+		this.rememberImageLines(0, lines);
+		// The cursor marker must be found before the line resets strip it.
+		const cursorPos = this.extractCursorPosition(lines, height);
+		return { lines: this.applyLineResets(lines), cursorPos };
+	}
+
+	/** Remembers a frame that rewrote everything as what the terminal now shows. */
+	private rememberAllLines(frame: RenderedFrame): void {
+		if (!frame.reusedBuffer) {
+			this.previousLines = frame.lines;
+			return;
+		}
+		const previousLines = this.previousLines;
+		previousLines.length = 0;
+		for (const line of frame.lines) previousLines.push(line);
+	}
+
+	/**
+	 * Remembers the lines a differential frame put on screen. The lines below `firstChanged` are already
+	 * remembered, so only the changed suffix is copied out of the renderer's reused buffer.
+	 */
+	private rememberChangedLines(frame: RenderedFrame, firstChanged: number): void {
+		if (!frame.reusedBuffer) {
+			this.previousLines = frame.lines;
+			return;
+		}
+		const lines = frame.lines;
+		const previousLines = this.previousLines;
+		for (let line = Math.max(0, firstChanged); line < lines.length; line++) {
+			previousLines[line] = lines[line]!;
+		}
+		previousLines.length = lines.length;
 	}
 
 	protected doRender(): void {
@@ -263,20 +423,9 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			return targetScreenRow - currentScreenRow;
 		};
 
-		// Render all components to get new lines
-		// Resolve fake cursors before compositing so overlays and line slicing see plain SGR codes
-		// Drop OSC 133 markers: the terminal reads 133;A as a new shell prompt, which ends program status (OSC 7501)
-		let newLines = this.resolveFakeCursors(this.render(width).map((line) => line.replace(OSC133_ZONE_PREFIX, "")));
-
-		// Composite overlays into the rendered lines (before differential compare)
-		if (this.hasOverlayEntries) {
-			newLines = this.compositeOverlays(newLines, width, height);
-		}
-
-		// Extract cursor position before applying line resets (marker must be found first)
-		const cursorPos = this.extractCursorPosition(newLines, height);
-
-		newLines = this.applyLineResets(newLines);
+		const frame = this.produceFrame(width, height);
+		const newLines = frame.lines;
+		const cursorPos = frame.cursorPos;
 
 		// Helper to clear scrollback and viewport and render all new lines
 		const fullRender = (clear: boolean): void => {
@@ -284,7 +433,12 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			const output = new BoundedTerminalWriter((data) => this.terminal.write(data));
 			output.append("\x1b[?2026h"); // Begin synchronized output
 			if (clear) {
-				output.append(this.deleteKittyImages(this.previousKittyImageIds));
+				// The scrollback is about to be wiped, so every image still on screen has to go with it,
+				// including the ones a render state reset took out of `previousLines`.
+				const ids = this.collectKittyImageIds(this.previousLines);
+				for (const id of this.pendingKittyImageIds) ids.add(id);
+				this.pendingKittyImageIds.clear();
+				output.append(this.deleteKittyImages(ids));
 				output.append("\x1b[2J\x1b[H\x1b[3J"); // Clear screen, home, then clear scrollback
 			}
 			for (let i = 0; i < newLines.length; i++) {
@@ -317,8 +471,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			const bufferLength = Math.max(height, newLines.length);
 			this.previousViewportTop = Math.max(0, bufferLength - height);
 			this.positionHardwareCursor(cursorPos, newLines.length);
-			this.previousLines = newLines;
-			this.previousKittyImageIds = this.collectKittyImageIds(newLines);
+			this.rememberAllLines(frame);
 			this.previousWidth = width;
 			this.previousHeight = height;
 		};
@@ -364,11 +517,12 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			return;
 		}
 
-		// Find first and last changed lines
+		// Find first and last changed lines. The lines below frame.scanFrom were not produced again and
+		// cannot differ, so the comparison starts there.
 		let firstChanged = -1;
 		let lastChanged = -1;
 		const maxLines = Math.max(newLines.length, this.previousLines.length);
-		for (let i = 0; i < maxLines; i++) {
+		for (let i = frame.scanFrom; i < maxLines; i++) {
 			const oldLine = i < this.previousLines.length ? this.previousLines[i] : "";
 			const newLine = i < newLines.length ? newLines[i] : "";
 
@@ -443,8 +597,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				this.hardwareCursorRow = targetRow;
 			}
 			this.positionHardwareCursor(cursorPos, newLines.length);
-			this.previousLines = newLines;
-			this.previousKittyImageIds = this.collectKittyImageIds(newLines);
+			this.rememberChangedLines(frame, firstChanged);
 			this.previousWidth = width;
 			this.previousHeight = height;
 			this.previousViewportTop = prevViewportTop;
@@ -614,8 +767,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		// Position hardware cursor for IME
 		this.positionHardwareCursor(cursorPos, newLines.length);
 
-		this.previousLines = newLines;
-		this.previousKittyImageIds = this.collectKittyImageIds(newLines);
+		this.rememberChangedLines(frame, firstChanged);
 		this.previousWidth = width;
 		this.previousHeight = height;
 	}

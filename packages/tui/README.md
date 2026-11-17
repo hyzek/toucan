@@ -163,6 +163,8 @@ Stack entries support `basis`, `grow`, `shrink`, `minSize`, `maxSize`, and respo
 
 Layout geometry is rebuilt for each requested frame. Stateful components are retained, and their existing rendered-line caches remain effective. Calling `render(width)` directly on these layout components produces an unbounded document, which is also used when alt mode restores the main screen.
 
+Scroll views cull rendering to the visible window: right before a scroll document is rendered, the layout calls its optional `setRenderWindow({ from, to })` with the document line range in sight. A `Container` given a window skips `render()` for children that lie entirely outside it and keeps their lines and line counts from the last frame, so expensive blocks — diff previews, tool output, images — cost CPU only while in sight. The window propagates through nested containers in their own line coordinates, so a block deep inside a grouped transcript entry is culled too. A child that changes while off-screen keeps its old lines until it is next in sight, and renders fresh the moment it enters the window; `render()`/`renderCached()` keep returning the full document line array, which is what scrollbar geometry, search, selection and copy read, so culling never shrinks the reported content height. Components that want their on-screen blocks to be free as well should return the identical line array from `render()` while their inputs are unchanged — every container layer (`Box`, `Container`) uses that identity to reuse its own cache.
+
 ### Overlays
 
 Overlays render components on top of existing content without replacing it. Useful for dialogs, menus, and modal UI.

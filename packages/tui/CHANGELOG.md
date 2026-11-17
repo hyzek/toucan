@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- `Container` keeps its children's rendered lines between frames, and regular-mode `TuiMainScreen` rebuilds only the lines from the first changed one. A steady or typing frame in a long session now costs what changed instead of the whole transcript (a 32 000-line session went from ~7 ms to ~0.1 ms per frame)
+- Optional `Component.renderCached(width)` returns the same lines as `render()` plus the index where they first differ from the previous render at the same width; containers implement it so a change deep inside one starts the parent's redraw there
+- Fullscreen mode renders only what is in sight: the scroll layout calls the optional `Component.setRenderWindow({ from, to })` on a scroll view's document right before rendering it, and `Container` (and its `RenderedLineCache`) then skip `render()` for children entirely outside that line window, keeping their cached lines and heights. Scrolling back into a child renders it fresh. In a benchmark shaped like a real long session (524 bash results, 528 messages, 55 images, 8 000 document lines) a keystroke frame went from ~75 ms to ~0.1 ms and scrolling from a ~77 ms median / 276 ms p95 to ~2 ms / 12 ms
+
+### Breaking Changes
+
+- The array returned by `Component.render()` is read-only for callers, and so is anything returned by `super.render()`: components that decorate their children's lines must copy the array first. `Container.render()` hands back its own reused array, and the render pipeline relies on nobody writing into it
+
+### Fixed
+
+- `Container` subclasses that override `render()` to decorate their children's lines (zone markers, inserted rows) no longer have those decorations dropped when a parent's cached render pass asks for `renderCached()`: the base class detects the override and serves `render()` itself
+
 ## [1.91.0] - 2026-11-15
 
 ## [1.88.0] - 2026-11-15

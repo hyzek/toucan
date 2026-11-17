@@ -49,6 +49,8 @@ export class AssistantMessageComponent extends Container {
 	private thinkingRunStarts = new Map<number, number>();
 	private thinkingRunEnds = new Map<number, number>();
 	private markdownSlots: MarkdownSlot[] = [];
+	/** The OSC 133-decorated copy of the container render, keyed on the container array it decorates. */
+	private decoratedLines?: { base: readonly string[]; decorated: string[] };
 
 	constructor(
 		message?: AssistantMessage,
@@ -139,9 +141,17 @@ export class AssistantMessageComponent extends Container {
 			return lines;
 		}
 
-		lines[0] = OSC133_ZONE_START + lines[0];
-		lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
-		return lines;
+		// The container's array is shared with its cache, so the zone markers go into a decorated copy.
+		// Container.render hands back the same array only while nothing changed, which is when the copy
+		// from last frame still fits; the parent's cache then sees the changed copy.
+		if (this.decoratedLines?.base === lines) {
+			return this.decoratedLines.decorated;
+		}
+		const decorated = lines.slice();
+		decorated[0] = OSC133_ZONE_START + decorated[0];
+		decorated[decorated.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + decorated[decorated.length - 1];
+		this.decoratedLines = { base: lines, decorated };
+		return decorated;
 	}
 
 	/**

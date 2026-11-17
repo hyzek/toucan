@@ -22,7 +22,7 @@ import {
 	resetCapabilitiesCache,
 	setCapabilities,
 } from "../src/terminal-image.ts";
-import { CURSOR_MARKER, renderFakeCursor, type TuiMouseEvent } from "../src/tui.ts";
+import { Container, CURSOR_MARKER, renderFakeCursor, type TuiMouseEvent } from "../src/tui.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
 import { stripTerminalSequences, visibleWidth } from "../src/utils.ts";
 import { defaultEditorTheme } from "./test-themes.ts";
@@ -2252,6 +2252,93 @@ describe("TuiAltScreen", () => {
 		terminal.sendInput("\x1b[5~"); // PageUp scrolls the transcript again
 		await terminal.waitForRender();
 		assert.ok(tui.viewportTop < topWithoutMenu);
+		tui.stop();
+	});
+});
+
+/** Transcript child that counts its renders, so a test can see what viewport culling skipped. */
+class CountingText {
+	lines: string[];
+	renders = 0;
+	constructor(lines: string[]) {
+		this.lines = [...lines];
+	}
+	render(_width: number): string[] {
+		this.renders++;
+		return this.lines;
+	}
+	invalidate(): void {}
+}
+
+describe("TuiAltScreen viewport culling", () => {
+	/** Transcript of top(3) + middle(3) + bottom(3) lines in a 5-row viewport: bottom starts at 6. */
+	function buildCullingScene(): {
+		terminal: VirtualTerminal;
+		tui: TuiAltScreen;
+		transcript: ScrollView;
+		bottom: CountingText;
+	} {
+		const terminal = new VirtualTerminal(30, 6);
+		const tui = new TuiAltScreen(terminal);
+		const document = new Container();
+		document.addChild(new CountingText(["t1", "t2", "t3"]));
+		document.addChild(new CountingText(["m1", "m2", "m3"]));
+		const bottom = new CountingText(["b1", "b2", "b3"]);
+		document.addChild(bottom);
+		const transcript = new ScrollView(document, { primary: true });
+		tui.setLayoutRoot(
+			new VStack([
+				{ component: transcript, basis: 0, grow: 1, minSize: 1 },
+				{ component: new Text("editor", 0, 0), basis: "auto", minSize: 1 },
+			]),
+		);
+		return { terminal, tui, transcript, bottom };
+	}
+
+	it("renders an off-screen child once to measure it, never again while out of sight", async () => {
+		const { terminal, tui, transcript, bottom } = buildCullingScene();
+		tui.start();
+		await terminal.waitForRender();
+		assert.strictEqual(bottom.renders, 1, "measured once at the first frame");
+
+		// Idle frames and a notch that still leaves the child out of the window must not render it.
+		tui.renderNow();
+		tui.renderNow();
+		transcript.scrollBy(1);
+		tui.renderNow();
+		assert.strictEqual(bottom.renders, 1, "off-window children stay unrendered");
+
+		// Scrolling it into view renders it again and shows its current lines.
+		transcript.scrollTo(4);
+		tui.renderNow();
+		await terminal.waitForRender();
+		assert.strictEqual(bottom.renders, 2, "in-window children render fresh");
+		assert.ok(
+			terminal.getViewport().some((line) => line.startsWith("b1")),
+			"the child's lines paint once visible",
+		);
+		tui.stop();
+	});
+
+	it("picks up a child that changed while off-screen when it scrolls back into view", async () => {
+		const { terminal, tui, transcript, bottom } = buildCullingScene();
+		tui.start();
+		await terminal.waitForRender();
+
+		bottom.lines = ["new 1", "new 2", "new 3"];
+		transcript.scrollTo(4);
+		tui.renderNow();
+		await terminal.waitForRender();
+		const viewport = terminal.getViewport();
+		assert.ok(
+			viewport.some((line) => line.startsWith("new 1")),
+			"the changed lines are rendered on entry",
+		);
+
+		// The total content height never collapsed: one notch from the end is still possible.
+		transcript.scrollBy(-1);
+		tui.renderNow();
+		assert.ok(transcript.scrollTop < 4, "content height stays full, so scrolling back up is still possible");
 		tui.stop();
 	});
 });

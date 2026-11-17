@@ -139,6 +139,20 @@ export class DiffComponent implements Component {
 	private readonly highlighter = new CodeHighlighter();
 	private diff: string;
 	private options: DiffViewOptions;
+	/**
+	 * The painted rows, kept while the inputs that produced them are unchanged: the same array comes
+	 * back, which is what tells the parent containers they can reuse their own cached lines. A theme
+	 * change reaches the cache through `invalidate()`, which the theme switch calls across the tree.
+	 */
+	private cache?: {
+		diff: string;
+		width: number;
+		expanded: DiffViewOptions["expanded"];
+		maxRows: number | undefined;
+		expandHint: string | undefined;
+		hunkLabel: DiffViewOptions["hunkLabel"];
+		lines: string[];
+	};
 
 	constructor(diff: string, options: DiffViewOptions = {}) {
 		this.diff = diff;
@@ -154,10 +168,39 @@ export class DiffComponent implements Component {
 	}
 
 	invalidate(): void {
-		// Nothing is kept between renders except the highlighter's cache, which checks the theme itself.
+		// The highlighter's own cache checks the theme itself; the painted rows do not, so drop them here.
+		this.cache = undefined;
 	}
 
 	render(width: number): string[] {
+		const options = this.options;
+		const cached = this.cache;
+		if (
+			cached &&
+			cached.diff === this.diff &&
+			cached.width === width &&
+			cached.expanded === options.expanded &&
+			cached.maxRows === options.maxRows &&
+			cached.expandHint === options.expandHint &&
+			cached.hunkLabel === options.hunkLabel
+		) {
+			return cached.lines;
+		}
+		const lines = this.paint(width);
+		this.cache = {
+			diff: this.diff,
+			width,
+			expanded: options.expanded,
+			maxRows: options.maxRows,
+			expandHint: options.expandHint,
+			hunkLabel: options.hunkLabel,
+			lines,
+		};
+		return lines;
+	}
+
+	/** Paints the diff view once: prepare (with highlighting), the visible rows, and the fold note. */
+	private paint(width: number): string[] {
 		const prepared = prepareDiff(this.diff, this.options, this.highlighter);
 		if (prepared.hunks.length === 0) return [];
 		const palette = diffPalette();

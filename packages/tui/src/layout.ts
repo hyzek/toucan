@@ -136,6 +136,15 @@ function layoutComponent(
 	if (node.type === "scroll") {
 		const previousScrollTop = node.state.scrollTop;
 		const contentWidth = node.state.getContentWidth(safeWidth);
+		// Viewport culling: arm the document's container with the line window in sight, so its per-child
+		// render skips children entirely outside it. Only documents that take the leaf render path below
+		// get armed, and painting keeps using the full array the container's cache maintains.
+		if (height !== undefined && !getLayoutNode(node.component)) {
+			node.component.setRenderWindow?.({
+				from: previousScrollTop,
+				to: previousScrollTop + Math.max(0, Math.floor(height)),
+			});
+		}
 		const childBox = layoutComponent(
 			context,
 			node.component,

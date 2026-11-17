@@ -81,12 +81,16 @@ class RadiusLoginMenuComponent extends ExtensionSelectorComponent {
 		const selectedLine = new Text(theme.fg("accent", "→ ") + theme.fg("accent", label), 1, 0).render(width)[0];
 		const index = selectedLine === undefined ? -1 : lines.indexOf(selectedLine);
 		this.animating = index >= 0;
-		if (this.animating) {
-			const shimmer = radiusShimmer(text, performance.now() - this.animationStart);
-			const animatedLine = theme.fg("accent", "→ ") + shimmer + label.slice(text.length);
-			lines[index] = new Text(animatedLine, 1, 0).render(width)[0] ?? "";
+		if (!this.animating) {
+			return lines;
 		}
-		return lines;
+
+		// The container's array is shared with its cache, so the animated line goes into a copy.
+		const shimmer = radiusShimmer(text, performance.now() - this.animationStart);
+		const animatedLine = theme.fg("accent", "→ ") + shimmer + label.slice(text.length);
+		const animated = lines.slice();
+		animated[index] = new Text(animatedLine, 1, 0).render(width)[0] ?? "";
+		return animated;
 	}
 
 	private stopAnimation(): void {

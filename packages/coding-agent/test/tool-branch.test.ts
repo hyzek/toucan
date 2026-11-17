@@ -64,4 +64,19 @@ describe("ToolBranchBlock openEnded", () => {
 
 		expect(rows(block, 20)).toEqual(["  ├ alone"]);
 	});
+
+	it("hands back the same array while the children keep theirs, and repaints after invalidate", () => {
+		const block = new ToolBranchBlock();
+		block.addChild(new Text("first\nlast", 0, 0));
+
+		const first = block.render(20);
+		expect(block.render(20)).toBe(first);
+
+		const wider = block.render(24);
+		expect(wider).not.toBe(first);
+		expect(block.render(24)).toBe(wider);
+
+		block.invalidate();
+		expect(block.render(24)).not.toBe(wider);
+	});
 });

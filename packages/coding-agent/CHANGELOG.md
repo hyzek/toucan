@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Custom TUI components must treat the array returned by `render()` (including `super.render()`) as read-only and copy it before editing lines, because containers now reuse those arrays across frames. Components built with the shipped `Container` are unaffected; extension components that wrote into a child's or superclass's returned array need the copy
+
 ### Removed
 
 - The startup "What's New" block. Toucan's changelog is read on demand with `/changelog`; the startup notice now only reports updated extensions, and `collapseChangelog` only condenses that notice

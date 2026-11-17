@@ -114,6 +114,8 @@ export { getNativeClipboard, type NativeClipboard } from "./native-platform.ts";
 export { oklabToOkhslLightness } from "./oklab.ts";
 // Program status reporting (OSC 7501)
 export { formatProgramStatus, type ProgramStatus } from "./program-status.ts";
+
+export type { RenderedLines, RenderWindow } from "./rendered-line-cache.ts";
 // Shine sweep math shared by animated surfaces (working indicator, input band)
 export {
 	clamp01,

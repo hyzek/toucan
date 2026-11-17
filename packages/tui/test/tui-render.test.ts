@@ -14,7 +14,7 @@ import {
 	setCapabilities,
 	setCellDimensions,
 } from "../src/terminal-image.ts";
-import { type Component, CURSOR_MARKER, renderFakeCursor, type TUI } from "../src/tui.ts";
+import { type Component, Container, CURSOR_MARKER, renderFakeCursor, type TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
 import { sliceByColumn } from "../src/utils.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
@@ -1072,5 +1072,24 @@ describe("TUI fake cursor", () => {
 			assert.ok(writes.endsWith("\x1b[4G"));
 			tui.stop();
 		}
+	});
+});
+
+describe("Container renderCached contract", () => {
+	it("reports the decorated lines of a subclass that overrode render()", () => {
+		// A subclass that decorates the cached lines (zone markers, backgrounds) must not have the parent's
+		// cached render pass served the undecorated array instead of the decoration.
+		class Decorated extends Container {
+			override render(width: number): string[] {
+				return super.render(width).map((line) => `# ${line}`);
+			}
+		}
+		const decorated = new Decorated();
+		decorated.addChild({ render: () => ["one", "two"], invalidate: () => {} });
+		const parent = new Container();
+		parent.addChild(decorated);
+
+		const first = parent.renderCached(10);
+		assert.deepStrictEqual([...first.lines], ["# one", "# two"]);
 	});
 });

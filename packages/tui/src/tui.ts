@@ -4,6 +4,7 @@
 
 import { performance } from "node:perf_hooks";
 import { isKeyRelease, matchesKey } from "./keys.ts";
+import { RenderedLineCache, type RenderedLines, type RenderWindow } from "./rendered-line-cache.ts";
 import type { Terminal } from "./terminal.ts";
 import {
 	parseOscColorResponse,
@@ -121,6 +122,23 @@ export interface Component {
 	 * @returns Array of strings, each representing a line
 	 */
 	render(width: number): string[];
+
+	/**
+	 * Optional incremental render: the same lines as {@link render}, plus the index where the render first
+	 * differs from this component's previous render at the same width. Containers that cache their
+	 * children's lines implement this so a change deep inside one starts the parent's redraw there, not
+	 * at the container's first line. The returned array is owned by the component: read-only for callers.
+	 */
+	renderCached?(width: number): RenderedLines;
+
+	/**
+	 * Optional: called by the fullscreen layout right before it lays out and renders this component as a
+	 * scroll view's document, with the document line window currently in sight. A component that renders
+	 * from per-child lines ({@link Container}) skips rendering children entirely outside it, so a scroll
+	 * costs the visible rows instead of the whole transcript. Called once per frame; the value is
+	 * consumed by the next {@link render} or {@link renderCached}.
+	 */
+	setRenderWindow?(visible: RenderWindow | undefined): void;
 
 	/** Optional handler for keyboard input when component has focus. */
 	handleInput?(data: string): void;
@@ -359,11 +377,17 @@ type OverlayFocusRestoreState = { status: "inactive" } | ActiveOverlayFocusResto
 type OverlayFocusRestorePolicy = "clear" | "preserve";
 
 /**
- * Container - a component that contains other components
+ * Container - a component that contains other components.
+ *
+ * The container keeps its children's lines between frames ({@link RenderedLineCache}), so a frame that
+ * changes one message costs that message, not the whole transcript. `render()` hands back the container's
+ * own array, which the next frame reuses: callers must not write into it or into anything a child returned.
  */
 export class Container implements Component {
 	children: Component[] = [];
-	private mouseLayout?: { width: number; children: Array<{ component: Component; height: number }> };
+	private readonly lineCache = new RenderedLineCache();
+	/** The scroll window the fullscreen layout armed for the next render, if any. */
+	private pendingRenderWindow: RenderWindow | undefined;
 
 	addChild(component: Component): void {
 		this.children.push(component);
@@ -388,12 +412,15 @@ export class Container implements Component {
 
 	handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
 		if (event.y < 0 || event.y >= event.height) return undefined;
-		const mouseChildren =
-			this.mouseLayout?.width === event.width
-				? this.mouseLayout.children
-				: this.children.map((component) => ({ component, height: component.render(event.width).length }));
+		// The heights the last frame rendered at this width are as fresh as the frame itself; only a
+		// width the cache has not rendered needs a render to measure the children.
+		if (this.lineCache.renderedWidth !== event.width || this.lineCache.renderedChildCount !== this.children.length) {
+			this.lineCache.render(this.children, event.width);
+		}
 		let childY = 0;
-		for (const { component: child, height: childHeight } of mouseChildren) {
+		for (let index = 0; index < this.children.length; index++) {
+			const child = this.children[index]!;
+			const childHeight = this.lineCache.childLineCount(index);
 			if (event.y >= childY && event.y < childY + childHeight) {
 				const result = dispatchMouseEvent(child, {
 					...event,
@@ -409,20 +436,33 @@ export class Container implements Component {
 	}
 
 	render(width: number): string[] {
-		const lines: string[] = [];
-		const mouseChildren: Array<{ component: Component; height: number }> = [];
-		for (const child of this.children) {
-			const childLines = child.render(width);
-			mouseChildren.push({ component: child, height: childLines.length });
-			for (const line of childLines) {
-				lines.push(line);
-			}
+		const visible = this.pendingRenderWindow;
+		this.pendingRenderWindow = undefined;
+		return this.lineCache.render(this.children, width, visible).lines;
+	}
+
+	/**
+	 * Renders the children and reports where the render first differs from the frame before, so a renderer
+	 * can limit its per-line work to what changed. The returned array is owned by the container: treat it
+	 * as read-only.
+	 */
+	renderCached(width: number): RenderedLines {
+		// Declaration policy the types cannot express: a subclass that overrode render() (zone markers,
+		// inserted rows) only guarantees render()'s lines, so the cached pass may not stand in for it. The
+		// render() path keeps its own line cache, so this stays cheap; only the change offset is unknown.
+		if (this.render !== Container.prototype.render) {
+			return { lines: this.render(width), firstChanged: 0 };
 		}
-		this.mouseLayout = { width, children: mouseChildren };
-		return lines;
+		const visible = this.pendingRenderWindow;
+		this.pendingRenderWindow = undefined;
+		return this.lineCache.render(this.children, width, visible);
+	}
+
+	/** Arms the line window the next {@link render} or {@link renderCached} may use to skip off-window children. */
+	setRenderWindow(visible: RenderWindow | undefined): void {
+		this.pendingRenderWindow = visible;
 	}
 }
-
 /**
  * TUI - Main class for managing terminal UI with differential rendering
  */
@@ -1454,15 +1494,23 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	protected applyLineResets(lines: string[]): string[] {
-		const reset = SEGMENT_RESET;
 		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i];
-			if (!isImageLine(line)) {
-				// Cursor markers are internal render metadata and must never reach terminal output.
-				lines[i] = normalizeTerminalOutput(line.replaceAll(CURSOR_MARKER, "")) + reset;
-			}
+			lines[i] = this.applyLineReset(lines[i]);
 		}
 		return lines;
+	}
+
+	/**
+	 * Turns one rendered line into terminal output: internal cursor markers are dropped, control
+	 * characters are made inert and a segment reset is appended so the row cannot bleed into the next.
+	 * Image lines are returned unchanged because their escape sequences must survive intact.
+	 */
+	protected applyLineReset(line: string): string {
+		if (isImageLine(line)) {
+			// Cursor markers are render metadata; image escape sequences must stay exactly as produced.
+			return line.includes(CURSOR_MARKER) ? line.replaceAll(CURSOR_MARKER, "") : line;
+		}
+		return normalizeTerminalOutput(line.replaceAll(CURSOR_MARKER, "")) + SEGMENT_RESET;
 	}
 
 	private compositeLineAt(
@@ -1476,9 +1524,9 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 
 	/**
-	 * Find and extract cursor position from rendered lines.
-	 * Searches for CURSOR_MARKER, calculates its position, and strips it from the output.
-	 * Only scans the bottom terminal height lines (visible viewport).
+	 * Find the cursor position from rendered lines.
+	 * Searches the bottom `height` lines for CURSOR_MARKER, scanning from the bottom up. The marker is
+	 * internal render metadata; {@link applyLineResets} strips it when the lines become terminal output.
 	 * @param lines - Rendered lines to search
 	 * @param height - Terminal height (visible viewport size)
 	 * @returns Cursor position { row, col } or null if no marker found
@@ -1489,17 +1537,9 @@ export abstract class TuiBase extends Container implements TUI {
 		for (let row = lines.length - 1; row >= viewportTop; row--) {
 			const line = lines[row];
 			const markerIndex = line.indexOf(CURSOR_MARKER);
-			if (markerIndex !== -1) {
-				// Calculate visual column (width of text before marker)
-				const beforeMarker = line.slice(0, markerIndex);
-				const col = visibleWidth(beforeMarker);
-
-				// Strip all markers from the selected line. The first marker determines the
-				// hardware cursor position; any others are stale internal sentinels.
-				lines[row] = line.replaceAll(CURSOR_MARKER, "");
-
-				return { row, col };
-			}
+			if (markerIndex === -1) continue;
+			// The marker is zero-width, so the text before it is what the terminal will show before the cursor.
+			return { row, col: visibleWidth(line.slice(0, markerIndex)) };
 		}
 		return null;
 	}
@@ -1510,11 +1550,15 @@ export abstract class TuiBase extends Container implements TUI {
 	 * of components without focus have no CURSOR_MARKER and stay visible.
 	 */
 	protected resolveFakeCursors(lines: string[]): string[] {
-		return lines.map((line) => {
-			if (!line.includes(FAKE_CURSOR_START)) return line;
-			const resolved = this.showHardwareCursor ? line.replace(FOCUSED_FAKE_CURSOR, "$1$2") : line;
-			return resolved.replaceAll(FAKE_CURSOR_START, "\x1b[7m").replaceAll(FAKE_CURSOR_END, "\x1b[27m");
-		});
+		return lines.map((line) => this.resolveFakeCursor(line));
+	}
+
+	/** Resolves the fake-cursor markers of one rendered line. See {@link resolveFakeCursors}. */
+	protected resolveFakeCursor(line: string): string {
+		if (!line.includes(FAKE_CURSOR_START)) return line;
+		return (this.showHardwareCursor ? line.replace(FOCUSED_FAKE_CURSOR, "$1$2") : line)
+			.replaceAll(FAKE_CURSOR_START, "\x1b[7m")
+			.replaceAll(FAKE_CURSOR_END, "\x1b[27m");
 	}
 
 	/**
