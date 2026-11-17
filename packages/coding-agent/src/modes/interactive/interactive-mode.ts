@@ -159,6 +159,7 @@ import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { FooterComponent, formatCwdForFooter } from "./components/footer.ts";
 import { FooterEditorComponent } from "./components/footer-editor.ts";
+import { GoodbyeComponent } from "./components/goodbye.ts";
 import { footerHint, HotkeyHints } from "./components/hotkey-hints.ts";
 import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LaunchPanel } from "./components/launch-panel.ts";
@@ -4432,7 +4433,7 @@ export class InteractiveMode {
 	private isShuttingDown = false;
 
 	/**
-	 * The final frame of an interactive exit: the transcript, then a bye line.
+	 * The final frame of an interactive exit: the transcript, then the toucan art and a bye line.
 	 * Clears the live input area (queued messages, status, tip, shortcuts panel, editor,
 	 * widgets, footer, hints) so the scrollback ends with the session instead of an idle
 	 * editor band and hint row.
@@ -4448,7 +4449,7 @@ export class InteractiveMode {
 		this.widgetContainerBelow.clear();
 		this.footerContainer.clear();
 		this.hintsContainer.clear();
-		this.documentContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "Bye!")), this.outputPad, 0));
+		this.documentContainer.addChild(new GoodbyeComponent());
 		this.ui.renderNow();
 	}
 

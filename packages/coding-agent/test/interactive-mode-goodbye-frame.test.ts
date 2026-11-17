@@ -74,6 +74,7 @@ describe("InteractiveMode.renderGoodbyeFrame", () => {
 
 		const document = stripAnsi(context.documentContainer.children.flatMap((child) => child.render(80)).join("\n"));
 		expect(document).toContain("transcript line");
+		expect(document).toContain("█▀██████");
 		expect(document).toContain("Bye!");
 		expect(document).not.toContain("give toucan a task");
 		expect(document).not.toContain("for shortcuts");
@@ -89,7 +90,7 @@ describe("InteractiveMode.renderGoodbyeFrame", () => {
 
 	test("the terminal no longer shows the input area after the goodbye frame", async () => {
 		const context = createContext();
-		const terminal = new VirtualTerminal(80, 12);
+		const terminal = new VirtualTerminal(80, 30);
 		const tui = new TuiMainScreen(terminal);
 		for (const container of [
 			context.documentContainer,
@@ -113,6 +114,7 @@ describe("InteractiveMode.renderGoodbyeFrame", () => {
 			.filter((line) => line.length > 0);
 		const text = viewport.join("\n");
 		expect(text).toContain("transcript line");
+		expect(text).toContain("█▀██████");
 		expect(text).toContain("Bye!");
 		expect(text).not.toContain("give toucan a task");
 		expect(text).not.toContain("Qwen 3.8 Flash");
