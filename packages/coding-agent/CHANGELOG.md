@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `?` and `/shortcuts` open the keyboard shortcuts as a popup above the input box instead of printing a table into the transcript: `Compose`, `Session`, and `Editor` columns with the keys in the accent color, the path of `keybindings.json` for customizing them, and a `? / esc close` hint. The popup closes on `?`, Esc, or typing, and shrinks to fit short terminals
+
 ## [1.102.0] - 2026-11-17
 
 ## [1.100.0] - 2026-11-17

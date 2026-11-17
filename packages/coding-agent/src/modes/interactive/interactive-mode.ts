@@ -176,6 +176,7 @@ import { createLoginMenuSelector } from "./components/radius-login-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
 import { SessionSelectorComponent } from "./components/session-selector.ts";
 import { SettingsSelectorComponent } from "./components/settings-selector.ts";
+import { type ShortcutColumn, type ShortcutRow, ShortcutsPanel } from "./components/shortcuts-panel.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
 import { StatsSelectorComponent } from "./components/stats-selector.ts";
 import {
@@ -478,6 +479,8 @@ export class InteractiveMode {
 	private fdPath: string | undefined;
 	private editorContainer: Container;
 	private tipContainer: Container;
+	/** The keyboard shortcuts popup shown above the input box. */
+	private shortcutsPanel: ShortcutsPanel;
 	private activeSelectorToken?: object;
 	private activeSelectorDispose?: () => void;
 	private footer: FooterComponent;
@@ -706,12 +709,23 @@ export class InteractiveMode {
 		this.editor = this.defaultEditor;
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor as Component);
+		this.shortcutsPanel = new ShortcutsPanel({
+			// Keep the popup inside the terminal: rows left for the 3-row input band, the footer
+			// bar, the hint row, and at least one transcript row.
+			maxRows: () => Math.max(6, this.renderer.terminal.rows - 7),
+			footer: () =>
+				theme.fg("accent", shortenHomePath(path.join(getAgentDir(), "keybindings.json"))) +
+				theme.fg("muted", " customize"),
+		});
 		this.tipContainer = new Container();
 		this.tipContainer.addChild(
 			// The tip yields to the `/` menu: both sit above the input and would stack.
 			// The jump-to-latest line only exists while the fullscreen transcript scroll view is live.
 			new SessionTip(
-				() => hasChatTranscript(this.chatContainer.children) || this.editor.isShowingAutocomplete?.() === true,
+				() =>
+					hasChatTranscript(this.chatContainer.children) ||
+					this.editor.isShowingAutocomplete?.() === true ||
+					this.shortcutsPanel.isOpen,
 				() => (this.renderer.mode === "fullscreen" ? this.transcriptScrollView : undefined),
 			),
 		);
@@ -727,7 +741,13 @@ export class InteractiveMode {
 		this.footerHints = new HotkeyHints(() => this.editor.getText().length > 0);
 		this.footerHints.add(
 			"shortcuts",
-			() => footerHint(keyText("app.shortcuts.open"), "for shortcuts"),
+			() =>
+				this.shortcutsPanel.isOpen
+					? footerHint(
+							`${keyText("app.shortcuts.open")} / ${keyText("app.interrupt", { compact: true })}`,
+							"close",
+						)
+					: footerHint(keyText("app.shortcuts.open"), "for shortcuts"),
 			HOTKEY_HINT_ORDER.shortcuts,
 		);
 		this.hintsContainer.addChild(this.footerHints);
@@ -1043,6 +1063,7 @@ export class InteractiveMode {
 			status: this.statusContainer,
 			widgetsAbove: this.widgetContainerAbove,
 			tip: this.tipContainer,
+			shortcuts: this.shortcutsPanel,
 			editor: this.editorContainer,
 			widgetsBelow: this.widgetContainerBelow,
 			footer: this.footerContainer,
@@ -1059,6 +1080,7 @@ export class InteractiveMode {
 			this.statusContainer,
 			this.widgetContainerAbove,
 			this.tipContainer,
+			this.shortcutsPanel,
 			this.editorContainer,
 			this.widgetContainerBelow,
 			this.footerContainer,
@@ -2962,7 +2984,9 @@ export class InteractiveMode {
 		// Set up handlers on defaultEditor - they use this.editor for text access
 		// so they work correctly regardless of which editor is active
 		this.defaultEditor.onEscape = () => {
-			if (this.session.isStreaming) {
+			if (this.shortcutsPanel.isOpen) {
+				this.setShortcutsOpen(false);
+			} else if (this.session.isStreaming) {
 				// Two presses to abort a running turn: the first arms the confirmation hint.
 				this.requestInterrupt(() => this.restoreQueuedMessagesToEditor({ abort: true }));
 			} else if (this.session.isBashRunning) {
@@ -3023,6 +3047,8 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.shortcuts.open", () => this.handleHotkeysCommand());
 
 		this.defaultEditor.onChange = (text: string) => {
+			// The popup is a reference, not a mode: typing into the prompt closes it.
+			if (this.shortcutsPanel.isOpen && text.length > 0) this.setShortcutsOpen(false);
 			const wasBashMode = this.isBashMode;
 			this.isBashMode = text.trimStart().startsWith("!");
 			if (wasBashMode !== this.isBashMode) {
@@ -7032,137 +7058,103 @@ export class InteractiveMode {
 		return keyDisplayText(action);
 	}
 
-	/**
-	 * Get capitalized display string for an editor keybinding action.
-	 */
-	private getEditorKeyDisplay(action: Keybinding): string {
-		return keyDisplayText(action);
+	/** Toggle the keyboard shortcuts popup above the input box. */
+	private handleHotkeysCommand(): void {
+		this.setShortcutsOpen(!this.shortcutsPanel.isOpen);
 	}
 
-	private handleHotkeysCommand(): void {
-		// Navigation keybindings
-		const cursorUp = this.getEditorKeyDisplay("tui.editor.cursorUp");
-		const cursorDown = this.getEditorKeyDisplay("tui.editor.cursorDown");
-		const cursorLeft = this.getEditorKeyDisplay("tui.editor.cursorLeft");
-		const cursorRight = this.getEditorKeyDisplay("tui.editor.cursorRight");
-		const cursorWordLeft = this.getEditorKeyDisplay("tui.editor.cursorWordLeft");
-		const cursorWordRight = this.getEditorKeyDisplay("tui.editor.cursorWordRight");
-		const cursorLineStart = this.getEditorKeyDisplay("tui.editor.cursorLineStart");
-		const cursorLineEnd = this.getEditorKeyDisplay("tui.editor.cursorLineEnd");
-		const jumpForward = this.getEditorKeyDisplay("tui.editor.jumpForward");
-		const jumpBackward = this.getEditorKeyDisplay("tui.editor.jumpBackward");
-		const pageUp = this.getEditorKeyDisplay("tui.editor.pageUp");
-		const pageDown = this.getEditorKeyDisplay("tui.editor.pageDown");
-
-		// Editing keybindings
-		const submit = this.getEditorKeyDisplay("tui.input.submit");
-		const newLine = this.getEditorKeyDisplay("tui.input.newLine");
-		const deleteWordBackward = this.getEditorKeyDisplay("tui.editor.deleteWordBackward");
-		const deleteWordForward = this.getEditorKeyDisplay("tui.editor.deleteWordForward");
-		const deleteToLineStart = this.getEditorKeyDisplay("tui.editor.deleteToLineStart");
-		const deleteToLineEnd = this.getEditorKeyDisplay("tui.editor.deleteToLineEnd");
-		const yank = this.getEditorKeyDisplay("tui.editor.yank");
-		const yankPop = this.getEditorKeyDisplay("tui.editor.yankPop");
-		const undo = this.getEditorKeyDisplay("tui.editor.undo");
-		const tab = this.getEditorKeyDisplay("tui.input.tab");
-
-		// App keybindings
-		const interrupt = this.getAppKeyDisplay("app.interrupt");
-		const clear = this.getAppKeyDisplay("app.clear");
-		const exit = this.getAppKeyDisplay("app.exit");
-		const suspend = this.getAppKeyDisplay("app.suspend");
-		const cycleThinkingLevel = this.getAppKeyDisplay("app.thinking.cycle");
-		const togglePlanMode = this.getAppKeyDisplay("app.planMode.toggle");
-		const cycleModelForward = this.getAppKeyDisplay("app.model.cycleForward");
-		const selectModel = this.getAppKeyDisplay("app.model.select");
-		const expandTools = this.getAppKeyDisplay("app.tools.expand");
-		const toggleThinking = this.getAppKeyDisplay("app.thinking.toggle");
-		const externalEditor = this.getAppKeyDisplay("app.editor.external");
-		const cycleModelBackward = this.getAppKeyDisplay("app.model.cycleBackward");
-		const copyMessage = this.getAppKeyDisplay("app.message.copy");
-		const followUp = this.getAppKeyDisplay("app.message.followUp");
-		const dequeue = this.getAppKeyDisplay("app.message.dequeue");
-		const pasteImage = this.getAppKeyDisplay("app.clipboard.pasteImage");
-
-		// Shortcuts from built-in extensions are app shortcuts, so they list under Other; only
-		// third-party extensions get their own section.
-		const shortcuts = this.session.extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
-		const builtinShortcutRows: string[] = [];
-		const extensionShortcutRows: string[] = [];
-		for (const [key, shortcut] of shortcuts) {
-			const row = `| \`${formatKeyText(key, { capitalize: true })}\` | ${shortcut.description ?? shortcut.extensionPath} |`;
-			const rows = shortcut.extensionPath.startsWith(BUILTIN_PATH_PREFIX)
-				? builtinShortcutRows
-				: extensionShortcutRows;
-			rows.push(row);
-		}
-
-		let hotkeys = `
-**Navigation**
-| Key | Action |
-|-----|--------|
-| \`${cursorUp}\` / \`${cursorDown}\` / \`${cursorLeft}\` / \`${cursorRight}\` | Move cursor / browse history |
-| \`${cursorWordLeft}\` / \`${cursorWordRight}\` | Move by word |
-| \`${cursorLineStart}\` | Start of line |
-| \`${cursorLineEnd}\` | End of line |
-| \`${jumpForward}\` | Jump forward to character |
-| \`${jumpBackward}\` | Jump backward to character |
-| \`${pageUp}\` / \`${pageDown}\` | Scroll by page |
-
-**Editing**
-| Key | Action |
-|-----|--------|
-| \`${submit}\` | Send message |
-| \`${newLine}\` | New line${process.platform === "win32" ? " (Ctrl+Enter on Windows Terminal)" : ""} |
-| \`${deleteWordBackward}\` | Delete word backwards |
-| \`${deleteWordForward}\` | Delete word forwards |
-| \`${deleteToLineStart}\` | Delete to start of line |
-| \`${deleteToLineEnd}\` | Delete to end of line |
-| \`${yank}\` | Paste the most-recently-deleted text |
-| \`${yankPop}\` | Cycle through the deleted text after pasting |
-| \`${undo}\` | Undo |
-
-**Other**
-| Key | Action |
-|-----|--------|
-| \`${tab}\` | Path completion / accept autocomplete |
-| \`${interrupt}\` | Cancel autocomplete / abort streaming |
-| \`${clear}\` | Clear editor (first) / exit (second) |
-| \`${exit}\` | Exit (when editor is empty) |
-| \`${suspend}\` | Suspend to background |
-| \`${cycleThinkingLevel}\` | Cycle thinking level |
-| \`${togglePlanMode}\` | Toggle plan mode (read-only research) |
-| \`${cycleModelForward}\` / \`${cycleModelBackward}\` | Cycle models |
-| \`${selectModel}\` | Open model selector |
-| \`${expandTools}\` | Toggle tool output expansion |
-| \`${toggleThinking}\` | Toggle thinking block visibility |
-| \`${externalEditor}\` | Edit message in external editor |
-| \`${copyMessage}\` | Copy selection or last assistant message |
-| \`${followUp}\` | Queue follow-up message |
-| \`${dequeue}\` | Restore queued messages |
-| \`${pasteImage}\` | Paste files on macOS, images, or text from clipboard |
-${builtinShortcutRows.length > 0 ? `${builtinShortcutRows.join("\n")}\n` : ""}| \`/\` | Slash commands |
-| \`!\` | Run bash command |
-| \`!!\` | Run bash command (excluded from context) |
-`;
-
-		// Add third-party extension shortcuts
-		if (extensionShortcutRows.length > 0) {
-			hotkeys += `
-**Extensions**
-| Key | Action |
-|-----|--------|
-${extensionShortcutRows.join("\n")}
-`;
-		}
-
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new DynamicBorder());
-		this.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "Keyboard Shortcuts")), 1, 0));
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new Markdown(hotkeys.trim(), 1, 1, this.getMarkdownThemeWithSettings()));
-		this.chatContainer.addChild(new DynamicBorder());
+	/** Rebuild the popup's columns from the effective keybindings, so rebinds and extension shortcuts are current. */
+	private setShortcutsOpen(open: boolean): void {
+		if (open) this.shortcutsPanel.setColumns(this.buildShortcutColumns());
+		this.shortcutsPanel.setOpen(open);
 		this.ui.requestRender();
+	}
+
+	/** The shortcut rows for the popup, grouped into columns, from the effective keybindings. */
+	private buildShortcutColumns(): ShortcutColumn[] {
+		const display = (action: Keybinding) => keyText(action, { capitalize: true, compact: true });
+		const compose: ShortcutRow[] = [
+			{ key: "/", description: "Commands" },
+			{ key: "@", description: "Mention files" },
+			{ key: "!", description: "Shell command" },
+			{ key: "!!", description: "Shell command (excluded from context)" },
+			{ key: display("tui.input.submit"), description: "Send message" },
+			{ key: display("tui.input.newLine"), description: "New line" },
+			{ key: display("tui.input.tab"), description: "Complete paths / accept autocomplete" },
+			{ key: display("app.clipboard.pasteImage"), description: "Paste image or files" },
+			{ key: display("app.editor.external"), description: "External editor" },
+			{ key: display("app.message.followUp"), description: "Queue follow-up message" },
+			{ key: display("app.message.dequeue"), description: "Restore queued messages" },
+		];
+		const session: ShortcutRow[] = [
+			{ key: display("app.interrupt"), description: "Cancel / abort streaming" },
+			{ key: display("app.planMode.toggle"), description: "Toggle plan mode" },
+			{ key: display("app.thinking.cycle"), description: "Cycle thinking level" },
+			{ key: display("app.thinking.toggle"), description: "Toggle thinking blocks" },
+			{ key: display("app.tools.expand"), description: "Toggle tool output" },
+			{
+				key: `${display("app.model.cycleForward")} / ${display("app.model.cycleBackward")}`,
+				description: "Cycle models",
+			},
+			{ key: display("app.model.select"), description: "Open model selector" },
+			{ key: display("app.message.copy"), description: "Copy selection or last message" },
+			{ key: display("app.agents.open"), description: "Agents (empty prompt)" },
+			{ key: display("app.clear"), description: "Clear editor" },
+			{ key: display("app.exit"), description: "Exit (empty editor)" },
+			{ key: display("app.suspend"), description: "Suspend to background" },
+		];
+		const editor: ShortcutRow[] = [
+			{
+				key: `${display("tui.editor.cursorUp")} / ${display("tui.editor.cursorDown")}`,
+				description: "Move cursor / browse history",
+			},
+			{
+				key: `${display("tui.editor.cursorWordLeft")} / ${display("tui.editor.cursorWordRight")}`,
+				description: "Move by word",
+			},
+			{
+				key: `${display("tui.editor.cursorLineStart")} / ${display("tui.editor.cursorLineEnd")}`,
+				description: "Start / end of line",
+			},
+			{
+				key: `${display("tui.editor.jumpForward")} / ${display("tui.editor.jumpBackward")}`,
+				description: "Jump to character",
+			},
+			{ key: `${display("tui.editor.pageUp")} / ${display("tui.editor.pageDown")}`, description: "Scroll by page" },
+			{
+				key: `${display("tui.editor.deleteWordBackward")} / ${display("tui.editor.deleteWordForward")}`,
+				description: "Delete word",
+			},
+			{
+				key: `${display("tui.editor.deleteToLineStart")} / ${display("tui.editor.deleteToLineEnd")}`,
+				description: "Delete to line edge",
+			},
+			{
+				key: `${display("tui.editor.yank")} / ${display("tui.editor.yankPop")}`,
+				description: "Paste / cycle deleted text",
+			},
+			{ key: display("tui.editor.undo"), description: "Undo" },
+		];
+
+		// Shortcuts from built-in extensions are app shortcuts, so they list under Session; only
+		// third-party extensions get their own column. Unbound actions display no key and are skipped.
+		const shortcuts = this.session.extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
+		const extensionRows: ShortcutRow[] = [];
+		for (const [key, shortcut] of shortcuts) {
+			const row: ShortcutRow = {
+				key: formatKeyText(key, { capitalize: true, compact: true }),
+				description: shortcut.description ?? shortcut.extensionPath,
+			};
+			(shortcut.extensionPath.startsWith(BUILTIN_PATH_PREFIX) ? session : extensionRows).push(row);
+		}
+
+		const columns: ShortcutColumn[] = [
+			{ title: "Compose", rows: compose.filter((row) => row.key !== "") },
+			{ title: "Session", rows: session.filter((row) => row.key !== "") },
+			{ title: "Editor", rows: editor.filter((row) => row.key !== "") },
+		];
+		if (extensionRows.length > 0) columns.push({ title: "Extensions", rows: extensionRows });
+		return columns;
 	}
 
 	private async handleClearCommand(): Promise<boolean> {
