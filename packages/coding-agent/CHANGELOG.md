@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.111.0] - 2026-11-17
 
 ### New Features
 

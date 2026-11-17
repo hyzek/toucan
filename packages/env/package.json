@@ -1,6 +1,6 @@
 {
 	"name": "@hyzek/toucan-env",
-	"version": "1.102.0",
+	"version": "1.111.0",
 	"description": "Remote execution environments for Toucan Durable: a small daemon deployed over SSH and its ExecutionEnv client",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -45,8 +45,8 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@hyzek/chord": "1.102.0",
-		"@hyzek/toucan-durable": "1.102.0"
+		"@hyzek/chord": "1.111.0",
+		"@hyzek/toucan-durable": "1.111.0"
 	},
 	"devDependencies": {
 		"vitest": "4.1.12"

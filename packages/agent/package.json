@@ -1,6 +1,6 @@
 {
 	"name": "@hyzek/toucan-agent-core",
-	"version": "1.102.0",
+	"version": "1.111.0",
 	"description": "General-purpose agent with transport abstraction, state management, and attachment support",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -23,8 +23,8 @@
 		"prepublishOnly": "npm run build"
 	},
 	"dependencies": {
-		"@hyzek/toucan-ai": "1.102.0",
-		"@hyzek/toucan-schema": "1.102.0"
+		"@hyzek/toucan-ai": "1.111.0",
+		"@hyzek/toucan-schema": "1.111.0"
 	},
 	"keywords": [
 		"ai",
