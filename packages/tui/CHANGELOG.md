@@ -16,6 +16,8 @@
 
 - `Container` subclasses that override `render()` to decorate their children's lines (zone markers, inserted rows) no longer have those decorations dropped when a parent's cached render pass asks for `renderCached()`: the base class detects the override and serves `render()` itself
 
+## [1.94.0] - 2026-11-15
+
 ## [1.91.0] - 2026-11-15
 
 ## [1.88.0] - 2026-11-15
