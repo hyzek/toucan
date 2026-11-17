@@ -22,6 +22,7 @@ type ShutdownThis = {
 	runtimeHost: { dispose: () => Promise<void> };
 	ui: { terminal: { drainInput: (ms: number) => Promise<void> } };
 	themeController: { disableAutoSync: () => void };
+	renderGoodbyeFrame: () => void;
 	stop: () => void;
 	sessionManager: SessionManager;
 };
@@ -89,6 +90,9 @@ function createContext(order: string[], sessionManager = createSessionManager())
 			},
 		},
 		themeController: { disableAutoSync: vi.fn() },
+		renderGoodbyeFrame: vi.fn(() => {
+			order.push("goodbye");
+		}),
 		stop: vi.fn(() => {
 			order.push("stop");
 		}),
@@ -123,6 +127,7 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 		await callShutdown(context, { fromSignal: true });
 
 		expect(order).toEqual(["dispose", "drainInput", "stop"]);
+		expect(context.renderGoodbyeFrame).not.toHaveBeenCalled();
 		expect(context.isShuttingDown).toBe(true);
 	});
 
@@ -135,7 +140,7 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 
 		await callShutdown(context);
 
-		expect(order).toEqual(["drainInput", "stop", "dispose"]);
+		expect(order).toEqual(["drainInput", "goodbye", "stop", "dispose"]);
 	});
 
 	test("interactive quit prints a resume hint for persisted sessions", async () => {
@@ -151,7 +156,7 @@ describe("InteractiveMode.shutdown ordering (#5080)", () => {
 
 		await callShutdown(context);
 
-		expect(order).toEqual(["drainInput", "stop", "dispose"]);
+		expect(order).toEqual(["drainInput", "goodbye", "stop", "dispose"]);
 		expect(stdoutWrite).toHaveBeenCalledWith(
 			`${chalk.dim("To resume this session:")} ${APP_NAME} --session test-session\n`,
 		);

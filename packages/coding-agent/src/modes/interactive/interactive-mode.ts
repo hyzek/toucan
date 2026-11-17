@@ -4431,6 +4431,27 @@ export class InteractiveMode {
 	 */
 	private isShuttingDown = false;
 
+	/**
+	 * The final frame of an interactive exit: the transcript, then a bye line.
+	 * Clears the live input area (queued messages, status, tip, shortcuts panel, editor,
+	 * widgets, footer, hints) so the scrollback ends with the session instead of an idle
+	 * editor band and hint row.
+	 */
+	private renderGoodbyeFrame(): void {
+		this.clearStatusIndicator();
+		this.pendingMessagesContainer.clear();
+		this.statusContainer.clear();
+		this.widgetContainerAbove.clear();
+		this.tipContainer.clear();
+		this.shortcutsPanel.setOpen(false);
+		this.editorContainer.clear();
+		this.widgetContainerBelow.clear();
+		this.footerContainer.clear();
+		this.hintsContainer.clear();
+		this.documentContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "Bye!")), this.outputPad, 0));
+		this.ui.renderNow();
+	}
+
 	private async shutdown(options?: { fromSignal?: boolean }): Promise<void> {
 		if (this.isShuttingDown) return;
 		this.isShuttingDown = true;
@@ -4461,6 +4482,9 @@ export class InteractiveMode {
 		this.themeController.disableAutoSync();
 		await this.ui.terminal.drainInput(1000);
 
+		// Paint the goodbye frame while the TUI is still live, so the last thing the
+		// terminal holds is the transcript plus a bye line, not the idle input area.
+		this.renderGoodbyeFrame();
 		this.stop();
 		await this.runtimeHost.dispose();
 
