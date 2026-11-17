@@ -351,7 +351,7 @@
     },
     "collapseChangelog": {
       "type": "boolean",
-      "description": "Show the condensed changelog after update; use /changelog for the full changelog.",
+      "description": "Condense the startup Extension Updates notice to one line per package.",
       "default": false
     },
     "enableInstallTelemetry": {
