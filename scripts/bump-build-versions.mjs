@@ -44,8 +44,13 @@ const packageJsons = workspaceDirs()
 // Workspace dependencies are pinned to exact versions, so they move with the packages.
 const workspaceNames = new Set(packageJsons.map(({ json }) => json.name));
 
+// The tutorial's @todo/app stays out of lockstep: it is never published, its version belongs to
+// the tutorial's story, and docs/tutorial/book.md quotes it (test/examples/61-tutorial checks
+// that quote against this file, so stamping it breaks the tutorial on every release).
+const bumpTargets = packageJsons.filter(({ json }) => json.name !== "@todo/app");
+
 let changed = 0;
-for (const { path, json } of packageJsons) {
+for (const { path, json } of bumpTargets) {
 	let touched = json.version !== version;
 	json.version = version;
 	for (const field of dependencyFields) {
