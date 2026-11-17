@@ -249,9 +249,16 @@ console.log(`Cutting ${buildName} (package version ${version})\n`);
 
 // Pin and verify the Nix model catalog before modifying versions, so the pin
 // lands in the release commit and a failure leaves the worktree clean.
-console.log("Pinning and building with the newest model catalog for Nix...");
-await pinAndBuildWithNewestModelCatalog();
-console.log();
+// TOUCAN_RELEASE_SKIP_NIX=1 skips it: pi.dev serves upstream's catalog, which
+// this fork's renamed model APIs cannot build against; the fork serves no
+// catalog endpoint of its own yet, so the pin has no trustworthy source.
+if (process.env.TOUCAN_RELEASE_SKIP_NIX === "1") {
+	console.log("Skipping the Nix model catalog pin (TOUCAN_RELEASE_SKIP_NIX=1)\n");
+} else {
+	console.log("Pinning and building with the newest model catalog for Nix...");
+	await pinAndBuildWithNewestModelCatalog();
+	console.log();
+}
 
 // 3. Set the version
 applyVersion(version);
