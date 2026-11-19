@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fullscreen transcript search finds updated text in offscreen blocks. Rows exposed by a layout change redraw immediately.
+- Regular-mode rendering refreshes replaced components and updates the fake cursor when the hardware cursor setting changes.
+
 ## [1.113.0] - 2026-11-17
 
 ## [1.111.0] - 2026-11-17

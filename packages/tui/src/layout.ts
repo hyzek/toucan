@@ -53,6 +53,7 @@ export interface ScrollbarGeometry {
 interface LayoutContext {
 	viewport: { width: number; height: number };
 	renderCache: Map<Component, Map<number, string[]>>;
+	renderOffscreen: boolean;
 	requestRender: () => void;
 	primaryScrollView: ScrollView | undefined;
 }
@@ -134,30 +135,38 @@ function layoutComponent(
 	}
 
 	if (node.type === "scroll") {
-		const previousScrollTop = node.state.scrollTop;
 		const contentWidth = node.state.getContentWidth(safeWidth);
-		// Viewport culling: arm the document's container with the line window in sight, so its per-child
-		// render skips children entirely outside it. Only documents that take the leaf render path below
-		// get armed, and painting keeps using the full array the container's cache maintains.
-		if (height !== undefined && !getLayoutNode(node.component)) {
-			node.component.setRenderWindow?.({
-				from: previousScrollTop,
-				to: previousScrollTop + Math.max(0, Math.floor(height)),
-			});
+		const fixedHeight = height === undefined ? undefined : Math.max(0, Math.floor(height));
+		const canCull =
+			!context.renderOffscreen &&
+			fixedHeight !== undefined &&
+			node.component.setRenderWindow !== undefined &&
+			!getLayoutNode(node.component);
+		const layoutDocument = (scrollTop: number, windowHeight?: number): LayoutBox => {
+			node.component.setRenderWindow?.(
+				windowHeight === undefined ? undefined : { from: scrollTop, to: scrollTop + windowHeight },
+			);
+			return layoutComponent(context, node.component, x, y - scrollTop, contentWidth, undefined, clip);
+		};
+		let childScrollTop = node.state.scrollTop;
+		let childBox = layoutDocument(childScrollTop, canCull ? fixedHeight : undefined);
+		const viewportHeight = fixedHeight ?? childBox.rect.height;
+		node.state.updateLayout(childBox.rect.height, viewportHeight, context.requestRender);
+		if (canCull && node.state.scrollTop !== childScrollTop) {
+			// Following the end or clamping after a shrink can expose rows outside the first render window.
+			context.renderCache.get(node.component)?.delete(contentWidth);
+			childScrollTop = node.state.scrollTop;
+			childBox = layoutDocument(childScrollTop, viewportHeight);
+			node.state.updateLayout(childBox.rect.height, viewportHeight, context.requestRender);
+			if (node.state.scrollTop !== childScrollTop) {
+				// Newly measured rows moved the viewport again. Measure the whole document to settle it.
+				context.renderCache.get(node.component)?.delete(contentWidth);
+				childScrollTop = node.state.scrollTop;
+				childBox = layoutDocument(childScrollTop);
+				node.state.updateLayout(childBox.rect.height, viewportHeight, context.requestRender);
+			}
 		}
-		const childBox = layoutComponent(
-			context,
-			node.component,
-			x,
-			y - previousScrollTop,
-			contentWidth,
-			undefined,
-			clip,
-		);
-		const contentHeight = childBox.rect.height;
-		const viewportHeight = height === undefined ? contentHeight : Math.max(0, Math.floor(height));
-		node.state.updateLayout(contentHeight, viewportHeight, context.requestRender);
-		translateBox(childBox, previousScrollTop - node.state.scrollTop);
+		translateBox(childBox, childScrollTop - node.state.scrollTop);
 		const scrollView = node.state as ScrollView;
 		if (node.state.primary || !context.primaryScrollView) context.primaryScrollView = scrollView;
 		const rect = { x, y, width: safeWidth, height: viewportHeight };
@@ -394,12 +403,14 @@ export function renderLayoutFrame(
 	width: number,
 	height: number,
 	requestRender: () => void,
+	options: { renderOffscreen?: boolean } = {},
 ): LayoutFrame {
 	const safeWidth = Math.max(1, Math.floor(width));
 	const safeHeight = Math.max(1, Math.floor(height));
 	const context: LayoutContext = {
 		viewport: { width: safeWidth, height: safeHeight },
 		renderCache: new Map(),
+		renderOffscreen: options.renderOffscreen ?? false,
 		requestRender,
 		primaryScrollView: undefined,
 	};

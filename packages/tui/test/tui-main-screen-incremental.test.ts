@@ -4,7 +4,7 @@
  */
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { CURSOR_MARKER, FAKE_CURSOR_START, renderFakeCursor } from "../src/tui.ts";
+import { Container, CURSOR_MARKER, FAKE_CURSOR_START, renderFakeCursor } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
@@ -66,6 +66,49 @@ describe("TuiMainScreen incremental frames", () => {
 		tui.stop();
 	});
 
+	it("repaints a container slot when its replacement was already rendered", async (t) => {
+		const terminal = new VirtualTerminal(40, 10);
+		const tui = new TuiMainScreen(terminal);
+		const original = new Container();
+		const oldContent = new StaticComponent();
+		oldContent.lines = ["old content"];
+		original.addChild(oldContent);
+		tui.addChild(original);
+		tui.start();
+		t.after(() => tui.stop());
+		await terminal.waitForRender();
+
+		const replacement = new Container();
+		const newContent = new StaticComponent();
+		newContent.lines = ["new content"];
+		replacement.addChild(newContent);
+		replacement.render(40);
+		tui.removeChild(original);
+		tui.addChild(replacement);
+		tui.renderNow();
+		await terminal.flush();
+
+		assert.strictEqual(terminal.getViewport()[0], "new content");
+	});
+
+	it("repaints changes when the document was rendered separately from the screen", async (t) => {
+		const terminal = new VirtualTerminal(40, 10);
+		const tui = new TuiMainScreen(terminal);
+		const content = new StaticComponent();
+		content.lines = ["old content"];
+		tui.addChild(content);
+		tui.start();
+		t.after(() => tui.stop());
+		await terminal.waitForRender();
+
+		content.lines = ["new content"];
+		tui.render(40);
+		tui.renderNow();
+		await terminal.flush();
+
+		assert.strictEqual(terminal.getViewport()[0], "new content");
+	});
+
 	it("places the hardware cursor from a line that was not rewritten this frame", async () => {
 		const terminal = new LoggingVirtualTerminal(40, 10);
 		const tui = new TuiMainScreen(terminal);
@@ -108,5 +151,28 @@ describe("TuiMainScreen incremental frames", () => {
 		assert.ok(!writes.includes(CURSOR_MARKER), "the cursor marker must not reach the terminal");
 		assert.deepStrictEqual(terminal.getCursorPosition(), { x: 2, y: 0 });
 		tui.stop();
+	});
+
+	it("repaints a cached fake cursor when hardware cursor visibility changes", async (t) => {
+		const terminal = new LoggingVirtualTerminal(40, 10);
+		const tui = new TuiMainScreen(terminal);
+		const input = new StaticComponent();
+		input.lines = [`ab${CURSOR_MARKER}${renderFakeCursor("c")}def`];
+		tui.setShowHardwareCursor(true);
+		tui.addChild(input);
+		tui.start();
+		t.after(() => tui.stop());
+		await terminal.waitForRender();
+
+		terminal.clearWrites();
+		tui.setShowHardwareCursor(false);
+		tui.renderNow();
+		assert.ok(terminal.getWrites().includes("\x1b[7mc\x1b[27m"));
+
+		terminal.clearWrites();
+		tui.setShowHardwareCursor(true);
+		tui.renderNow();
+		assert.ok(terminal.getWrites().includes("abcdef"));
+		assert.ok(!terminal.getWrites().includes("\x1b[7m"));
 	});
 });

@@ -2272,16 +2272,18 @@ class CountingText {
 
 describe("TuiAltScreen viewport culling", () => {
 	/** Transcript of top(3) + middle(3) + bottom(3) lines in a 5-row viewport: bottom starts at 6. */
-	function buildCullingScene(): {
+	function buildCullingScene(width = 30): {
 		terminal: VirtualTerminal;
 		tui: TuiAltScreen;
 		transcript: ScrollView;
+		top: CountingText;
 		bottom: CountingText;
 	} {
-		const terminal = new VirtualTerminal(30, 6);
+		const terminal = new VirtualTerminal(width, 6);
 		const tui = new TuiAltScreen(terminal);
 		const document = new Container();
-		document.addChild(new CountingText(["t1", "t2", "t3"]));
+		const top = new CountingText(["t1", "t2", "t3"]);
+		document.addChild(top);
 		document.addChild(new CountingText(["m1", "m2", "m3"]));
 		const bottom = new CountingText(["b1", "b2", "b3"]);
 		document.addChild(bottom);
@@ -2292,7 +2294,7 @@ describe("TuiAltScreen viewport culling", () => {
 				{ component: new Text("editor", 0, 0), basis: "auto", minSize: 1 },
 			]),
 		);
-		return { terminal, tui, transcript, bottom };
+		return { terminal, tui, transcript, top, bottom };
 	}
 
 	it("renders an off-screen child once to measure it, never again while out of sight", async () => {
@@ -2340,5 +2342,52 @@ describe("TuiAltScreen viewport culling", () => {
 		tui.renderNow();
 		assert.ok(transcript.scrollTop < 4, "content height stays full, so scrolling back up is still possible");
 		tui.stop();
+	});
+
+	it("paints updated rows as soon as a block above them shrinks", async (t) => {
+		const { terminal, tui, top, bottom } = buildCullingScene();
+		tui.start();
+		t.after(() => tui.stop());
+		await terminal.waitForRender();
+
+		top.lines = ["short top"];
+		bottom.lines = ["new bottom", "new 2", "new 3"];
+		tui.renderNow();
+		await terminal.flush();
+
+		assert.strictEqual(terminal.getViewport()[4], "new bottom");
+	});
+
+	it("refreshes the newly visible rows when a shrink clamps the scroll position", async (t) => {
+		const { terminal, tui, transcript, top, bottom } = buildCullingScene();
+		tui.start();
+		t.after(() => tui.stop());
+		await terminal.waitForRender();
+		transcript.scrollTo(4);
+		await terminal.waitForRender();
+
+		top.lines = ["t1", "t2", "new top"];
+		bottom.lines = ["short bottom"];
+		tui.renderNow();
+		await terminal.flush();
+
+		assert.strictEqual(transcript.scrollTop, 2);
+		assert.strictEqual(terminal.getViewport()[0], "new top");
+	});
+
+	it("searches for newly added text in a block that stayed offscreen", async (t) => {
+		const { terminal, tui, bottom } = buildCullingScene(120);
+		tui.start();
+		t.after(() => tui.stop());
+		await terminal.waitForRender();
+
+		bottom.lines = ["new needle", "new 2", "new 3"];
+		tui.renderNow();
+		assert.strictEqual(bottom.renders, 1);
+		terminal.sendInput("\x1b[102;6u");
+		terminal.sendInput("needle");
+		await terminal.waitForRender();
+
+		assert.ok(terminal.getViewport().some((line) => line.includes("1/1")));
 	});
 });

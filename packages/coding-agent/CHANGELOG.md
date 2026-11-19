@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Transcript search finds updated offscreen text, and visible transcript rows refresh after layout changes. Regular mode also refreshes swapped components and the cursor when its setting changes.
+- Diff previews update their syntax highlighting when the file type changes.
+
 ## [1.113.0] - 2026-11-17
 
 ## [1.111.0] - 2026-11-17

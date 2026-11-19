@@ -149,6 +149,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	 * from the first changed one are produced again; the lines above are the ones already on screen.
 	 */
 	private readonly documentLines: string[] = [];
+	private documentSourceLines?: readonly string[];
+	private documentUsesHardwareCursor = this.getShowHardwareCursor();
 	/** True when the whole render must be compared again, because the last frame did not use the incremental path. */
 	private rescanAllLines = true;
 	/**
@@ -194,6 +196,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		// The lines came from another renderer, so nothing is known about which of them the document
 		// produces again; the next frame compares everything.
 		this.documentLines.length = 0;
+		this.documentSourceLines = undefined;
 		this.imageLineIndexes = [];
 		this.rescanAllLines = true;
 	}
@@ -206,6 +209,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		}
 		this.previousLines = [];
 		this.documentLines.length = 0;
+		this.documentSourceLines = undefined;
 		this.imageLineIndexes = [];
 		this.rescanAllLines = true;
 		this.previousWidth = -1;
@@ -331,13 +335,21 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		}
 
 		const rendered = this.renderCached(width);
-		const scanFrom = this.rescanAllLines ? 0 : Math.min(rendered.firstChanged, this.documentLines.length);
+		const showHardwareCursor = this.getShowHardwareCursor();
+		const canReusePrefix = !this.rescanAllLines && this.documentUsesHardwareCursor === showHardwareCursor;
+		let scanFrom = 0;
+		if (canReusePrefix) {
+			if (rendered.lines === this.documentSourceLines) scanFrom = rendered.lines.length;
+			else if (rendered.previousLines === this.documentSourceLines) scanFrom = rendered.firstChanged;
+		}
 		const documentLines = this.documentLines;
 		for (let line = scanFrom; line < rendered.lines.length; line++) {
 			documentLines[line] = this.applyLineReset(this.prepareDocumentLine(rendered.lines[line]!));
 		}
 		documentLines.length = rendered.lines.length;
 		this.rememberImageLines(scanFrom, documentLines);
+		this.documentSourceLines = rendered.lines;
+		this.documentUsesHardwareCursor = showHardwareCursor;
 		this.rescanAllLines = false;
 		return {
 			lines: documentLines,

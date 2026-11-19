@@ -147,6 +147,7 @@ export class DiffComponent implements Component {
 	private cache?: {
 		diff: string;
 		width: number;
+		filePath: string | undefined;
 		expanded: DiffViewOptions["expanded"];
 		maxRows: number | undefined;
 		expandHint: string | undefined;
@@ -179,6 +180,7 @@ export class DiffComponent implements Component {
 			cached &&
 			cached.diff === this.diff &&
 			cached.width === width &&
+			cached.filePath === options.filePath &&
 			cached.expanded === options.expanded &&
 			cached.maxRows === options.maxRows &&
 			cached.expandHint === options.expandHint &&
@@ -190,6 +192,7 @@ export class DiffComponent implements Component {
 		this.cache = {
 			diff: this.diff,
 			width,
+			filePath: options.filePath,
 			expanded: options.expanded,
 			maxRows: options.maxRows,
 			expandHint: options.expandHint,

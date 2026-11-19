@@ -203,4 +203,13 @@ describe("DiffComponent", () => {
 		expect(repainted).not.toBe(opened);
 		expect(component.render(80)).toBe(repainted);
 	});
+
+	it("repaints syntax highlighting when only the file path changes", () => {
+		const component = new DiffComponent("-1 const x = 1;\n+1 const x = 2;", { filePath: "sample.txt" });
+		const keywordColor = theme.getFgAnsi("syntaxKeyword");
+
+		expect(component.render(80).join("\n")).not.toContain(keywordColor);
+		component.setOptions({ filePath: "sample.ts" });
+		expect(component.render(80).join("\n")).toContain(keywordColor);
+	});
 });

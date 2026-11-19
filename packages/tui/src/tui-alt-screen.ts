@@ -1695,9 +1695,12 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		const width = Math.max(1, this.terminal.columns);
 		const height = Math.max(1, this.terminal.rows);
 		const root = this.layoutRoot ?? this.implicitScrollView;
-		let nextLayout = renderLayoutFrame(root, width, height, () => this.requestRender());
+		// Search reads the whole transcript, including blocks that changed while they were offscreen.
+		const layoutOptions = { renderOffscreen: Boolean(this.activeSearch?.query.trim()) };
+		const requestRender = () => this.requestRender();
+		let nextLayout = renderLayoutFrame(root, width, height, requestRender, layoutOptions);
 		if (this.refreshSearch(nextLayout)) {
-			nextLayout = renderLayoutFrame(root, width, height, () => this.requestRender());
+			nextLayout = renderLayoutFrame(root, width, height, requestRender, layoutOptions);
 		}
 		// Resolve fake cursors before highlighting and compositing, which only track SGR codes
 		let screen = this.resolveFakeCursors(nextLayout.lines.map((line) => line.replace(OSC133_ZONE_PREFIX, "")));

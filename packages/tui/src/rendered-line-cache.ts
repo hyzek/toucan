@@ -17,6 +17,8 @@ export interface RenderedLines {
 	 * when the render is identical. Renderers start looking for what to redraw here instead of at line 0.
 	 */
 	firstChanged: number;
+	/** The exact snapshot that `firstChanged` is relative to, when known. */
+	previousLines?: readonly string[];
 }
 
 /**
@@ -97,10 +99,16 @@ export class RenderedLineCache {
 		child: Component,
 		width: number,
 		childWindow: RenderWindow | undefined,
+		previousLines: readonly string[] | undefined,
 	): { lines: readonly string[]; firstChanged: number } {
 		child.setRenderWindow?.(childWindow);
 		const cached = child.renderCached?.(width);
-		if (cached) return { lines: cached.lines, firstChanged: cached.firstChanged };
+		if (cached) {
+			// A replacement or an intervening render may have used a different baseline than this parent.
+			const firstChanged =
+				previousLines !== undefined && cached.previousLines === previousLines ? cached.firstChanged : 0;
+			return { lines: cached.lines, firstChanged };
+		}
 		return { lines: child.render(width), firstChanged: 0 };
 	}
 
@@ -110,32 +118,16 @@ export class RenderedLineCache {
 		return { from: visible.from - childStart, to: visible.to - childStart };
 	}
 
-	/**
-	 * Whether the child at `index` contributes no line to `visible`, judged from the geometry `starts`
-	 * and `total` describe: the previous frame's starts, or this pass's as they are written.
-	 */
-	private static outsideWindow(
-		starts: readonly number[],
-		total: number,
-		index: number,
-		visible: RenderWindow,
-	): boolean {
-		const start = starts[index];
-		if (start === undefined) return false;
-		const end = starts[index + 1] ?? total;
-		// A child that had no lines in the geometry being judged must always render: the skip decides
-		// from stale line counts, so a child that has since grown stays "outside the window" forever
-		// if it was empty when the window was measured. Rendering an empty child costs nothing.
-		if (end <= start) return false;
-		return start >= visible.to || end <= visible.from;
+	/** Uses the current start and cached height; a child measured as empty can have grown anywhere. */
+	private static outsideWindow(start: number, height: number, visible: RenderWindow): boolean {
+		return height > 0 && (start >= visible.to || start + height <= visible.from);
 	}
 
 	/**
 	 * Renders every child. Offsets may be reported when only the children's count changed: lines still
 	 * compare against the previous render at the same width, and only children whose lines differ or
 	 * whose start moved count as changed. On a width change, offsets are off: nothing is known.
-	 * With `visible`, children the last frame saw entirely outside the window and that are the same
-	 * component at the same index keep their lines and are not rendered.
+	 * With `visible`, unchanged child slots can reuse their lines when their current position is offscreen.
 	 */
 	private fullRender(
 		children: readonly Component[],
@@ -144,11 +136,10 @@ export class RenderedLineCache {
 		visible?: RenderWindow,
 	): RenderedLines {
 		const count = children.length;
-		const sameWidth = this.width === width;
-		const oldLines = sameWidth ? this.childLines : [];
-		const oldStarts = sameWidth ? this.childStarts : [];
-		const oldOwners = sameWidth ? this.childOwners : [];
-		const oldTotal = this.lines.length;
+		const previousLines = offsetsValid ? this.lines : undefined;
+		const oldLines = offsetsValid ? this.childLines : [];
+		const oldStarts = offsetsValid ? this.childStarts : [];
+		const oldOwners = offsetsValid ? this.childOwners : [];
 		this.width = width;
 		this.childLines = new Array<readonly string[]>(count);
 		this.changed = new Array<boolean>(count).fill(true);
@@ -158,21 +149,22 @@ export class RenderedLineCache {
 		let firstChanged = offsetsValid ? Number.POSITIVE_INFINITY : 0;
 		for (let index = 0; index < count; index++) {
 			const child = children[index]!;
+			const previousChildLines = oldLines[index];
 			const skipped =
 				visible !== undefined &&
-				offsetsValid &&
 				oldOwners[index] === child &&
-				RenderedLineCache.outsideWindow(oldStarts, oldTotal, index, visible);
+				previousChildLines !== undefined &&
+				RenderedLineCache.outsideWindow(lines.length, previousChildLines.length, visible);
 			const rendered = skipped
-				? { lines: oldLines[index]!, firstChanged: oldLines[index]!.length }
-				: this.childRender(child, width, RenderedLineCache.localWindow(visible, lines.length));
+				? { lines: previousChildLines, firstChanged: previousChildLines.length }
+				: this.childRender(child, width, RenderedLineCache.localWindow(visible, lines.length), previousChildLines);
 			this.childOwners[index] = child;
 			this.childLines[index] = rendered.lines;
 			this.childStarts[index] = lines.length;
 			if (offsetsValid) {
 				if (oldStarts[index] !== lines.length) {
 					firstChanged = Math.min(firstChanged, lines.length);
-				} else if (this.childLines[index] !== oldLines[index]) {
+				} else if (rendered.lines !== previousChildLines) {
 					firstChanged = Math.min(
 						firstChanged,
 						lines.length + Math.min(rendered.firstChanged, rendered.lines.length),
@@ -182,7 +174,7 @@ export class RenderedLineCache {
 			for (const line of rendered.lines) lines.push(line);
 		}
 		this.lines = lines;
-		return { lines, firstChanged: offsetsValid ? Math.min(firstChanged, lines.length) : 0 };
+		return { lines, firstChanged: offsetsValid ? Math.min(firstChanged, lines.length) : 0, previousLines };
 	}
 
 	/**
@@ -195,18 +187,22 @@ export class RenderedLineCache {
 	 */
 	private patchRender(children: readonly Component[], width: number, visible?: RenderWindow): RenderedLines {
 		const count = children.length;
+		const previousLines = this.lines;
+		let childStart = 0;
 		let firstChangedChild = -1;
 		let firstChanged = Number.POSITIVE_INFINITY;
 		for (let index = 0; index < count; index++) {
 			const child = children[index]!;
+			const previousChildLines = this.childLines[index]!;
 			const skipped =
 				visible !== undefined &&
 				this.childOwners[index] === child &&
-				RenderedLineCache.outsideWindow(this.childStarts, this.lines.length, index, visible);
+				RenderedLineCache.outsideWindow(childStart, previousChildLines.length, visible);
 			const rendered = skipped
-				? { lines: this.childLines[index]!, firstChanged: this.childLines[index]!.length }
-				: this.childRender(child, width, RenderedLineCache.localWindow(visible, this.childStarts[index]!));
-			const changed = rendered.lines !== this.childLines[index];
+				? { lines: previousChildLines, firstChanged: previousChildLines.length }
+				: this.childRender(child, width, RenderedLineCache.localWindow(visible, childStart), previousChildLines);
+			childStart += rendered.lines.length;
+			const changed = rendered.lines !== previousChildLines;
 			this.childOwners[index] = child;
 			this.childLines[index] = rendered.lines;
 			this.changed[index] = changed;
@@ -221,10 +217,10 @@ export class RenderedLineCache {
 			}
 		}
 		if (firstChangedChild === -1) {
-			return { lines: this.lines, firstChanged: this.lines.length };
+			return { lines: previousLines, firstChanged: previousLines.length, previousLines };
 		}
 
-		const lines = this.lines.slice();
+		const lines = previousLines.slice();
 		let write = this.childStarts[firstChangedChild]!;
 		for (let index = firstChangedChild; index < count; index++) {
 			const childLines = this.childLines[index]!;
@@ -239,6 +235,6 @@ export class RenderedLineCache {
 		}
 		lines.length = write;
 		this.lines = lines;
-		return { lines, firstChanged: Math.min(firstChanged, write) };
+		return { lines, firstChanged: Math.min(firstChanged, write), previousLines };
 	}
 }
