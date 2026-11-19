@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.115.0] - 2026-11-19
+
 ### Fixed
 
 - Fullscreen transcript search finds updated text in offscreen blocks. Rows exposed by a layout change redraw immediately.

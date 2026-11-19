@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.115.0] - 2026-11-19
+
 ### Fixed
 
 - Transcript search finds updated offscreen text, and visible transcript rows refresh after layout changes. Regular mode also refreshes swapped components and the cursor when its setting changes.

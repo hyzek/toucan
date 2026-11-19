@@ -1,6 +1,6 @@
 {
 	"name": "@earendil-works/pi-ai",
-	"version": "1.113.0",
+	"version": "1.115.0",
 	"description": "Private shim so bundlers resolve Pi 1.0 peer names to Toucan's own packages; never published (runtime runs use the module aliases in core/extensions/loader.ts).",
 	"private": true,
 	"type": "module",
@@ -10,6 +10,6 @@
 		"./compat": "./compat.js"
 	},
 	"dependencies": {
-		"@hyzek/toucan-coding-agent": "1.113.0"
+		"@hyzek/toucan-coding-agent": "1.115.0"
 	}
 }
