@@ -71,6 +71,7 @@
 - The turn-duration line leads with the tool row dot `•` instead of a separate `✻` marker
 - Question form rows lay out in two columns with one label column shared by the whole list: long labels truncate to it and descriptions start at the same column on every row and wrap inside it instead of running off the screen. Submitted answer rows sit under the call line's header and show the chosen titles only; option descriptions stay in the tool result the model sees
 - The fullscreen `Jump to latest ↓` line brightens to the text color while hovered; clicking it still resumes following
+- The built-in planning agent now uses only read, grep, find, and ls; shell and file mutation tools must be active in the parent to be assigned to any subagent
 - Tool rows show paths under the session working directory relative to it, and a `SKILL.md` read as just `[skill] name`. Shell rows read `Bash <headline>` with the duration on the call line, keep the command source for the expanded view, and report `Done (N lines)` or `Exit N` with a 10-line preview instead of a separate timing row. Grep, find, and ls collapse to `N matches`, `N files`, or `N entries` and list at most 8 items when expanded. A write to a new file says `Create`, an unchanged write `✓ no changes`, and an undiffable write `Written`
 - While an interruptible operation is active (working, compaction, branch summarizing, retry, running bash), the hint row under the footer bar leads with `esc to interrupt` (the key follows the `app.interrupt` binding), followed by `← for agents` and `? for shortcuts`; the hint slots are fixed so the row never reshuffles. The inline `(esc to interrupt)` and `(esc to cancel)` text is gone from the status labels, making the hint row the single place for the key
 - Interrupting now takes two `Esc` presses: the first swaps the hint row to an orange `esc again to interrupt` for two seconds, and only a second press inside that window aborts, so an accidental `Esc` cannot kill a running turn
@@ -80,6 +81,13 @@
 - User messages keep the three-row background band but now lead with the composer's indent and `›` arrow
 - The footer bar under the input shows the model's display name (`Claude Sonnet 4.5`) instead of the API id (`claude-sonnet-4-5`), falling back to the id when a model declares no name. The routed model shown after a virtual model uses its display name too
 - `/shortcuts` lists shortcuts registered by built-in extensions, such as web search activity (`Ctrl+Shift+W`), under Other; only third-party extension shortcuts stay under Extensions
+
+### Fixed
+
+- Subagent tool calls now respect parent tool restrictions and extension tool-call hooks, stopping during startup works, and disposal does not send later completion notices
+- Subagent notifications are acknowledged before delivery, concurrent resumes of the same session are rejected, and continuation usage counts only the new run
+- Empty agent tool lists grant no tools, malformed lists reject the definition, and `enabled: false` disables a built-in agent
+- Multi-command shell input is not classified as a single-file edit, and recognized shell edits show their command in the collapsed view
 
 ## [24.0.0] - 2026-11-09
 

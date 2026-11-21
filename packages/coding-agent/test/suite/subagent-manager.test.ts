@@ -196,6 +196,72 @@ describe("subagent manager", () => {
 		expect(queued.status).toBe("stopped");
 	});
 
+	it("stops a child immediately during startup", async () => {
+		const h = await setup();
+		const manager = makeManager(h, 1);
+		h.setResponses([fauxAssistantMessage("must not run")]);
+		const record = manager.spawn({
+			definition: builtinAgent("explore"),
+			task: "stop",
+			background: true,
+			model: h.getModel(),
+			thinkingLevel: "off",
+		});
+		manager.stop(record.id);
+		expect((await manager.waitFor(record.id)).status).toBe("stopped");
+	});
+
+	it("acknowledges a notification delivered before notifyParent returns", async () => {
+		const h = await setup();
+		let offers = 0;
+		let manager: SubagentManager;
+		manager = new SubagentManager({
+			runtime: () => ({
+				cwd: h.tempDir,
+				modelRuntime: h.modelRuntime,
+				settingsManager: h.settingsManager,
+				sessionManager: h.sessionManager,
+				model: h.getModel(),
+				thinkingLevel: "off",
+			}),
+			maxConcurrent: () => 1,
+			notifyParent: async (text) => {
+				offers++;
+				manager.noteParentActivity({ type: "message_start", message: { role: "user", content: text } });
+				manager.noteParentActivity({ type: "agent_end" });
+			},
+		});
+		h.setResponses([fauxAssistantMessage("done")]);
+		const record = manager.spawn({
+			definition: builtinAgent("explore"),
+			task: "test",
+			background: true,
+			model: h.getModel(),
+			thinkingLevel: "off",
+		});
+		await manager.waitFor(record.id);
+		await waitFor(() => offers === 1);
+		manager.noteParentActivity({ type: "agent_end" });
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(offers).toBe(1);
+	});
+
+	it("rejects concurrent continuations of the same session", async () => {
+		const h = await setup();
+		const manager = makeManager(h, 1);
+		const request = {
+			definition: builtinAgent("explore"),
+			task: "resume",
+			background: true,
+			model: h.getModel(),
+			thinkingLevel: "off" as const,
+			resumeSessionFile: join(h.tempDir, "session.jsonl"),
+		};
+		const first = manager.spawn(request);
+		expect(() => manager.spawn(request)).toThrow("already being resumed");
+		await manager.waitFor(first.id);
+	});
+
 	it("steers a running agent into its next request", async () => {
 		const h = await setup();
 		const manager = makeManager(h, 4);

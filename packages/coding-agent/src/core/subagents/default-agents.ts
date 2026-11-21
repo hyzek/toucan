@@ -37,7 +37,7 @@ export const BUILTIN_AGENT_DEFINITIONS: AgentDefinition[] = [
 	{
 		name: "plan",
 		description: "Software architect agent: researches the codebase read-only and produces implementation plans.",
-		tools: ["read", "bash", "grep", "find", "ls"],
+		tools: ["read", "grep", "find", "ls"],
 		promptMode: "replace",
 		systemPrompt: [
 			"You are a software architect agent producing implementation plans. Research the codebase",
